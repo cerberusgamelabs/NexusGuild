@@ -1,0 +1,191 @@
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database schema initialized successfully
+
+=============================================
+
+          NexusGuild Server Running
+
+   Port: 1985
+
+     HTTP:   http://localhost:1985
+     Socket: http://localhost:1985
+
+=============================================
+            
+[INFO] User connected: LilianaXolkiyr (2251086793225015296)
+[INFO] LilianaXolkiyr joined server 2251208659289772032
+[INFO] LilianaXolkiyr joined server 2251208659289772032
+[INFO] LilianaXolkiyr joined channel 2251208660556451840
+[INFO] LilianaXolkiyr joined channel 2251208660770361344
+[INFO] LilianaXolkiyr joined channel 2251208660556451840
+[SUCCESS] Server created: "Test Server" (2251215269198303232) by LilianaXolkiyr 2251086793225015296
+[INFO] LilianaXolkiyr joined server 2251215269198303232
+[INFO] LilianaXolkiyr joined channel 2251215270347542528
+[SUCCESS] Database connected successfully
+[SUCCESS] Channel created: "test" (2251215434751676416) in server 2251215269198303232
+[INFO] LilianaXolkiyr joined channel 2251215270347542528
+[SUCCESS] Channel created: "test-2" (2251215495871074304) in server 2251215269198303232
+[INFO] LilianaXolkiyr joined channel 2251215270347542528
+[WARNING] User disconnected: LilianaXolkiyr (2251086793225015296)
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[INFO] User connected: LilianaXolkiyr (2251086793225015296)
+[INFO] LilianaXolkiyr joined server 2251208659289772032
+[INFO] LilianaXolkiyr joined server 2251215269198303232
+[INFO] LilianaXolkiyr joined channel 2251215270347542528
+[SUCCESS] Channel created: "just another test" (2251218050378371072) in server 2251215269198303232
+[INFO] LilianaXolkiyr joined channel 2251215270347542528
+[INFO] LilianaXolkiyr joined server 2251208659289772032
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[INFO] LilianaXolkiyr joined channel 2251208660556451840
+[INFO] LilianaXolkiyr joined server 2251215269198303232
+[INFO] LilianaXolkiyr joined channel 2251215270347542528
+[SUCCESS] Database connected successfully
+[WARNING] User disconnected: LilianaXolkiyr (2251086793225015296)
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[INFO] User connected: LilianaXolkiyr (2251086793225015296)
+[INFO] LilianaXolkiyr joined server 2251208659289772032
+[INFO] LilianaXolkiyr joined server 2251208659289772032
+[INFO] LilianaXolkiyr joined channel 2251208660556451840
+[INFO] LilianaXolkiyr joined server 2251215269198303232
+[INFO] LilianaXolkiyr joined channel 2251215270347542528
+[INFO] LilianaXolkiyr joined server 2251208659289772032
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[INFO] LilianaXolkiyr joined channel 2251208660556451840
+[WARNING] User disconnected: LilianaXolkiyr (2251086793225015296)
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[INFO] User connected: LilianaXolkiyr (2251086793225015296)
+[INFO] LilianaXolkiyr joined server 2251208659289772032
+[INFO] LilianaXolkiyr joined server 2251208659289772032
+[INFO] LilianaXolkiyr joined channel 2251208660556451840
+[INFO] LilianaXolkiyr joined server 2251215269198303232
+[INFO] LilianaXolkiyr joined channel 2251215270347542528
+[INFO] LilianaXolkiyr joined channel 2251218050378371072
+[INFO] LilianaXolkiyr joined server 2251208659289772032
+[INFO] LilianaXolkiyr joined channel 2251208660556451840
+[INFO] LilianaXolkiyr joined server 2251215269198303232
+[INFO] LilianaXolkiyr joined channel 2251215270347542528
+[SUCCESS] Database connected successfully
+[WARNING] User disconnected: LilianaXolkiyr (2251086793225015296)
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[INFO] User connected: LilianaXolkiyr (2251086793225015296)
+[INFO] LilianaXolkiyr joined server 2251208659289772032
+[INFO] LilianaXolkiyr joined server 2251208659289772032
+[INFO] LilianaXolkiyr joined channel 2251208660556451840
+[INFO] LilianaXolkiyr joined server 2251215269198303232
+[INFO] LilianaXolkiyr joined channel 2251215270347542528
+[WARNING] User disconnected: LilianaXolkiyr (2251086793225015296)
+[INFO] User connected: LilianaXolkiyr (2251086793225015296)
+[INFO] LilianaXolkiyr joined server 2251208659289772032
+[INFO] LilianaXolkiyr joined server 2251215269198303232
+[INFO] LilianaXolkiyr joined channel 2251215270347542528
+[INFO] LilianaXolkiyr joined channel 2251218050378371072
+[WARNING] User disconnected: LilianaXolkiyr (2251086793225015296)
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[INFO] User connected: LilianaXolkiyr (2251086793225015296)
+[INFO] LilianaXolkiyr joined server 2251208659289772032
+[INFO] LilianaXolkiyr joined server 2251215269198303232
+[INFO] LilianaXolkiyr joined channel 2251215270347542528
+[WARNING] Channel deleted: "just another test" [2251218050378371072]
+[INFO] LilianaXolkiyr joined channel 2251215270347542528
+[INFO] LilianaXolkiyr joined channel 2251215270582423552
+[WARNING] Channel deleted: "test" [2251215434751676416]
+[INFO] LilianaXolkiyr joined channel 2251215270347542528
+[WARNING] Channel deleted: "test-2" [2251215495871074304]
+[INFO] LilianaXolkiyr joined channel 2251215270347542528
+[INFO] LilianaXolkiyr joined server 2251208659289772032
+[INFO] LilianaXolkiyr joined channel 2251208660556451840
+[WARNING] User disconnected: LilianaXolkiyr (2251086793225015296)
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[INFO] User connected: LilianaXolkiyr (2251086793225015296)
+[INFO] LilianaXolkiyr joined server 2251208659289772032
+[INFO] LilianaXolkiyr joined server 2251215269198303232
+[INFO] LilianaXolkiyr joined channel 2251215270347542528
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[WARNING] Server deleted: "Test Server" [2251215269198303232]
+[INFO] LilianaXolkiyr joined server 2251208659289772032
+[INFO] LilianaXolkiyr joined channel 2251208660556451840
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[WARNING] User disconnected: LilianaXolkiyr (2251086793225015296)
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[INFO] User connected: LilianaXolkiyr (2251086793225015296)
+[INFO] LilianaXolkiyr joined server 2251208659289772032
+[INFO] LilianaXolkiyr joined server 2251208659289772032
+[INFO] LilianaXolkiyr joined channel 2251208660556451840
+[INFO] LilianaXolkiyr joined channel 2251208660770361344
+[INFO] LilianaXolkiyr joined channel 2251208660971687936
+[INFO] LilianaXolkiyr joined channel 2251208660770361344
+[INFO] LilianaXolkiyr joined channel 2251208660556451840
+[INFO] LilianaXolkiyr joined channel 2251208660770361344
+[INFO] LilianaXolkiyr joined channel 2251208660556451840
+[INFO] LilianaXolkiyr joined channel 2251208660770361344
+[INFO] LilianaXolkiyr joined channel 2251208660971687936
+[SUCCESS] Server created: "Test Server" (2251239640520462336) by LilianaXolkiyr 2251086793225015296
+[INFO] LilianaXolkiyr joined server 2251239640520462336
+[INFO] LilianaXolkiyr joined channel 2251239641938137088
+[SUCCESS] Channel created: "test" (2251239679053533184) in server 2251239640520462336
+[INFO] LilianaXolkiyr joined channel 2251239641938137088
+[SUCCESS] Channel created: "Second Test" (2251239720891715584) in server 2251239640520462336
+[INFO] LilianaXolkiyr joined channel 2251239641938137088
+[SUCCESS] Channel created: "third test" (2251239788642308096) in server 2251239640520462336
+[INFO] LilianaXolkiyr joined channel 2251239641938137088
+[WARNING] User disconnected: LilianaXolkiyr (2251086793225015296)
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[INFO] User connected: LilianaXolkiyr (2251086793225015296)
+[INFO] LilianaXolkiyr joined server 2251208659289772032
+[INFO] LilianaXolkiyr joined server 2251239640520462336
+[INFO] LilianaXolkiyr joined channel 2251239641938137088
+[SUCCESS] Database connected successfully
+[SIGNAL] SIGINT received (Ctrl+C). Shutting down.

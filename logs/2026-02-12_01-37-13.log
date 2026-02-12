@@ -1,0 +1,26 @@
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database schema initialized successfully
+
+=============================================
+
+          NexusGuild Server Running
+
+   Port: 1985
+
+     HTTP:   http://localhost:1985
+     Socket: http://localhost:1985
+
+=============================================
+            
+[INFO] User connected: LilianaXolkiyr (2251086793225015296)
+[INFO] LilianaXolkiyr joined server 2251208659289772032
+[INFO] LilianaXolkiyr joined channel 2251208660971687936
+[WARNING] User disconnected: LilianaXolkiyr (2251086793225015296)
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[SUCCESS] Database connected successfully
+[INFO] User connected: LilianaXolkiyr (2251086793225015296)
+[INFO] LilianaXolkiyr joined server 2251208659289772032
+[SIGNAL] SIGINT received (Ctrl+C). Shutting down.
