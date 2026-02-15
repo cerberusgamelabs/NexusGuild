@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -89,7 +89,7 @@
                         <button class="file-upload-btn" onclick="document.getElementById('fileInput').click()" title="Upload files">
                             📎
                         </button>
-                        <input type="text" id="messageInput" placeholder="Message..." onkeypress="handleMessageInput(event)">
+                        <textarea id="messageInput" placeholder="Message..." rows="1" onkeydown="handleMessageInput(event)"></textarea>
                         <button onclick="sendMessage()">Send</button>
                     </div>
                 </div>
