@@ -577,7 +577,7 @@ function initDMMessageInterceptor() {
     //    so we intercept here before it bails out.
     const _origHandleMessageInput = window.handleMessageInput;
     window.handleMessageInput = function (e) {
-        if (e.key === 'Enter' && isInDMMode() && dmState.currentDM) {
+        if (e.key === 'Enter' && !e.shiftKey && isInDMMode() && dmState.currentDM) {
             e.preventDefault();
             const input = document.getElementById('messageInput');
             const content = input?.value.trim();
