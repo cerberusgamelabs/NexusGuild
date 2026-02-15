@@ -1291,3 +1291,25 @@ textarea.modal-input {
     color: #ed4245;
     background: #ed424520;
 }
+
+.load-more-spinner {
+    text-align: center;
+    padding: 12px;
+    color: #888;
+    font-size: 13px;
+}
+
+.load-more-spinner {
+    text-align: center;
+    padding: 12px;
+    color: #888;
+    font-size: 13px;
+}
+
+.load-more-end {
+    text-align: center;
+    padding: 12px;
+    color: #555;
+    font-size: 12px;
+    font-style: italic;
+}

@@ -9,7 +9,9 @@ const state = {
     messages: [],
     members: [],
     socket: null,
-    isAuthenticated: false
+    isAuthenticated: false,
+    hasMoreMessages: true,
+    isLoadingMessages: false,
 };
 
 // Initialize app
@@ -174,7 +176,7 @@ function selectChannel(channelId) {
     state.socket.emit('join_channel', channelId);
 
     document.getElementById('currentChannelName').textContent =
-        channel.type === 'voice' ? `VC ${channel.name}` : `# ${channel.name}`;
+        channel.type === 'voice' ? `&#128266; ${channel.name}` : `# ${channel.name}`;
 
     loadChannelMessages(channelId);
 
@@ -186,11 +188,12 @@ function selectChannel(channelId) {
 }
 
 async function loadChannelMessages(channelId) {
+    state.hasMoreMessages = true;
+    state.isLoadingMessages = false;
     try {
-        const response = await fetch(`/api/messages/channels/${channelId}/messages`, {
+        const response = await fetch(`/api/messages/channels/${channelId}/messages?limit=50`, {
             credentials: 'include'
         });
-
         if (response.ok) {
             const data = await response.json();
             state.messages = data.messages;

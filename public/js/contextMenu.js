@@ -12,6 +12,7 @@ let modalData = null;
  * @param {Object} config - Modal configuration
  * @param {string} config.title - Modal title
  * @param {string} [config.message] - Optional message/hint text
+ * @param {string} [config.customHTML] - Optional custom HTML content (alternative to message)
  * @param {string} [config.inputType] - 'text', 'textarea', 'readonly', or null for no input
  * @param {string} [config.inputValue] - Initial input value
  * @param {string} [config.inputPlaceholder] - Input placeholder
@@ -34,6 +35,9 @@ function showModal(config) {
     // Set message
     if (config.message) {
         message.textContent = config.message;
+        message.style.display = 'block';
+    } else if (config.customHTML) {
+        message.innerHTML = config.customHTML;
         message.style.display = 'block';
     } else {
         message.style.display = 'none';
@@ -197,13 +201,16 @@ function attachMessageContextMenu(el, message) {
         const isOwner = state.currentUser && message.user_id === state.currentUser.id;
         const items = [];
 
+        items.push({ label: 'Add Reaction', action: 'addReaction' });
         if (isOwner) {
+            items.push('divider');
             items.push({ label: 'Edit Message', action: 'editMsg' });
             items.push({ label: 'Delete Message', action: 'deleteMsg', danger: true });
-            items.push('divider');
         }
+        items.push('divider');
         items.push({ label: 'Copy Text', action: 'copyText' });
 
+        ctxMenu._handlers.addReaction = () => showReactionModal(message.id);
         ctxMenu._handlers.editMsg = () => startEditMessage(message);
         ctxMenu._handlers.deleteMsg = () => deleteMessage(message);
         ctxMenu._handlers.copyText = () => navigator.clipboard.writeText(message.content);
@@ -272,6 +279,108 @@ function attachMemberContextMenu(el, member) {
 
 // ? Message edit/delete actions ???????????????????????????????????????????
 let currentEditingMessage = null;
+let currentReactionMessageId = null;
+
+async function showReactionModal(messageId) {
+    currentReactionMessageId = messageId;
+    
+    // Load custom emojis if not already loaded
+    let serverEmojis = { global: [], server: [] };
+    if (state.currentServer) {
+        try {
+            const response = await fetch(`/api/reactions/servers/${state.currentServer.id}/emojis`, {
+                credentials: 'include'
+            });
+            if (response.ok) {
+                serverEmojis = await response.json();
+            }
+        } catch (error) {
+            console.error('Error loading server emojis:', error);
+        }
+    }
+    
+    // Build emoji grid HTML
+    const globalEmojis = ['??', '??', '??', '??', '??', '??', '??', '??', '??', '??',
+                          '?', '?', '??', '??', '??', '??', '??', '??', '??', '??',
+                          '??', '??', '??', '??', '??', '??', '??', '?', '?', '??',
+                          '??', '??', '??', '??', '?', '??', '??', '??', '??', '?'];
+    
+    let emojiHTML = '<div style="max-height: 300px; overflow-y: auto;">';
+    
+    // Global emojis section
+    emojiHTML += '<div style="margin-bottom: 15px;"><strong style="color: #b9bbbe; font-size: 12px; text-transform: uppercase;">Global Emojis</strong></div>';
+    emojiHTML += '<div style="display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px; margin-bottom: 20px;">';
+    globalEmojis.forEach(emoji => {
+        emojiHTML += `<button class="emoji-modal-btn" onclick="selectEmojiFromModal('${emoji}')" style="font-size: 24px; padding: 8px; background: transparent; border: none; cursor: pointer; border-radius: 4px; transition: background 0.1s;" onmouseover="this.style.background='#40444b'" onmouseout="this.style.background='transparent'">${emoji}</button>`;
+    });
+    emojiHTML += '</div>';
+    
+    // Server emojis section (if any)
+    if (serverEmojis.server && serverEmojis.server.length > 0) {
+        emojiHTML += '<div style="margin-bottom: 15px;"><strong style="color: #b9bbbe; font-size: 12px; text-transform: uppercase;">Server Emojis</strong></div>';
+        emojiHTML += '<div style="display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px;">';
+        serverEmojis.server.forEach(emoji => {
+            emojiHTML += `<button class="emoji-modal-btn" onclick="selectEmojiFromModal('custom:${state.currentServer.id}:${emoji.name}')" style="padding: 8px; background: transparent; border: none; cursor: pointer; border-radius: 4px; transition: background 0.1s;" onmouseover="this.style.background='#40444b'" onmouseout="this.style.background='transparent'">
+                <img src="/img/emoji/${emoji.server_id}/${emoji.filename}" alt="${emoji.name}" title=":${emoji.name}:" style="width: 24px; height: 24px;" />
+            </button>`;
+        });
+        emojiHTML += '</div>';
+    }
+    
+    emojiHTML += '</div>';
+    
+    showModal({
+        title: 'Add Reaction',
+        customHTML: emojiHTML,
+        buttons: [
+            {
+                text: 'Cancel',
+                style: 'secondary',
+                action: () => {
+                    currentReactionMessageId = null;
+                    closeModal();
+                }
+            }
+        ]
+    });
+}
+
+async function selectEmojiFromModal(emoji) {
+    if (!currentReactionMessageId) return;
+    
+    try {
+        const response = await fetch(`/api/reactions/messages/${currentReactionMessageId}/reactions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ emoji })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            if (data.error === 'You already reacted with this emoji') {
+                // If already reacted, remove it instead
+                await fetch(`/api/reactions/messages/${currentReactionMessageId}/reactions`, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ emoji })
+                });
+            } else {
+                console.error('Failed to add reaction:', data.error);
+            }
+        }
+
+        currentReactionMessageId = null;
+        closeModal();
+    } catch (error) {
+        console.error('Error adding reaction:', error);
+        currentReactionMessageId = null;
+        closeModal();
+    }
+}
+
 
 function showEditMessageModal(message) {
     currentEditingMessage = message;

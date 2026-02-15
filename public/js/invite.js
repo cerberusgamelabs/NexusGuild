@@ -37,7 +37,7 @@ async function loadInvites() {
         <div class="invite-row">
           <div class="invite-info">
             <span class="invite-code">${inv.code}</span>
-            <span class="invite-meta">${uses} · ${expiry} · by ${inv.inviter_username || 'Unknown'}</span>
+            <span class="invite-meta">${uses} &middot; ${expiry} &middot; by ${inv.inviter_username || 'Unknown'}</span>
           </div>
           <button class="btn-copy" onclick="copyInviteCode('${inv.code}', this)">Copy Code</button>
         </div>
@@ -68,14 +68,20 @@ async function createInvite() {
         const data = await res.json();
 
         if (res.ok) {
-            // Copy to clipboard automatically
-            copyInviteCode(data.invite.code);
-            // Refresh the list
-            loadInvites();
+            // Refresh the list first
+            await loadInvites();
+            // Then try clipboard — don't let failure bubble up as an error
+            try {
+                await navigator.clipboard.writeText(data.invite.code);
+                showToast(`Invite code ${data.invite.code} copied to clipboard!`);
+            } catch {
+                showToast(`Invite ${data.invite.code} created! Copy it from the list above.`);
+            }
         } else {
             alert(data.error || 'Failed to create invite');
         }
     } catch (err) {
+        console.error('Create invite error:', err);
         alert('Failed to create invite');
     }
 }
@@ -88,7 +94,7 @@ function copyInviteCode(code, btn) {
             btn.classList.add('copied');
             setTimeout(() => { btn.textContent = original; btn.classList.remove('copied'); }, 2000);
         } else {
-            // Called without a button (after auto-generate) — show brief toast
+            // Called without a button (after auto-generate) ? show brief toast
             showToast(`Invite code ${code} copied to clipboard!`);
         }
     }).catch(() => {

@@ -28,7 +28,7 @@ function renderChannelList(channels, categories) {
             html += `<div class="channel-category">${category.name}</div>`;
 
             categoryChannels.sort((a, b) => a.position - b.position).forEach(channel => {
-                const icon = channel.type === 'voice' ? 'VC' : '#';
+                const icon = channel.type === 'voice' ? '&#128266;' : '#';
                 const isActive = state.currentChannel?.id === channel.id;
 
                 html += `
@@ -47,7 +47,7 @@ function renderChannelList(channels, categories) {
     // Render uncategorized channels
     if (uncategorized.length > 0) {
         uncategorized.sort((a, b) => a.position - b.position).forEach(channel => {
-            const icon = channel.type === 'voice' ? 'VC' : '#';
+            const icon = channel.type === 'voice' ? '&#128266;' : '#';
             const isActive = state.currentChannel?.id === channel.id;
 
             html = `

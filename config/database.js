@@ -8,7 +8,7 @@ dotenv.config();
 const pool = new Pool({
     host: process.env.DB_HOST || 'localhost',
     port: process.env.DB_PORT || 5432,
-    database: process.env.DB_NAME || 'nexusguild',
+    database: process.env.DB_NAME || 'postgres',
     user: process.env.DB_USER || 'postgres',
     password: process.env.DB_PASS,
     max: 20,
@@ -157,6 +157,29 @@ const initDB = async () => {
             )
         `);
 
+                await client.query(`
+            CREATE TABLE IF NOT EXISTS reactions (
+                id VARCHAR(20) PRIMARY KEY,
+                message_id VARCHAR(20) REFERENCES messages(id) ON DELETE CASCADE,
+                user_id VARCHAR(20) REFERENCES users(id) ON DELETE CASCADE,
+                emoji TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(message_id, user_id, emoji)
+            )
+        `);
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS custom_emojis (
+                id VARCHAR(20) PRIMARY KEY,
+                server_id VARCHAR(20) REFERENCES servers(id) ON DELETE CASCADE,
+                name VARCHAR(50) NOT NULL,
+                filename VARCHAR(255) NOT NULL,
+                created_by VARCHAR(20) REFERENCES users(id) ON DELETE SET NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(server_id, name)
+            )
+        `);
+
         await client.query(`
             CREATE TABLE IF NOT EXISTS "session" (
                 "sid"    varchar        NOT NULL COLLATE "default",
@@ -174,6 +197,9 @@ const initDB = async () => {
         await pool.query('CREATE INDEX IF NOT EXISTS idx_server_members     ON server_members(server_id, user_id)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_channels_server    ON channels(server_id)');
         await pool.query('CREATE INDEX IF NOT EXISTS "IDX_session_expire"   ON "session" ("expire")');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_reactions_message ON reactions(message_id)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_reactions_user ON reactions(user_id)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_custom_emojis_server ON custom_emojis(server_id)');
 
         log(tags.success, 'Database schema initialized successfully');
     } catch (e) {

@@ -52,6 +52,15 @@ class ChannelController {
             );
 
             log(tags.success, `Channel created: "${name}" (${id}) in server ${serverId}`);
+
+            const io = req.app.get('io');
+            if (io) {
+                io.to(`server:${serverId}`).emit('channel_created', {
+                    serverId,
+                    channel: result.rows[0]
+                });
+            }
+
             res.status(201).json({
                 message: 'Channel created successfully',
                 channel: result.rows[0]
@@ -82,6 +91,20 @@ class ChannelController {
             }
 
             log(tags.info, `Channel updated: "${result.rows[0].name}" [${channelId}]`);
+
+            const serverResult = await db.query(
+                'SELECT server_id FROM channels WHERE id = $1',
+                [channelId]
+            );
+
+            const io = req.app.get('io');
+            if (io && serverResult.rows.length > 0) {
+                io.to(`server:${serverResult.rows[0].server_id}`).emit('channel_updated', {
+                    serverId: serverResult.rows[0].server_id,
+                    channel: result.rows[0]
+                });
+            }
+
             res.json({
                 message: 'Channel updated successfully',
                 channel: result.rows[0]
@@ -97,7 +120,25 @@ class ChannelController {
             const { channelId } = req.params;
             const nameResult = await db.query('SELECT name FROM channels WHERE id = $1', [channelId]);
             const channelName = nameResult.rows[0]?.name || 'Unknown';
+
+            const channelResult = await db.query(
+                'SELECT server_id, name FROM channels WHERE id = $1',
+                [channelId]
+            );
+
+            const { server_id: serverId } = channelResult.rows[0];
+
             await db.query('DELETE FROM channels WHERE id = $1', [channelId]);
+            
+            // Broadcast
+            const io = req.app.get('io');
+            if (io) {
+                io.to(`server:${serverId}`).emit('channel_deleted', {
+                    serverId,
+                    channelId
+                });
+            }
+
             log(tags.warning, `Channel deleted: "${channelName}" [${channelId}]`);
             res.json({ message: 'Channel deleted successfully' });
         } catch (error) {

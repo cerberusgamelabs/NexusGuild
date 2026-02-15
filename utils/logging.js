@@ -15,6 +15,23 @@ const tags = {
     system: chalk.bold.ansi256(208)('[SYSTEM]'),
 };
 
+// Discord Logging Init
+import { Client, GatewayIntentBits } from 'discord.js';
+import dotenv from 'dotenv';
+dotenv.config();
+
+const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+
+let logsChannel;
+
+client.once('ready', async () => {
+    const guild = await client.guilds.fetch(process.env.GUILD_ID);
+    logsChannel = await guild.channels.fetch(process.env.LOGS_CHANNEL_ID);
+    console.log(`[LOGS] Discord logging ready in channel: ${logsChannel.name}`);
+});
+
+client.login(process.env.TOKEN);
+
 // Create logs directory if it doesn't exist
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -46,6 +63,9 @@ function stripAnsiCodes(text) {
     return text.replace(/\x1b\[[0-9;]*m/g, "");
 }
 
+let lastDiscordLog = "";
+let lastDiscordLogTime = 0;
+
 // Dual-output logging function
 function log(...args) {
     console.log(...args);
@@ -59,6 +79,26 @@ function log(...args) {
         .join(" ");
 
     logStream.write(plainText + "\n");
+
+    // New: send to Discord
+    if (logsChannel) {
+        if (plainText === lastDiscordLog && (now - lastDiscordLogTime) < 60_000) return;
+
+        lastDiscordLog = plainText;
+        lastDiscordLogTime = now;
+
+        // Make sure message <= 2000 characters
+        const MAX_LENGTH = 2000;
+        if (plainText.length <= MAX_LENGTH) {
+            logsChannel.send(`\`\`\`\n${plainText}\n\`\`\``).catch(console.error);
+        } else {
+            // Split large messages into chunks
+            for (let i = 0; i < plainText.length; i += MAX_LENGTH) {
+                const chunk = plainText.slice(i, i + MAX_LENGTH);
+                logsChannel.send(`\`\`\`\n${chunk}\n\`\`\``).catch(console.error);
+            }
+        }
+    }
 }
 
 // Close stream on exit

@@ -24,6 +24,7 @@ import authRoutes from "./routes/auth.js";
 import serverRoutes from "./routes/servers.js";
 import channelRoutes from "./routes/channels.js";
 import messageRoutes from "./routes/messages.js";
+import reactionRoutes from './routes/reactions.js';
 
 const app = express();
 const server = http.createServer(app);
@@ -63,6 +64,7 @@ const startServer = async () => {
         app.use('/api/servers', serverRoutes);
         app.use('/api/channels', channelRoutes);
         app.use('/api/messages', messageRoutes);
+        app.use('/api/reactions', reactionRoutes);
 
         app.get('/api/health', (req, res) => {
             res.json({ status: 'ok', timestamp: new Date() });

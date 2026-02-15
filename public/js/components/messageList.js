@@ -3,77 +3,136 @@ function renderMessages() {
     const container = document.getElementById('messagesContainer');
     if (!container) return;
 
+    // Attach scroll listener once
+    if (!container.dataset.scrollBound) {
+        container.dataset.scrollBound = 'true';
+        container.addEventListener('scroll', handleMessageScroll);
+    }
+
     if (state.messages.length === 0) {
         container.innerHTML = '<div class="loading">No messages yet. Start the conversation!</div>';
         return;
     }
 
-    container.innerHTML = state.messages.map((message, index) => {
-        const prevMessage = index > 0 ? state.messages[index - 1] : null;
-        const showHeader = !prevMessage ||
-            prevMessage.user_id !== message.user_id ||
-            (new Date(message.created_at) - new Date(prevMessage.created_at)) > 300000;
+    const prevHeight = container.scrollHeight;
+    const prevTop = container.scrollTop;
 
-        let attachmentsHtml = '';
-        if (message.attachments) {
-            const attachments = typeof message.attachments === 'string'
-                ? JSON.parse(message.attachments)
-                : message.attachments;
+    container.innerHTML =
+        (state.hasMoreMessages ? '<div class="load-more-spinner" id="loadMoreSpinner">Loading earlier messages...</div>' : '<div class="load-more-end" id="loadMoreEnd">Beginning of channel history</div>') +
+        state.messages.map((message, index) => {
+            const prevMessage = index > 0 ? state.messages[index - 1] : null;
+            const showHeader = !prevMessage ||
+                prevMessage.user_id !== message.user_id ||
+                (new Date(message.created_at) - new Date(prevMessage.created_at)) > 300000;
 
-            attachmentsHtml = attachments.map(att => {
-                const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(att.filename);
-                if (isImage) {
-                    return `
-                        <div class="message-attachment">
-                            <a href="${att.url}" target="_blank">
-                                <img src="${att.url}" alt="${att.originalName}" class="attachment-image" />
-                            </a>
-                        </div>`;
-                } else {
-                    const fileSize = (att.size / 1024).toFixed(1) + ' KB';
-                    return `
-                        <div class="message-attachment file-attachment">
-                            <a href="${att.url}" target="_blank" download="${att.originalName}">
-                                <div class="file-icon">??</div>
-                                <div class="file-info">
-                                    <div class="file-name">${att.originalName}</div>
-                                    <div class="file-size">${fileSize}</div>
-                                </div>
-                            </a>
-                        </div>`;
-                }
-            }).join('');
-        }
+            let attachmentsHtml = '';
+            if (message.attachments) {
+                const attachments = typeof message.attachments === 'string'
+                    ? JSON.parse(message.attachments)
+                    : message.attachments;
 
-        const messageContent = message.content ? escapeHtml(message.content) : '';
-        const editedTag = message.edited_at ? ' <span class="edited-tag">(edited)</span>' : '';
+                attachmentsHtml = attachments.map(att => {
+                    const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(att.filename);
+                    if (isImage) {
+                        return `
+                            <div class="message-attachment">
+                                <a href="${att.url}" target="_blank">
+                                    <img src="${att.url}" alt="${att.originalName}" class="attachment-image" />
+                                </a>
+                            </div>`;
+                    } else {
+                        const fileSize = (att.size / 1024).toFixed(1) + ' KB';
+                        return `
+                            <div class="message-attachment file-attachment">
+                                <a href="${att.url}" target="_blank" download="${att.originalName}">
+                                    <div class="file-icon">&#128196;</div>
+                                    <div class="file-info">
+                                        <div class="file-name">${att.originalName}</div>
+                                        <div class="file-size">${fileSize}</div>
+                                    </div>
+                                </a>
+                            </div>`;
+                    }
+                }).join('');
+            }
 
-        if (showHeader) {
-            return `
-        <div class="message" data-message-id="${message.id}">
-          <div class="message-header">
-            <div class="message-avatar">${getInitials(message.username)}</div>
-            <span class="message-author">${message.username}</span>
-            <span class="message-timestamp">${formatTimestamp(message.created_at)}</span>
-          </div>
-          <div class="message-content" data-content-id="${message.id}">${messageContent}${editedTag}</div>
-          <div class="message-edit-area" data-edit-id="${message.id}" style="display:none;"></div>
-          ${attachmentsHtml}
-        </div>`;
-        } else {
-            return `
-        <div class="message compact" data-message-id="${message.id}">
-          <div class="message-content" data-content-id="${message.id}" style="margin-left:48px;">${messageContent}${editedTag}</div>
-          <div class="message-edit-area" data-edit-id="${message.id}" style="display:none; margin-left:48px;"></div>
-          ${attachmentsHtml ? `<div style="margin-left:48px;">${attachmentsHtml}</div>` : ''}
-        </div>`;
-        }
-    }).join('');
+            const messageContent = message.content ? escapeHtml(message.content) : '';
+            const editedTag = message.edited_at ? ' <span class="edited-tag">(edited)</span>' : '';
+            const isOwn = message.user_id === state.currentUser.id;
+            
+            // Render reactions if they exist
+            const reactionsHTML = message.reactions ? renderReactions(message.reactions, message.id) : '';
+
+            if (showHeader) {
+                return `
+            <div class="message" data-message-id="${message.id}">
+              <div class="message-header">
+                <div class="message-avatar">${getInitials(message.username)}</div>
+                <span class="message-author">${message.username}</span>
+                <span class="message-timestamp">${formatTimestamp(message.created_at)}</span>
+              </div>
+              <div class="message-content" data-content-id="${message.id}">${messageContent}${editedTag}</div>
+              <div class="message-edit-area" data-edit-id="${message.id}" style="display:none;"></div>
+              ${attachmentsHtml}
+              ${reactionsHTML}
+            </div>`;
+            } else {
+                return `
+            <div class="message compact" data-message-id="${message.id}">
+              <div class="message-content" data-content-id="${message.id}" style="margin-left:48px;">${messageContent}${editedTag}</div>
+              <div class="message-edit-area" data-edit-id="${message.id}" style="display:none; margin-left:48px;"></div>
+              ${attachmentsHtml ? `<div style="margin-left:48px;">${attachmentsHtml}</div>` : ''}
+              ${reactionsHTML ? `<div style="margin-left:48px;">${reactionsHTML}</div>` : ''}
+            </div>`;
+            }
+        }).join('');
+
+    // Restore scroll position after prepending older messages
+    if (prevTop < 200) {
+        container.scrollTop = container.scrollHeight - prevHeight + prevTop;
+    }
 
     state.messages.forEach(message => {
         const el = container.querySelector(`[data-message-id="${message.id}"]`);
         if (el) attachMessageContextMenu(el, message);
     });
+}
+
+async function handleMessageScroll() {
+    const container = document.getElementById('messagesContainer');
+    if (!container || !state.hasMoreMessages || state.isLoadingMessages) return;
+    if (container.scrollTop > 100) return;
+
+    state.isLoadingMessages = true;
+
+    const spinner = document.getElementById('loadMoreSpinner');
+    if (spinner) spinner.textContent = 'Loading...';
+
+    const oldest = state.messages[0];
+    if (!oldest) { state.isLoadingMessages = false; return; }
+
+    try {
+        const res = await fetch(
+            `/api/messages/channels/${state.currentChannel.id}/messages?limit=50&before=${oldest.id}`,
+            { credentials: 'include' }
+        );
+        const data = await res.json();
+        const older = data.messages || [];
+
+        if (older.length < 50) state.hasMoreMessages = false;
+
+        if (older.length > 0) {
+            state.messages = [...older, ...state.messages];
+            renderMessages();
+        } else {
+            state.hasMoreMessages = false;
+            renderMessages();
+        }
+    } catch (err) {
+        console.error('Failed to load older messages:', err);
+    }
+
+    state.isLoadingMessages = false;
 }
 
 // ?? Inline Edit ???????????????????????????????????????????????????????????????
@@ -92,7 +151,6 @@ function activateInlineEdit(message) {
     editAreaEl.style.display = 'block';
     editAreaEl.dataset.activeEdit = message.id;
 
-    // Build attachment removal UI
     const attachments = message.attachments
         ? (typeof message.attachments === 'string' ? JSON.parse(message.attachments) : message.attachments)
         : [];
@@ -103,13 +161,13 @@ function activateInlineEdit(message) {
             const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(att.filename);
             const preview = isImage
                 ? `<img src="${att.url}" class="edit-att-thumb" alt="${att.originalName}" />`
-                : `<div class="edit-att-icon">??</div>`;
+                : `<div class="edit-att-icon">&#128196;</div>`;
             return `
                 <div class="edit-att-item" data-filename="${att.filename}">
                     ${preview}
                     <span class="edit-att-name">${att.originalName}</span>
                     <button class="edit-att-remove" title="Remove attachment"
-                        onclick="toggleAttachmentRemoval('${att.filename}', this)">?</button>
+                        onclick="toggleAttachmentRemoval('${att.filename}', this)">&#x2715;</button>
                 </div>`;
         }).join('');
 
@@ -121,7 +179,7 @@ function activateInlineEdit(message) {
     editAreaEl.innerHTML = `
         <textarea class="inline-edit-textarea" id="inlineEditTextarea">${message.content}</textarea>
         ${attachmentsHtml}
-        <div class="inline-edit-hint">escape to <span class="inline-edit-link" onclick="cancelInlineEdit()">cancel</span> · enter to <span class="inline-edit-link" onclick="submitInlineEdit('${message.id}')">save</span></div>
+        <div class="inline-edit-hint">escape to <span class="inline-edit-link" onclick="cancelInlineEdit()">cancel</span> &middot; enter to <span class="inline-edit-link" onclick="submitInlineEdit('${message.id}')">save</span></div>
         <div class="inline-edit-error" id="inlineEditError" style="display:none;"></div>
     `;
 
@@ -143,12 +201,12 @@ function toggleAttachmentRemoval(filename, btn) {
         _pendingRemovals.push(filename);
         itemEl.classList.add('edit-att-removed');
         btn.title = 'Undo remove';
-        btn.textContent = '?';
+        btn.innerHTML = '&#x21A9;';
     } else {
         _pendingRemovals.splice(idx, 1);
         itemEl.classList.remove('edit-att-removed');
         btn.title = 'Remove attachment';
-        btn.textContent = '?';
+        btn.innerHTML = '&#x2715;';
     }
 }
 
@@ -184,7 +242,6 @@ async function submitInlineEdit(messageId) {
         return;
     }
 
-    // No-op check: same content and no removals
     if (original && original.content === newContent && _pendingRemovals.length === 0) {
         cancelInlineEdit();
         return;
