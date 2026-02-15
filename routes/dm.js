@@ -20,4 +20,10 @@ router.get('/:dmId/messages', requireAuth, DMController.getMessages);
 // Send a message in a DM conversation
 router.post('/:dmId/messages', requireAuth, DMController.sendMessage);
 
+// Edit a DM message (sender only)
+router.patch('/:dmId/messages/:messageId', requireAuth, DMController.editMessage);
+
+// Delete a DM message (sender only)
+router.delete('/:dmId/messages/:messageId', requireAuth, DMController.deleteMessage);
+
 export default router;
