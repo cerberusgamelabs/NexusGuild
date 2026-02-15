@@ -1,4 +1,4 @@
-﻿* {
+* {
     box-sizing: border-box;
     margin: 0;
     padding: 0;
@@ -395,9 +395,10 @@ body {
     padding: 12px;
     background-color: #40444b;
     border-radius: 8px;
+    align-items: flex-end;
 }
 
-    .input-bar input[type="text"] {
+    .input-bar textarea#messageInput {
         flex: 1;
         padding: 10px;
         border-radius: 4px;
@@ -405,9 +406,16 @@ body {
         background-color: #40444b;
         color: #dcddde;
         font-size: 14px;
+        resize: none;
+        overflow-y: hidden;
+        line-height: 1.4;
+        max-height: 200px;
+        overflow-y: auto;
+        font-family: inherit;
+        display: block;
     }
 
-        .input-bar input[type="text"]:focus {
+        .input-bar textarea#messageInput:focus {
             outline: none;
         }
 
