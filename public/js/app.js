@@ -39,6 +39,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Set up drag-and-drop for file uploads
     setupDragAndDrop();
+
+    // Auto-resize message textarea as user types
+    const msgInput = document.getElementById('messageInput');
+    if (msgInput) {
+        msgInput.addEventListener('input', () => {
+            msgInput.style.height = 'auto';
+            msgInput.style.height = Math.min(msgInput.scrollHeight, 200) + 'px';
+        });
+    }
 });
 
 function setupDragAndDrop() {
@@ -110,6 +119,11 @@ async function loadUserServers() {
             const data = await response.json();
             state.servers = data.servers;
             renderServerList();
+
+            // Auto-select first server if available
+            if (state.servers.length > 0 && !state.currentServer) {
+                selectServer(state.servers[0].id);
+            }
         }
     } catch (error) {
         console.error('Error loading servers:', error);
@@ -257,7 +271,7 @@ function renderFilePreview() {
             return `
                 <div class="file-preview-item">
                     <img src="${url}" alt="${file.name}" class="preview-image" />
-                    <button class="remove-file-btn" onclick="removeFile(${index})">×</button>
+                    <button class="remove-file-btn" onclick="removeFile(${index})">�</button>
                     <div class="file-preview-name">${file.name}</div>
                 </div>
             `;
@@ -265,7 +279,7 @@ function renderFilePreview() {
             return `
                 <div class="file-preview-item">
                     <div class="file-preview-icon">??</div>
-                    <button class="remove-file-btn" onclick="removeFile(${index})">×</button>
+                    <button class="remove-file-btn" onclick="removeFile(${index})">�</button>
                     <div class="file-preview-name">${file.name}</div>
                     <div class="file-preview-size">${fileSize}</div>
                 </div>
@@ -302,6 +316,7 @@ async function sendMessage() {
 
         if (response.ok) {
             input.value = '';
+            input.style.height = 'auto';
             selectedFiles = [];
             renderFilePreview();
             document.getElementById('fileInput').value = '';
