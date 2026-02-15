@@ -110,11 +110,6 @@ async function loadUserServers() {
             const data = await response.json();
             state.servers = data.servers;
             renderServerList();
-
-            // Auto-select first server if available
-            if (state.servers.length > 0 && !state.currentServer) {
-                selectServer(state.servers[0].id);
-            }
         }
     } catch (error) {
         console.error('Error loading servers:', error);
@@ -262,7 +257,7 @@ function renderFilePreview() {
             return `
                 <div class="file-preview-item">
                     <img src="${url}" alt="${file.name}" class="preview-image" />
-                    <button class="remove-file-btn" onclick="removeFile(${index})">×</button>
+                    <button class="remove-file-btn" onclick="removeFile(${index})">Ã—</button>
                     <div class="file-preview-name">${file.name}</div>
                 </div>
             `;
@@ -270,7 +265,7 @@ function renderFilePreview() {
             return `
                 <div class="file-preview-item">
                     <div class="file-preview-icon">??</div>
-                    <button class="remove-file-btn" onclick="removeFile(${index})">×</button>
+                    <button class="remove-file-btn" onclick="removeFile(${index})">Ã—</button>
                     <div class="file-preview-name">${file.name}</div>
                     <div class="file-preview-size">${fileSize}</div>
                 </div>
