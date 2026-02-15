@@ -567,6 +567,7 @@ function initDMMessageInterceptor() {
         const content = input?.value.trim();
         if (!content) return;
         input.value = '';
+        input.style.height = 'auto';
         if (state.socket) state.socket.emit('dm_stop_typing', dmState.currentDM.id);
         await sendDMMessage(content);
     };
@@ -582,6 +583,7 @@ function initDMMessageInterceptor() {
             const content = input?.value.trim();
             if (!content) return;
             input.value = '';
+            input.style.height = 'auto';
             if (state.socket) state.socket.emit('dm_stop_typing', dmState.currentDM.id);
             sendDMMessage(content);
             return; // don't fall through to original
