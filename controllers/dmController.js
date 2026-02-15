@@ -6,7 +6,7 @@ import { generateSnowflake } from '../utils/functions.js';
 
 class DMController {
 
-    // GET /api/dm — list all DM conversations for the current user
+    // GET /api/dm â€” list all DM conversations for the current user
     static async getConversations(req, res) {
         try {
             const userId = req.session.user.id;
@@ -35,7 +35,7 @@ class DMController {
         }
     }
 
-    // POST /api/dm — open (or get existing) DM conversation with { userId }
+    // POST /api/dm â€” open (or get existing) DM conversation with { userId }
     static async openConversation(req, res) {
         try {
             const currentUserId = req.session.user.id;
@@ -176,7 +176,7 @@ class DMController {
         }
     }
 
-    // GET /api/dm/users/search?q= — find users to start a DM with
+    // GET /api/dm/users/search?q= â€” find users to start a DM with
     static async searchUsers(req, res) {
         try {
             const { q } = req.query;
@@ -196,6 +196,74 @@ class DMController {
         } catch (error) {
             log(tags.error, 'Search users error:', error);
             res.status(500).json({ error: 'Failed to search users' });
+        }
+    }
+
+    static async editMessage(req, res) {
+        try {
+            const { dmId, messageId } = req.params;
+            const { content } = req.body;
+            const userId = req.session.user.id;
+
+            if (!content?.trim()) {
+                return res.status(400).json({ error: 'Content cannot be empty' });
+            }
+
+            // Verify message belongs to this DM and was sent by this user
+            const check = await db.query(
+                'SELECT * FROM dm_messages WHERE id = $1 AND dm_id = $2 AND sender_id = $3',
+                [messageId, dmId, userId]
+            );
+            if (check.rows.length === 0) {
+                return res.status(404).json({ error: 'Message not found or not yours' });
+            }
+
+            const result = await db.query(
+                'UPDATE dm_messages SET content = $1, edited_at = NOW() WHERE id = $2 RETURNING *',
+                [content.trim(), messageId]
+            );
+
+            const message = result.rows[0];
+
+            // Notify the other participant in real-time
+            const io = req.app.get('io');
+            if (io) {
+                io.to(`dm:${dmId}`).emit('dm_message_updated', message);
+            }
+
+            res.json({ message });
+        } catch (error) {
+            log(tags.error, 'Edit DM message error:', error);
+            res.status(500).json({ error: 'Failed to edit message' });
+        }
+    }
+
+    static async deleteMessage(req, res) {
+        try {
+            const { dmId, messageId } = req.params;
+            const userId = req.session.user.id;
+
+            // Verify message belongs to this DM and was sent by this user
+            const check = await db.query(
+                'SELECT * FROM dm_messages WHERE id = $1 AND dm_id = $2 AND sender_id = $3',
+                [messageId, dmId, userId]
+            );
+            if (check.rows.length === 0) {
+                return res.status(404).json({ error: 'Message not found or not yours' });
+            }
+
+            await db.query('DELETE FROM dm_messages WHERE id = $1', [messageId]);
+
+            // Notify the other participant in real-time
+            const io = req.app.get('io');
+            if (io) {
+                io.to(`dm:${dmId}`).emit('dm_message_deleted', { message_id: messageId, dm_id: dmId });
+            }
+
+            res.json({ success: true });
+        } catch (error) {
+            log(tags.error, 'Delete DM message error:', error);
+            res.status(500).json({ error: 'Failed to delete message' });
         }
     }
 }
