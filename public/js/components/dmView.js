@@ -35,6 +35,13 @@ async function showDMHome() {
     renderDMHomeScreen();
     await loadDMConversations();
 
+    // Register edit/delete socket listeners once
+    if (state.socket && !state.socket._dmEditListenersSetup) {
+        state.socket._dmEditListenersSetup = true;
+        state.socket.on('dm_message_updated', onDMMessageUpdated);
+        state.socket.on('dm_message_deleted', onDMMessageDeleted);
+    }
+
     const searchInput = document.getElementById('dmSearchInput');
     if (searchInput) {
         searchInput.addEventListener('input', debounce(handleDMSearch, 250));
@@ -268,12 +275,175 @@ function renderDMMessages(prepending = false) {
 
     if (prepending) container.scrollTop = container.scrollHeight - prevHeight + prevTop;
 
+    // Attach context menus to DM messages
+    dmState.messages.forEach(msg => {
+        const el = container.querySelector(`[data-message-id="${msg.id}"]`);
+        if (el) attachDMMessageContextMenu(el, msg);
+    });
+
     container.onscroll = () => {
         if (container.scrollTop < 100 && dmState.hasMore && !dmState.isLoading) {
             const oldest = dmState.messages[0];
             if (oldest) loadDMMessages(dmState.currentDM.id, oldest.id);
         }
     };
+}
+
+// ─── DM Message context menu ──────────────────────────────────────────────────
+function attachDMMessageContextMenu(el, msg) {
+    el.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const isOwn = state.currentUser && msg.sender_id === state.currentUser.id;
+        const items = [];
+
+        if (isOwn) {
+            items.push({ label: 'Edit Message',   action: 'editDM' });
+            items.push({ label: 'Delete Message', action: 'deleteDM', danger: true });
+            items.push('divider');
+        }
+        items.push({ label: 'Copy Text', action: 'copyDM' });
+
+        ctxMenu._handlers.editDM   = () => activateDMInlineEdit(msg);
+        ctxMenu._handlers.deleteDM = () => deleteDMMessage(msg);
+        ctxMenu._handlers.copyDM   = () => navigator.clipboard.writeText(msg.content);
+
+        ctxMenu.show(e.clientX, e.clientY, items);
+    });
+}
+
+// ─── DM Inline edit (text-only — DMs have no attachments) ────────────────────
+function activateDMInlineEdit(msg) {
+    cancelDMInlineEdit();
+
+    const contentEl  = document.querySelector(`[data-content-id="${msg.id}"]`);
+    const editAreaEl = document.querySelector(`[data-edit-id="${msg.id}"]`);
+    if (!contentEl || !editAreaEl) return;
+
+    contentEl.style.display  = 'none';
+    editAreaEl.style.display = 'block';
+    editAreaEl.dataset.activeDmEdit = msg.id;
+
+    editAreaEl.innerHTML = `
+        <textarea class="inline-edit-textarea" id="dmInlineEditTextarea">${msg.content}</textarea>
+        <div class="inline-edit-hint">escape to <span class="inline-edit-link" onclick="cancelDMInlineEdit()">cancel</span> &middot; enter to <span class="inline-edit-link" onclick="submitDMInlineEdit('${msg.id}')">save</span></div>
+        <div class="inline-edit-error" id="dmInlineEditError" style="display:none;"></div>
+    `;
+
+    const textarea = document.getElementById('dmInlineEditTextarea');
+    textarea.focus();
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    textarea.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') { e.preventDefault(); cancelDMInlineEdit(); }
+        else if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitDMInlineEdit(msg.id); }
+    });
+}
+
+function cancelDMInlineEdit() {
+    const activeArea = document.querySelector('[data-active-dm-edit]');
+    if (!activeArea) return;
+    const msgId     = activeArea.dataset.activeDmEdit;
+    const contentEl = document.querySelector(`[data-content-id="${msgId}"]`);
+    if (contentEl) contentEl.style.display = '';
+    activeArea.style.display = 'none';
+    activeArea.innerHTML     = '';
+    delete activeArea.dataset.activeDmEdit;
+}
+
+async function submitDMInlineEdit(msgId) {
+    const textarea = document.getElementById('dmInlineEditTextarea');
+    const errorEl  = document.getElementById('dmInlineEditError');
+    if (!textarea) return;
+
+    const newContent = textarea.value.trim();
+    if (!newContent) {
+        errorEl.textContent  = 'Message cannot be empty.';
+        errorEl.style.display = 'block';
+        return;
+    }
+
+    const original = dmState.messages.find(m => m.id === msgId);
+    if (original && original.content === newContent) { cancelDMInlineEdit(); return; }
+
+    textarea.disabled = true;
+    const dmId = dmState.currentDM.id;
+
+    try {
+        const res = await fetch(`/api/dm/${dmId}/messages/${msgId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ content: newContent })
+        });
+
+        if (res.ok) {
+            const data = await res.json();
+            const idx = dmState.messages.findIndex(m => m.id === msgId);
+            if (idx !== -1) dmState.messages[idx] = { ...dmState.messages[idx], ...data.message };
+            cancelDMInlineEdit();
+            renderDMMessages();
+        } else {
+            const data = await res.json();
+            textarea.disabled    = false;
+            errorEl.textContent  = data.error || 'Failed to edit message.';
+            errorEl.style.display = 'block';
+        }
+    } catch (err) {
+        console.error('DM inline edit error:', err);
+        textarea.disabled    = false;
+        errorEl.textContent  = 'Something went wrong.';
+        errorEl.style.display = 'block';
+    }
+}
+
+// ─── DM Delete ────────────────────────────────────────────────────────────────
+function deleteDMMessage(msg) {
+    showModal({
+        title: 'Delete Message',
+        message: 'Are you sure you want to delete this message? This cannot be undone.',
+        buttons: [
+            { text: 'Cancel', style: 'secondary', action: closeModal },
+            {
+                text: 'Delete', style: 'danger',
+                action: async () => {
+                    const dmId = dmState.currentDM.id;
+                    try {
+                        const res = await fetch(`/api/dm/${dmId}/messages/${msg.id}`, {
+                            method: 'DELETE',
+                            credentials: 'include'
+                        });
+                        if (res.ok) {
+                            closeModal();
+                            dmState.messages = dmState.messages.filter(m => m.id !== msg.id);
+                            renderDMMessages();
+                        } else {
+                            const data = await res.json();
+                            alert(data.error || 'Failed to delete message');
+                        }
+                    } catch (err) {
+                        console.error('DM delete error:', err);
+                        alert('Failed to delete message');
+                    }
+                }
+            }
+        ]
+    });
+}
+
+// ─── Socket events for DM edits/deletes (other participant) ──────────────────
+function onDMMessageUpdated(message) {
+    const idx = dmState.messages.findIndex(m => m.id === message.id);
+    if (idx !== -1) {
+        dmState.messages[idx] = { ...dmState.messages[idx], ...message };
+        renderDMMessages();
+    }
+}
+
+function onDMMessageDeleted({ message_id, dm_id }) {
+    if (dmState.currentDM?.id !== dm_id) return;
+    dmState.messages = dmState.messages.filter(m => m.id !== message_id);
+    renderDMMessages();
 }
 
 // ─── Send message ─────────────────────────────────────────────────────────────
@@ -441,10 +611,11 @@ function initDMMessageInterceptor() {
     //    so this is the most reliable hook point.
     const _origLoadUserServers = window.loadUserServers;
     window.loadUserServers = async function () {
+        // Capture BEFORE original runs — original no longer auto-selects,
+        // but guard here too in case that changes.
+        const hadServer = !!state.currentServer;
         const result = await _origLoadUserServers?.apply(this, arguments);
-        // Only auto-navigate to DM home on initial load (no server selected yet)
-        // or when the app screen just became visible.
-        if (!isInDMMode() && !state.currentServer) {
+        if (!isInDMMode() && !hadServer) {
             await showDMHome();
         }
         return result;
