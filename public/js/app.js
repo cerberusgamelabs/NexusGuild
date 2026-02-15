@@ -122,6 +122,7 @@ async function loadUserServers() {
 }
 
 function selectServer(serverId) {
+    teardownDMView();
     const server = state.servers.find(s => s.id === serverId);
     if (!server) return;
 
@@ -198,7 +199,9 @@ async function loadChannelMessages(channelId) {
             const data = await response.json();
             state.messages = data.messages;
             renderMessages();
-            scrollToBottom();
+            setTimeout(() => {
+                scrollToBottom();
+            }, 100);
         }
     } catch (error) {
         console.error('Error loading messages:', error);
@@ -223,6 +226,7 @@ async function loadServerMembers(serverId) {
 
 // Message handling
 function handleMessageInput(event) {
+    if (isInDMMode()) { sendDMMessage(content); return; }
     if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault();
         sendMessage();

@@ -183,6 +183,31 @@ const initializeSocket = (server, sessionMiddleware) => {
                 status: 'offline'
             });
         });
+
+        // ── DM Rooms ──────────────────────────────────────────────────────
+        socket.on('join_dm', (dmId) => {
+            socket.join(`dm:${dmId}`);
+            log(tags.info, `${socket.username} joined DM room ${dmId}`);
+        });
+
+        socket.on('leave_dm', (dmId) => {
+            socket.leave(`dm:${dmId}`);
+        });
+
+        socket.on('dm_typing', (dmId) => {
+            socket.to(`dm:${dmId}`).emit('dm_typing', {
+                dmId,
+                userId: socket.userId,
+                username: socket.username
+            });
+        });
+
+        socket.on('dm_stop_typing', (dmId) => {
+            socket.to(`dm:${dmId}`).emit('dm_stop_typing', {
+                dmId,
+                userId: socket.userId
+            });
+        });
     });
 
     return io;

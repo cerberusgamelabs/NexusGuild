@@ -1,8 +1,8 @@
 // File Location: /public/js/contextMenu.js
 
-// ?????????????????????????????????????????????????????????????????????????
+// -------------------------------------------------------------------------
 // UNIVERSAL MODAL SYSTEM
-// ?????????????????????????????????????????????????????????????????????????
+// -------------------------------------------------------------------------
 
 let modalCallback = null;
 let modalData = null;
@@ -269,11 +269,20 @@ function attachMemberContextMenu(el, member) {
         e.preventDefault();
         e.stopPropagation();
 
+        const isSelf = state.currentUser && member.id === state.currentUser.id;
+        const items = [];
+
+        if (!isSelf) {
+            items.push({ label: '?? Message', action: 'dmUser' });
+            items.push('divider');
+        }
+
+        items.push({ label: 'Copy Username', action: 'copyUsername' });
+
+        ctxMenu._handlers.dmUser = () => startDMWithUser(member.id, member.username);
         ctxMenu._handlers.copyUsername = () => navigator.clipboard.writeText(member.username);
 
-        ctxMenu.show(e.clientX, e.clientY, [
-            { label: 'Copy Username', action: 'copyUsername' }
-        ]);
+        ctxMenu.show(e.clientX, e.clientY, items);
     });
 }
 
@@ -283,7 +292,7 @@ let currentReactionMessageId = null;
 
 async function showReactionModal(messageId) {
     currentReactionMessageId = messageId;
-    
+
     // Load custom emojis if not already loaded
     let serverEmojis = { global: [], server: [] };
     if (state.currentServer) {
@@ -298,15 +307,15 @@ async function showReactionModal(messageId) {
             console.error('Error loading server emojis:', error);
         }
     }
-    
+
     // Build emoji grid HTML
     const globalEmojis = ['??', '??', '??', '??', '??', '??', '??', '??', '??', '??',
                           '?', '?', '??', '??', '??', '??', '??', '??', '??', '??',
                           '??', '??', '??', '??', '??', '??', '??', '?', '?', '??',
                           '??', '??', '??', '??', '?', '??', '??', '??', '??', '?'];
-    
+
     let emojiHTML = '<div style="max-height: 300px; overflow-y: auto;">';
-    
+
     // Global emojis section
     emojiHTML += '<div style="margin-bottom: 15px;"><strong style="color: #b9bbbe; font-size: 12px; text-transform: uppercase;">Global Emojis</strong></div>';
     emojiHTML += '<div style="display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px; margin-bottom: 20px;">';
@@ -314,7 +323,7 @@ async function showReactionModal(messageId) {
         emojiHTML += `<button class="emoji-modal-btn" onclick="selectEmojiFromModal('${emoji}')" style="font-size: 24px; padding: 8px; background: transparent; border: none; cursor: pointer; border-radius: 4px; transition: background 0.1s;" onmouseover="this.style.background='#40444b'" onmouseout="this.style.background='transparent'">${emoji}</button>`;
     });
     emojiHTML += '</div>';
-    
+
     // Server emojis section (if any)
     if (serverEmojis.server && serverEmojis.server.length > 0) {
         emojiHTML += '<div style="margin-bottom: 15px;"><strong style="color: #b9bbbe; font-size: 12px; text-transform: uppercase;">Server Emojis</strong></div>';
@@ -326,9 +335,9 @@ async function showReactionModal(messageId) {
         });
         emojiHTML += '</div>';
     }
-    
+
     emojiHTML += '</div>';
-    
+
     showModal({
         title: 'Add Reaction',
         customHTML: emojiHTML,
@@ -347,7 +356,7 @@ async function showReactionModal(messageId) {
 
 async function selectEmojiFromModal(emoji) {
     if (!currentReactionMessageId) return;
-    
+
     try {
         const response = await fetch(`/api/reactions/messages/${currentReactionMessageId}/reactions`, {
             method: 'POST',

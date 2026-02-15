@@ -6,6 +6,7 @@
     <title>NexusGuild</title>
     <link rel="stylesheet" href="/css/main.css">
     <link rel="stylesheet" href="/css/reactions.css">
+    <link rel="stylesheet" href="/css/dm.css">
 </head>
 <body>
 
@@ -35,7 +36,7 @@
         <div class="top-nav-container">
             <div class="top-nav">
                 <div class="left-section">
-                    <button class="logo-btn" onclick="showServerList()"><img src="img/logo.png" /></button>
+                    <button class="logo-btn" onclick="showDMHome()"><img src="img/logo.png" /></button>
                 </div>
                 <div class="space-rail" id="serverList"></div>
                 <div class="right-section">
@@ -140,7 +141,7 @@
                 </div>
             </div>
         </div>
-    <!--</div>-->
+    </div>
 
     <!-- ── Create Server Modal ───────────────────────────────────────────────── -->
     <div id="createServerModal" class="modal-overlay" style="display:none;" onclick="closeCreateServerModal(event)">
@@ -242,6 +243,6 @@
     <script src="/js/components/memberList.js"></script>
     <script src="/js/components/emojiPicker.js"></script>
     <script src="/js/components/reactionDisplay.js"></script>
-
+    <script src="/js/components/dmView.js"></script>
 </body>
 </html>
