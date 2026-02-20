@@ -1411,8 +1411,24 @@ textarea.modal-input {
 }
 
 /* ── Mobile Layout ─────────────────────────────────────────────────────────── */
+/* Members toggle button + backdrop hidden on desktop */
+.mobile-members-btn { display: none; }
+.mobile-members-backdrop { display: none; }
+
 @media (max-width: 768px) {
-    /* Panels clip inside the container and slide horizontally */
+    /* ── Server list ── */
+    .top-nav {
+        overflow-x: scroll;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+    .top-nav::-webkit-scrollbar { display: none; }
+    .space-rail {
+        overflow-x: visible;
+        flex-shrink: 0;
+    }
+
+    /* ── Main layout ── */
     .main-container {
         position: relative;
         overflow: hidden;
@@ -1447,12 +1463,40 @@ textarea.modal-input {
         transform: translateX(0);
     }
 
-    /* Members panel hidden on mobile */
+    /* ── Members panel — slide-in drawer from the right ── */
     .members-panel {
-        display: none !important;
+        display: flex !important;
+        flex-direction: column;
+        position: fixed;
+        top: 0;
+        right: 0;
+        height: 100%;
+        width: 75%;
+        max-width: 280px;
+        z-index: 200;
+        transform: translateX(100%);
+        transition: transform 0.25s ease;
+        border-left: 1px solid #222;
     }
 
-    /* Back button */
+    .members-panel.mobile-open {
+        transform: translateX(0);
+    }
+
+    /* Backdrop behind the members drawer */
+    .mobile-members-backdrop {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.55);
+        z-index: 199;
+    }
+
+    .mobile-members-backdrop.visible {
+        display: block;
+    }
+
+    /* ── Back button ── */
     .mobile-back-btn {
         display: flex;
         align-items: center;
@@ -1466,9 +1510,23 @@ textarea.modal-input {
         flex-shrink: 0;
     }
 
-    .mobile-back-btn:hover {
-        color: #fff;
+    .mobile-back-btn:hover { color: #fff; }
+
+    /* ── Members toggle button ── */
+    .mobile-members-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: none;
+        border: none;
+        color: #b5bac1;
+        font-size: 20px;
+        padding: 0 12px;
+        cursor: pointer;
+        flex-shrink: 0;
     }
+
+    .mobile-members-btn:hover { color: #fff; }
 
     /* Channel buttons take full panel width */
     .channel-button {

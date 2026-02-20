@@ -167,7 +167,12 @@ function showApp() {
 
     if (state.currentUser) {
         document.getElementById('currentUsername').textContent = state.currentUser.username;
-        document.getElementById('userAvatar').textContent = state.currentUser.username.substring(0, 2).toUpperCase();
+        const uaEl = document.getElementById('userAvatar');
+        if (state.currentUser.avatar) {
+            uaEl.innerHTML = `<img src="${state.currentUser.avatar}" alt="" style="width:100%;height:100%;border-radius:inherit;object-fit:cover;">`;
+        } else {
+            uaEl.textContent = state.currentUser.username.substring(0, 2).toUpperCase();
+        }
     }
 }
 
@@ -212,10 +217,12 @@ function selectServer(serverId) {
     loadServerChannels(serverId);
     loadServerMembers(serverId);
 
-    // Show Create Channel only to the server owner
+    // Show Create Channel/Category only to the server owner
     const isOwner = state.currentUser && server.owner_id === state.currentUser.id;
     const createChannelBtn = document.getElementById('createChannelBtn');
     if (createChannelBtn) createChannelBtn.style.display = isOwner ? 'block' : 'none';
+    const createCategoryBtn = document.getElementById('createCategoryBtn');
+    if (createCategoryBtn) createCategoryBtn.style.display = isOwner ? 'block' : 'none';
 
     // Update UI
     document.querySelectorAll('.space-rail button').forEach(btn => {
@@ -341,6 +348,8 @@ async function loadServerMembers(serverId) {
             const data = await response.json();
             state.members = data.members;
             renderMemberList();
+            // Re-render messages now that avatar/role-color maps are available
+            if (state.messages?.length > 0) renderMessages();
         }
     } catch (error) {
         console.error('Error loading members:', error);
@@ -463,6 +472,8 @@ async function uploadUserAvatar(event) {
         const data = await res.json();
         if (!res.ok) { alert(data.error || 'Upload failed'); return; }
         state.currentUser.avatar = data.avatar;
+        const uaEl = document.getElementById('userAvatar');
+        if (uaEl) uaEl.innerHTML = `<img src="${data.avatar}" alt="" style="width:100%;height:100%;border-radius:inherit;object-fit:cover;">`;
         if (state.currentServer) {
             await loadServerMembers(state.currentServer.id);
         }
@@ -607,7 +618,26 @@ function mobileShowMessages() {
 }
 
 function mobileShowChannels() {
+    closeMobileMembers();
     document.querySelector('.main-container')?.classList.remove('mobile-show-messages');
+}
+
+function mobileToggleMembers() {
+    const panel = document.getElementById('membersPanel');
+    const backdrop = document.getElementById('mobileBackdrop');
+    if (!panel) return;
+    const isOpen = panel.classList.contains('mobile-open');
+    if (isOpen) {
+        closeMobileMembers();
+    } else {
+        panel.classList.add('mobile-open');
+        backdrop?.classList.add('visible');
+    }
+}
+
+function closeMobileMembers() {
+    document.getElementById('membersPanel')?.classList.remove('mobile-open');
+    document.getElementById('mobileBackdrop')?.classList.remove('visible');
 }
 
 // UI helpers
@@ -717,6 +747,42 @@ function showCreateChannelModal() {
 
     document.getElementById('createChannelModal').style.display = 'flex';
     setTimeout(() => document.getElementById('createChannelName').focus(), 50);
+}
+
+function showCreateCategoryModal() {
+    closeServerMenu();
+    if (!state.currentServer) return;
+    showModal({
+        title: 'Create Category',
+        inputType: 'text',
+        inputPlaceholder: 'Category name',
+        buttons: [
+            { text: 'Cancel', style: 'secondary', action: closeModal },
+            { text: 'Create', style: 'primary', action: submitCreateCategory }
+        ],
+        onEnter: submitCreateCategory
+    });
+}
+
+async function submitCreateCategory() {
+    const name = getModalInputValue().trim();
+    if (!name) { showModalError('Please enter a category name.'); return; }
+    try {
+        const res = await fetch(`/api/channels/servers/${state.currentServer.id}/categories`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ name })
+        });
+        if (res.ok) {
+            closeModal();
+        } else {
+            const data = await res.json();
+            showModalError(data.error || 'Failed to create category.');
+        }
+    } catch (err) {
+        showModalError('Failed to create category.');
+    }
 }
 
 function onChannelTypeChange(radio) {

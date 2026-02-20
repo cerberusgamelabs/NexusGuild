@@ -12,6 +12,13 @@ const dmState = {
     unread: {},  // keyed by dm conversation id → unread count
 };
 
+function dmAvatarHtml(avatar, name, size = 32) {
+    if (avatar) {
+        return `<img src="${avatar}" alt="" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;">`;
+    }
+    return getInitials(name);
+}
+
 // ─── Entry point ─────────────────────────────────────────────────────────────
 async function showDMHome() {
     mobileShowChannels();
@@ -134,7 +141,7 @@ function renderDMConversationList() {
                  data-dm-id="${conv.id}"
                  onclick="selectDMConversation('${conv.id}')">
                 <div class="dm-conv-avatar-wrap">
-                    <div class="dm-conv-avatar">${getInitials(conv.partner_username)}</div>
+                    <div class="dm-conv-avatar">${dmAvatarHtml(conv.partner_avatar, conv.partner_username)}</div>
                     <div class="dm-conv-status ${conv.partner_status || 'offline'}"></div>
                 </div>
                 <div class="dm-conv-info">
@@ -188,8 +195,8 @@ async function selectDMConversation(dmId) {
         header.innerHTML = `
             <div style="display:flex;align-items:center;gap:10px;">
                 <div style="width:32px;height:32px;background:#5865f2;border-radius:50%;display:flex;
-                            align-items:center;justify-content:center;font-weight:bold;font-size:13px;color:#fff;">
-                    ${getInitials(conv.partner_username)}
+                            align-items:center;justify-content:center;font-weight:bold;font-size:13px;color:#fff;overflow:hidden;">
+                    ${dmAvatarHtml(conv.partner_avatar, conv.partner_username)}
                 </div>
                 <span style="font-weight:700;font-size:16px;">${escapeHtmlDM(conv.partner_username)}</span>
             </div>`;
@@ -267,7 +274,7 @@ function renderDMMessages(prepending = false) {
             return `
             <div class="message" data-message-id="${msg.id}">
               <div class="message-header">
-                <div class="message-avatar">${getInitials(msg.username)}</div>
+                <div class="message-avatar">${dmAvatarHtml(msg.avatar, msg.username)}</div>
                 <span class="message-author">${escapeHtmlDM(msg.username)}</span>
                 <span class="message-timestamp">${ts}</span>
               </div>

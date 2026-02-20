@@ -75,6 +75,7 @@
                     <button id="serverSettingsBtn" onclick="openServerSettings(); closeServerMenu();" style="display:none;">Server Settings</button>
                     <button onclick="showInviteModal()">Invite People</button>
                     <button id="createChannelBtn" onclick="showCreateChannelModal()" style="display:none;">Create Channel</button>
+                    <button id="createCategoryBtn" onclick="showCreateCategoryModal()" style="display:none;">Create Category</button>
                     <button id="changeNicknameBtn" onclick="openChangeNicknameModal(); closeServerMenu();" style="display:none;">Change Nickname</button>
                     <button onclick="leaveOrDeleteServer()" id="leaveDeleteBtn">Leave Server</button>
                 </div>
@@ -87,7 +88,9 @@
                     <div class="channel-header" id="channelHeader">
                         <span id="currentChannelName"># general</span>
                     </div>
+                    <button class="mobile-members-btn" onclick="mobileToggleMembers()" title="Members">&#128101;</button>
                 </div>
+                <div class="mobile-members-backdrop" id="mobileBackdrop" onclick="closeMobileMembers()"></div>
                 <div class="messages-container" id="messagesContainer"></div>
                 <div class="input-area">
                     <div class="file-preview" id="filePreview"></div>
