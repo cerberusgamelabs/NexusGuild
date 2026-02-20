@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <base href="/">
+    <title>NexusGuild</title>
+	<link rel="icon" href="img/favicon.ico">
+    <link rel="stylesheet" href="/css/main.css">
+    <link rel="stylesheet" href="/css/reactions.css">
+    <link rel="stylesheet" href="/css/dm.css">
+</head>
+<body>
+
+    <div id="auth-screen" class="auth-container">
+        <div class="auth-box">
+            <h1>Welcome to NexusGuild</h1>
+            <div id="login-form" class="auth-form">
+                <h2>Login</h2>
+                <input type="email" id="login-email" placeholder="Email" required>
+                <input type="password" id="login-password" placeholder="Password" required>
+                <button onclick="login()">Login</button>
+                <p>Don't have an account? <a href="#" onclick="showRegister()">Register</a></p>
+            </div>
+
+            <div id="register-form" class="auth-form" style="display:none;">
+                <h2>Register</h2>
+                <input type="text" id="register-username" placeholder="Username" required>
+                <input type="email" id="register-email" placeholder="Email" required>
+                <input type="password" id="register-password" placeholder="Password" required>
+                <button onclick="register()">Register</button>
+                <p>Already have an account? <a href="#" onclick="showLogin()">Login</a></p>
+            </div>
+        </div>
+    </div>
+
+    <div id="app-screen" style="display:none;">
+        <div class="top-nav-container">
+            <div class="top-nav">
+                <div class="left-section">
+                    <button class="logo-btn" onclick="showDMHome()"><img src="img/logo.png" /></button>
+                </div>
+                <div class="space-rail" id="serverList"></div>
+                <div class="right-section">
+                    <button onclick="showCreateServerModal()" title="Create">+</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="user-status">
+            <div class="user-profile" id="userAvatar">NG</div>
+            <div class="user-info">
+                <span class="username" id="currentUsername">Username</span>
+                <span class="status" id="currentStatus">Online</span>
+            </div>
+            <button class="toggle-button" id="micToggle" onclick="toggleMic()">
+                <img src="img/mute-off.png" alt="Mic State">
+            </button>
+            <button class="toggle-button" id="deafenToggle" onclick="toggleDeafen()">
+                <img src="img/deafen-off.png" alt="Deafen State">
+            </button>
+            <button class="toggle-button" onclick="logout()">
+                <img src="img/settings.png" alt="Settings">
+            </button>
+        </div>
+
+        <div class="main-container">
+            <!-- Channels Panel -->
+            <div class="channels-panel" id="channelsPanel">
+                <div class="server-header">
+                    <span class="server-name" id="currentServerName">Select a server</span>
+                    <button class="server-menu-btn" id="serverMenuBtn" onclick="toggleServerMenu()" title="Server options">▾</button>
+                </div>
+                <div class="server-dropdown" id="serverDropdown" style="display:none;">
+                    <button id="serverSettingsBtn" onclick="openServerSettings(); closeServerMenu();" style="display:none;">Server Settings</button>
+                    <button onclick="showInviteModal()">Invite People</button>
+                    <button id="createChannelBtn" onclick="showCreateChannelModal()" style="display:none;">Create Channel</button>
+                    <button id="changeNicknameBtn" onclick="openChangeNicknameModal(); closeServerMenu();" style="display:none;">Change Nickname</button>
+                    <button onclick="leaveOrDeleteServer()" id="leaveDeleteBtn">Leave Server</button>
+                </div>
+                <div id="channelsList"></div>
+            </div>
+
+            <div class="messages-panel">
+                <div class="messages-panel-header">
+                    <button class="mobile-back-btn" onclick="mobileShowChannels()">&#8592;</button>
+                    <div class="channel-header" id="channelHeader">
+                        <span id="currentChannelName"># general</span>
+                    </div>
+                </div>
+                <div class="messages-container" id="messagesContainer"></div>
+                <div class="input-area">
+                    <div class="file-preview" id="filePreview"></div>
+                    <div id="typingIndicator" class="typing-indicator" style="display:none;"></div>
+                    <div class="input-bar">
+                        <input type="file" id="fileInput" multiple accept="image/*,video/*,.pdf,.txt,.doc,.docx,.zip,.mp3,.mp4,.wav" style="display:none;" onchange="handleFileSelect(event)">
+                        <button class="file-upload-btn" onclick="document.getElementById('fileInput').click()" title="Upload files">
+                            📎
+                        </button>
+                        <textarea id="messageInput" placeholder="Message..." rows="1" onkeydown="handleMessageInput(event)"></textarea>
+                        <button onclick="sendMessage()">Send</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="members-panel" id="membersPanel"></div>
+        </div>
+    </div>
+
+    <!-- ── Invite Modal ──────────────────────────────────────────────────────── -->
+    <div id="inviteModal" class="modal-overlay" style="display:none;" onclick="closeInviteModal(event)">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>Invite People</h2>
+                <button class="modal-close" onclick="closeInviteModal()">✕</button>
+            </div>
+
+            <div class="modal-body">
+                <!-- Active invites list -->
+                <div id="inviteList" class="invite-list"></div>
+
+                <!-- Create new invite -->
+                <div class="invite-create">
+                    <h3>Create New Invite</h3>
+                    <div class="invite-options">
+                        <label>
+                            Expires after
+                            <select id="inviteExpiry">
+                                <option value="">Never</option>
+                                <option value="1800">30 minutes</option>
+                                <option value="3600">1 hour</option>
+                                <option value="86400">24 hours</option>
+                                <option value="604800">7 days</option>
+                            </select>
+                        </label>
+                        <label>
+                            Max uses
+                            <select id="inviteMaxUses">
+                                <option value="0">Unlimited</option>
+                                <option value="1">1 use</option>
+                                <option value="5">5 uses</option>
+                                <option value="10">10 uses</option>
+                                <option value="25">25 uses</option>
+                                <option value="100">100 uses</option>
+                            </select>
+                        </label>
+                    </div>
+                    <button class="btn-primary" onclick="createInvite()">Generate Invite Link</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Create Server Modal ───────────────────────────────────────────────── -->
+    <div id="createServerModal" class="modal-overlay" style="display:none;" onclick="closeCreateServerModal(event)">
+        <div class="modal modal-sm">
+            <div class="modal-header">
+                <h2>Create a Server</h2>
+                <button class="modal-close" onclick="closeCreateServerModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-hint">Give your server a name to get started.</p>
+                <input type="text" id="createServerName" class="modal-input" placeholder="Server name"
+                       onkeypress="if(event.key==='Enter') submitCreateServer()">
+                <div id="createServerError" class="modal-error" style="display:none;"></div>
+                <button class="btn-primary" onclick="submitCreateServer()">Create Server</button>
+            </div>
+            <div class="modal-body">
+                <h3>Already have an Invite?</h3>
+                <p class="modal-hint">Enter an invite code to join an existing server.</p>
+                <input type="text" id="joinCodeInput" class="modal-input" placeholder="Invite code (e.g. AB12CD34)"
+                       onkeypress="if(event.key==='Enter') joinServer()">
+                <div id="joinError" class="modal-error" style="display:none;"></div>
+                <button class="btn-primary" onclick="joinServer()">Join Server</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Create Channel Modal ──────────────────────────────────────────────── -->
+    <div id="createChannelModal" class="modal-overlay" style="display:none;" onclick="closeCreateChannelModal(event)">
+        <div class="modal modal-sm">
+            <div class="modal-header">
+                <h2>Create a Channel</h2>
+                <button class="modal-close" onclick="closeCreateChannelModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-hint">Choose a name and type for your new channel.</p>
+                <input type="text" id="createChannelName" class="modal-input" placeholder="Channel name"
+                       onkeypress="if(event.key==='Enter') submitCreateChannel()">
+                <div class="channel-type-toggle">
+                    <label class="channel-type-option">
+                        <input type="radio" name="channelType" value="text" checked onchange="onChannelTypeChange(this)"> # Text
+                    </label>
+                    <label class="channel-type-option">
+                        <input type="radio" name="channelType" value="voice" onchange="onChannelTypeChange(this)"> 🔊 Voice
+                    </label>
+                </div>
+                <label style="display:flex; flex-direction:column; gap:6px; font-size:13px; color:#b5bac1;">
+                    Category
+                    <select id="createChannelCategory" class="modal-input" style="letter-spacing:normal;">
+                        <option value="">No Category</option>
+                    </select>
+                </label>
+                <div id="createChannelError" class="modal-error" style="display:none;"></div>
+                <button class="btn-primary" onclick="submitCreateChannel()">Create Channel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Universal Modal ──────────────────────────────────────────────────── -->
+    <div id="universalModal" class="modal-overlay" style="display:none;">
+        <div class="modal modal-sm">
+            <div class="modal-header">
+                <h2 id="modalTitle">Modal</h2>
+                <button class="modal-close" onclick="closeModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <p id="modalMessage" class="modal-hint" style="display:none;"></p>
+                <input type="text" id="modalInput" class="modal-input" style="display:none;">
+                <textarea id="modalTextarea" class="modal-input" rows="4" style="display:none;"></textarea>
+                <div id="modalError" class="modal-error" style="display:none;"></div>
+                <div id="modalButtons" class="modal-buttons"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="emojiPickerModal" style="display:none;">
+        <div class="emoji-picker-tabs">
+            <button id="emojiTabGlobal" class="emoji-tab-btn active" onclick="switchEmojiTab('global')">
+                Global
+            </button>
+            <button id="emojiTabServer" class="emoji-tab-btn" onclick="switchEmojiTab('server')">
+                Server
+            </button>
+        </div>
+        <div class="emoji-picker-content">
+            <div id="emojiPickerGlobal" class="emoji-picker-grid"></div>
+            <div id="emojiPickerServer" class="emoji-picker-grid" style="display:none;"></div>
+        </div>
+    </div>
+
+    <!-- ── Server Settings Overlay ───────────────────────────────────────────── -->
+    <div id="serverSettingsOverlay" class="settings-overlay" style="display:none;">
+        <div class="settings-layout">
+            <div class="settings-sidebar">
+                <div class="settings-sidebar-header" id="settingsSidebarServerName"></div>
+                <nav class="settings-nav">
+                    <button class="settings-nav-item active" data-tab="overview" onclick="switchSettingsTab('overview')">Overview</button>
+                    <button class="settings-nav-item" data-tab="roles" onclick="switchSettingsTab('roles')">Roles</button>
+                    <button class="settings-nav-item" data-tab="members" onclick="switchSettingsTab('members')">Members</button>
+                    <button class="settings-nav-item" data-tab="invites" onclick="switchSettingsTab('invites')">Invites</button>
+                    <div class="settings-nav-divider"></div>
+                    <button class="settings-nav-item danger" data-tab="danger" onclick="switchSettingsTab('danger')">Danger Zone</button>
+                </nav>
+            </div>
+            <div class="settings-content" id="settingsContent"></div>
+            <button class="settings-close" onclick="closeServerSettings()">✕</button>
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+    <script src="/js/app.js"></script>
+    <script src="/js/socket.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/invite.js"></script>
+    <script src="/js/contextMenu.js"></script>
+    <script src="/js/components/serverList.js"></script>
+    <script src="/js/components/channelList.js"></script>
+    <script src="/js/components/messageList.js"></script>
+    <script src="/js/components/memberList.js"></script>
+    <script src="/js/components/emojiPicker.js"></script>
+    <script src="/js/components/reactionDisplay.js"></script>
+    <script src="/js/components/dmView.js"></script>
+    <script src="/js/components/serverSettings.js"></script>
+</body>
+</html>

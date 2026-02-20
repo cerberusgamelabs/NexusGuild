@@ -1,0 +1,38 @@
+{
+  "name": "nexusguild",
+  "version": "1.0.0",
+  "description": "A full-featured chat app with real-time messaging, voice channels, and bot integration",
+  "main": "server.js",
+  "type": "module",
+  "imports": {
+    "#utils/*": "./utils/*.js"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "keywords": [
+    "chat",
+    "realtime",
+    "websocket"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "chalk": "^4.1.2",
+    "connect-pg-simple": "^9.0.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.0.3",
+    "express": "^4.18.2",
+    "express-session": "^1.17.3",
+    "express-validator": "^7.0.1",
+    "multer": "^1.4.5-lts.1",
+    "pg": "^8.11.0",
+    "socket.io": "^4.6.1",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.22"
+  }
+}
