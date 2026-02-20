@@ -27,6 +27,7 @@ import channelRoutes from "./routes/channels.js";
 import messageRoutes from "./routes/messages.js";
 import reactionRoutes from './routes/reactions.js';
 import dmRoutes from "./routes/dm.js";
+import userRoutes from "./routes/users.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -68,6 +69,7 @@ const startServer = async () => {
         app.use('/api/messages', messageRoutes);
         app.use('/api/reactions', reactionRoutes);
         app.use('/api/dm', dmRoutes);
+        app.use('/api/users', userRoutes);
 
         app.get('/api/health', (req, res) => {
             res.json({ status: 'ok', timestamp: new Date(), uptime: process.uptime() * 1000, memory: process.memoryUsage() });

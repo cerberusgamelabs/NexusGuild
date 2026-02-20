@@ -1,3 +1,11 @@
+function _serverIconHtml(server) {
+    if (!server.icon) return getInitials(server.name);
+    if (server.icon.startsWith('/') || server.icon.startsWith('http')) {
+        return `<img src="${server.icon}" alt="${server.name}" class="server-icon-img">`;
+    }
+    return server.icon; // emoji / text fallback
+}
+
 // Server list rendering
 function renderServerList() {
     const serverList = document.getElementById('serverList');
@@ -19,7 +27,7 @@ function renderServerList() {
       class="${state.currentServer?.id === server.id ? 'active' : ''}"
       title="${server.name}"
     >
-      ${server.icon || getInitials(server.name)}${badge}
+      ${_serverIconHtml(server)}${badge}
     </button>
   `;
     }).join('');

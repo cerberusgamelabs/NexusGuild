@@ -37,11 +37,14 @@ function renderMember(member) {
     const statusClass = member.status || 'offline';
     const isOwner = state.currentServer && member.id === state.currentServer.owner_id;
     const nameStyle = member.role_color ? ` style="color:${member.role_color}"` : '';
+    const avatarHtml = member.avatar
+        ? `<img src="${member.avatar}" alt="${displayName}" class="member-av-img">`
+        : `<div class="member-avatar">${getInitials(displayName)}</div>`;
 
     return `
     <div class="member" data-user-id="${member.id}">
       <div style="position: relative;">
-        <div class="member-avatar">${getInitials(displayName)}</div>
+        ${avatarHtml}
         <div class="member-status ${statusClass}"></div>
       </div>
       <span class="member-name"${nameStyle}>${displayName}${isOwner ? ' &#x1F451;' : ''}</span>

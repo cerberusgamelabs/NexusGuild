@@ -3,6 +3,8 @@ function renderChannelList(channels, categories) {
     const channelsList = document.getElementById('channelsList');
     if (!channelsList) return;
 
+    channelsList.innerHTML = '';
+
     // Group channels by category
     const channelsByCategory = {};
     const uncategorized = [];
@@ -18,67 +20,48 @@ function renderChannelList(channels, categories) {
         }
     });
 
-    let html = '';
+    // Render uncategorized channels first (prepended)
+    const uncatFrag = document.createDocumentFragment();
+    uncategorized.sort((a, b) => a.position - b.position).forEach(channel => {
+        uncatFrag.appendChild(_makeChannelEl(channel));
+    });
 
     // Render categories and their channels
+    const catFrag = document.createDocumentFragment();
     categories.sort((a, b) => a.position - b.position).forEach(category => {
         const categoryChannels = channelsByCategory[category.id] || [];
-
         if (categoryChannels.length > 0) {
-            html += `<div class="channel-category">${category.name}</div>`;
+            const catEl = document.createElement('div');
+            catEl.className = 'channel-category';
+            catEl.textContent = category.name;
+            attachCategoryContextMenu(catEl, category);
+            catFrag.appendChild(catEl);
 
             categoryChannels.sort((a, b) => a.position - b.position).forEach(channel => {
-                const icon = channel.type === 'voice' ? '🔊' : '#';
-                const isActive = state.currentChannel?.id === channel.id;
-                const unread = state.unread?.[channel.id];
-                const badge = unread?.mentions > 0
-                    ? `<span class="channel-badge mention">${unread.mentions}</span>`
-                    : unread?.count > 0
-                    ? `<span class="channel-badge unread"></span>`
-                    : '';
-
-                html += `
-          <button
-            class="channel-button ${isActive ? 'active' : ''} ${unread ? 'has-unread' : ''}"
-            data-channel-id="${channel.id}"
-            onclick="selectChannel('${channel.id}')"
-          >
-            <span>${icon} ${channel.name}</span>${badge}
-          </button>
-        `;
+                catFrag.appendChild(_makeChannelEl(channel));
             });
         }
     });
 
-    // Render uncategorized channels
-    if (uncategorized.length > 0) {
-        uncategorized.sort((a, b) => a.position - b.position).forEach(channel => {
-            const icon = channel.type === 'voice' ? '🔊' : '#';
-            const isActive = state.currentChannel?.id === channel.id;
-            const unread = state.unread?.[channel.id];
-            const badge = unread?.mentions > 0
-                ? `<span class="channel-badge mention">${unread.mentions}</span>`
-                : unread?.count > 0
-                ? `<span class="channel-badge unread"></span>`
-                : '';
+    channelsList.appendChild(uncatFrag);
+    channelsList.appendChild(catFrag);
+}
 
-            html = `
-        <button
-          class="channel-button ${isActive ? 'active' : ''} ${unread ? 'has-unread' : ''}"
-          data-channel-id="${channel.id}"
-          onclick="selectChannel('${channel.id}')"
-        >
-          <span>${icon} ${channel.name}</span>${badge}
-        </button>
-      ` + html;
-        });
-    }
+function _makeChannelEl(channel) {
+    const icon = channel.type === 'voice' ? '🔊' : '#';
+    const isActive = state.currentChannel?.id === channel.id;
+    const unread = state.unread?.[channel.id];
+    const badge = unread?.mentions > 0
+        ? `<span class="channel-badge mention">${unread.mentions}</span>`
+        : unread?.count > 0
+        ? `<span class="channel-badge unread"></span>`
+        : '';
 
-    channelsList.innerHTML = html;
-
-    // Attach context menus
-    state.channels.forEach(channel => {
-        const el = channelsList.querySelector(`[data-channel-id="${channel.id}"]`);
-        if (el) attachChannelContextMenu(el, channel);
-    });
+    const btn = document.createElement('button');
+    btn.className = `channel-button${isActive ? ' active' : ''}${unread ? ' has-unread' : ''}`;
+    btn.dataset.channelId = channel.id;
+    btn.innerHTML = `<span>${icon} ${channel.name}</span>${badge}`;
+    btn.addEventListener('click', () => selectChannel(channel.id));
+    attachChannelContextMenu(btn, channel);
+    return btn;
 }

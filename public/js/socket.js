@@ -112,6 +112,14 @@ function initializeSocket() {
         }
     });
 
+    state.socket.on('category_updated', (data) => {
+        if (state.currentServer?.id === data.serverId) loadServerChannels(data.serverId);
+    });
+
+    state.socket.on('category_deleted', (data) => {
+        if (state.currentServer?.id === data.serverId) loadServerChannels(data.serverId);
+    });
+
     state.socket.on('reaction_added', (data) => {
         const { messageId, reactions } = data;
         updateMessageReactions(messageId, reactions);

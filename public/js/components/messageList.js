@@ -14,12 +14,14 @@ function renderMessages() {
         return;
     }
 
-    // Build userId → role_color and userId → nickname lookups from loaded member list
+    // Build userId → role_color, nickname, and avatar lookups from loaded member list
     const roleColorMap = {};
     const nicknameMap = {};
+    const avatarMap = {};
     (state.members || []).forEach(m => {
         if (m.role_color) roleColorMap[m.id] = m.role_color;
         if (m.nickname)   nicknameMap[m.id]  = m.nickname;
+        if (m.avatar)     avatarMap[m.id]    = m.avatar;
     });
 
     const prevHeight = container.scrollHeight;
@@ -74,11 +76,15 @@ function renderMessages() {
             const authorColor = roleColorMap[message.user_id] ? ` style="color:${roleColorMap[message.user_id]}"` : '';
             const authorName = nicknameMap[message.user_id] || message.username;
 
+            const authorAvatar = avatarMap[message.user_id]
+                ? `<img src="${avatarMap[message.user_id]}" alt="${authorName}" class="message-av-img">`
+                : `<div class="message-avatar">${getInitials(authorName)}</div>`;
+
             if (showHeader) {
                 return `
             <div class="message" data-message-id="${message.id}">
               <div class="message-header">
-                <div class="message-avatar">${getInitials(authorName)}</div>
+                ${authorAvatar}
                 <span class="message-author"${authorColor}>${authorName}</span>
                 <span class="message-timestamp">${formatTimestamp(message.created_at)}</span>
               </div>

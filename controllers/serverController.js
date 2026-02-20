@@ -461,6 +461,23 @@ class ServerController {
             res.status(500).json({ error: 'Failed to set nickname' });
         }
     }
+    static async uploadServerIcon(req, res) {
+        try {
+            if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+            const { serverId } = req.params;
+            const iconUrl = `/uploads/${req.file.filename}`;
+            const result = await db.query(
+                `UPDATE servers SET icon = $1 WHERE id = $2 RETURNING *`,
+                [iconUrl, serverId]
+            );
+            if (result.rows.length === 0) return res.status(404).json({ error: 'Server not found' });
+            log(tags.info, `Server icon updated for ${serverId}`);
+            res.json({ server: result.rows[0] });
+        } catch (error) {
+            log(tags.error, 'Upload server icon error:', error);
+            res.status(500).json({ error: 'Failed to upload server icon' });
+        }
+    }
 }
 
 export default ServerController;

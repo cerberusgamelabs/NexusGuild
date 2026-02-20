@@ -125,8 +125,20 @@ function refreshSettingsIfOpen(serverId) {
 
 function renderOverviewTab(container) {
     const server = state.currentServer;
+    const iconHtml = server.icon && (server.icon.startsWith('/') || server.icon.startsWith('http'))
+        ? `<img src="${server.icon}" alt="${escHtml(server.name)}" style="width:100%;height:100%;object-fit:cover;border-radius:8px;">`
+        : `<span style="font-size:22px;font-weight:700;">${getInitials(server.name)}</span>`;
+
     container.innerHTML = `
         <h2 class="settings-section-title">Server Overview</h2>
+        <div class="settings-field">
+            <label class="settings-label">Server Icon</label>
+            <div style="display:flex;align-items:center;gap:12px;">
+                <div id="settingsIconPreview" class="settings-icon-preview">${iconHtml}</div>
+                <button class="settings-btn secondary" onclick="document.getElementById('settingsIconInput').click()">Upload Image</button>
+                <input type="file" id="settingsIconInput" accept="image/*" style="display:none" onchange="uploadServerIcon(event)">
+            </div>
+        </div>
         <div class="settings-field">
             <label class="settings-label">Server Name</label>
             <input class="settings-input" id="settingsServerName" type="text" value="${escHtml(server.name)}" maxlength="100">
@@ -134,6 +146,35 @@ function renderOverviewTab(container) {
         <div id="settingsOverviewError" style="color:#f23f43;font-size:13px;margin-bottom:12px;display:none;"></div>
         <button class="settings-btn" onclick="saveServerOverview()">Save Changes</button>
     `;
+}
+
+async function uploadServerIcon(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+        const res = await fetch(`/api/servers/${_settingsServerId}/icon`, {
+            method: 'POST',
+            credentials: 'include',
+            body: formData
+        });
+        const data = await res.json();
+        if (!res.ok) { showToast(data.error || 'Upload failed', true); return; }
+        // Update local state
+        state.currentServer.icon = data.server.icon;
+        const idx = state.servers.findIndex(s => s.id === _settingsServerId);
+        if (idx !== -1) state.servers[idx].icon = data.server.icon;
+        renderServerList();
+        // Refresh preview
+        const preview = document.getElementById('settingsIconPreview');
+        if (preview) {
+            preview.innerHTML = `<img src="${data.server.icon}" alt="${escHtml(state.currentServer.name)}" style="width:100%;height:100%;object-fit:cover;border-radius:8px;">`;
+        }
+        showToast('Server icon updated!');
+    } catch (err) {
+        showToast('Upload failed', true);
+    }
 }
 
 async function saveServerOverview() {

@@ -7,6 +7,7 @@ import RoleController from "../controllers/roleController.js";
 import { requireAuth } from "../middleware/auth.js";
 import { isServerOwner, isServerMember, checkPermission, PERMISSIONS } from "../middleware/permissions.js";
 import { validateServer } from "../middleware/validation.js";
+import { uploadSingle, handleUploadError } from "../middleware/upload.js";
 
 // ✅ /join must come BEFORE /:serverId or Express swallows it as a param
 router.post('/join', requireAuth, ServerController.joinServer);
@@ -41,6 +42,9 @@ router.delete('/:serverId/members/:memberId', requireAuth, checkPermission(PERMI
 
 // Leave server
 router.post('/:serverId/leave', requireAuth, isServerMember, ServerController.leaveServer);
+
+// Upload server icon
+router.post('/:serverId/icon', requireAuth, isServerOwner, uploadSingle, handleUploadError, ServerController.uploadServerIcon);
 
 // Bans
 router.get('/:serverId/bans', requireAuth, checkPermission(PERMISSIONS.BAN_MEMBERS), ServerController.getBans);

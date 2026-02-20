@@ -29,6 +29,25 @@ router.post(
     ChannelController.createCategory
 );
 
+// Update category
+router.patch(
+    '/servers/:serverId/categories/:categoryId',
+    requireAuth,
+    isServerMember,
+    checkPermission(PERMISSIONS.MANAGE_CHANNELS),
+    ChannelController.updateCategory
+);
+
+// Delete category
+router.delete(
+    '/servers/:serverId/categories/:categoryId',
+    requireAuth,
+    isServerMember,
+    checkPermission(PERMISSIONS.MANAGE_CHANNELS),
+    ChannelController.deleteCategory
+);
+
+
 // Update channel
 router.patch(
     '/:channelId',

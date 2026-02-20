@@ -221,6 +221,10 @@ class ChannelController {
             );
 
             log(tags.success, `Category created: "${name}" (${id}) in server ${serverId}`);
+
+            const io = req.app.get('io');
+            io?.to(`server:${serverId}`).emit('category_created', { serverId });
+
             res.status(201).json({
                 message: 'Category created successfully',
                 category: result.rows[0]
@@ -230,6 +234,49 @@ class ChannelController {
             res.status(500).json({ error: 'Failed to create category' });
         }
     }
+
+    static async updateCategory(req, res) {
+        try {
+            const { serverId, categoryId } = req.params;
+            const { name } = req.body;
+            if (!name?.trim()) return res.status(400).json({ error: 'Name required' });
+
+            const result = await db.query(
+                `UPDATE categories SET name = $1 WHERE id = $2 AND server_id = $3 RETURNING *`,
+                [name.trim(), categoryId, serverId]
+            );
+            if (result.rows.length === 0) return res.status(404).json({ error: 'Category not found' });
+
+            const io = req.app.get('io');
+            io?.to(`server:${serverId}`).emit('category_updated', { serverId });
+
+            log(tags.info, `Category renamed: "${result.rows[0].name}" [${categoryId}]`);
+            res.json({ category: result.rows[0] });
+        } catch (error) {
+            log(tags.error, 'Update category error:', error);
+            res.status(500).json({ error: 'Failed to update category' });
+        }
+    }
+
+    static async deleteCategory(req, res) {
+        try {
+            const { serverId, categoryId } = req.params;
+
+            // Move channels to uncategorized before deleting
+            await db.query(`UPDATE channels SET category_id = NULL WHERE category_id = $1`, [categoryId]);
+            await db.query(`DELETE FROM categories WHERE id = $1 AND server_id = $2`, [categoryId, serverId]);
+
+            const io = req.app.get('io');
+            io?.to(`server:${serverId}`).emit('category_deleted', { serverId });
+
+            log(tags.warning, `Category deleted: [${categoryId}] from server ${serverId}`);
+            res.json({ message: 'Category deleted' });
+        } catch (error) {
+            log(tags.error, 'Delete category error:', error);
+            res.status(500).json({ error: 'Failed to delete category' });
+        }
+    }
+
 }
 
 export default ChannelController;

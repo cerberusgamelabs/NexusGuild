@@ -347,11 +347,129 @@ async function loadServerMembers(serverId) {
     }
 }
 
+// ── @Mention Autocomplete ─────────────────────────────────────────────────────
+
+let _mentionIndex = -1;
+
+function getMentionQuery(textarea) {
+    const before = textarea.value.slice(0, textarea.selectionStart);
+    const match = before.match(/@(\w*)$/);
+    return match ? match[1] : null;
+}
+
+function updateMentionDropdown(textarea) {
+    const query = getMentionQuery(textarea);
+    if (query === null) { hideMentionDropdown(); return; }
+    const lower = query.toLowerCase();
+    const matches = [];
+    if ('everyone'.startsWith(lower)) matches.push({ id: '__everyone', displayName: 'everyone', sub: 'Notify all members' });
+    if ('here'.startsWith(lower))     matches.push({ id: '__here',     displayName: 'here',     sub: 'Notify online members' });
+    for (const m of (state.members || [])) {
+        const nick  = (m.nickname || '').toLowerCase();
+        const uname = m.username.toLowerCase();
+        if (nick.startsWith(lower) || uname.startsWith(lower))
+            matches.push({ id: m.id, displayName: m.nickname || m.username, sub: m.username, avatar: m.avatar, role_color: m.role_color });
+    }
+    if (matches.length === 0) { hideMentionDropdown(); return; }
+    _mentionIndex = 0;
+    _renderMentionDropdown(matches.slice(0, 10));
+}
+
+function _renderMentionDropdown(matches) {
+    const dd = document.getElementById('mentionDropdown');
+    if (!dd) return;
+    dd.style.display = 'block';
+    dd.innerHTML = matches.map((m, i) => {
+        const av = m.avatar
+            ? `<img src="${m.avatar}" class="mention-av-img" alt="">`
+            : `<span class="mention-av-init">${getInitials(m.displayName)}</span>`;
+        const colorStyle = m.role_color ? ` style="color:${m.role_color}"` : '';
+        const safeName = m.displayName.replace(/'/g, "\\'");
+        return `<div class="mention-item${i === _mentionIndex ? ' active' : ''}" data-idx="${i}"
+                     onmousedown="selectMention('${safeName}',event)">
+            <span class="mention-av">${av}</span>
+            <span class="mention-name"${colorStyle}>${m.displayName}</span>
+            <span class="mention-sub">${m.sub || ''}</span>
+        </div>`;
+    }).join('');
+}
+
+function hideMentionDropdown() {
+    const dd = document.getElementById('mentionDropdown');
+    if (dd) dd.style.display = 'none';
+    _mentionIndex = -1;
+}
+
+function selectMention(name, event) {
+    if (event) event.preventDefault();
+    const ta = document.getElementById('messageInput');
+    const pos = ta.selectionStart;
+    const before = ta.value.slice(0, pos).replace(/@(\w*)$/, `@${name} `);
+    ta.value = before + ta.value.slice(pos);
+    ta.selectionStart = ta.selectionEnd = before.length;
+    hideMentionDropdown();
+    ta.focus();
+}
+
 // Message handling
 function handleMessageInput(event) {
+    if (event.key === 'Escape') { hideMentionDropdown(); return; }
+
+    const dd = document.getElementById('mentionDropdown');
+    const open = dd && dd.style.display !== 'none';
+    if (open) {
+        const items = dd.querySelectorAll('.mention-item');
+        if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            _mentionIndex = Math.max(0, _mentionIndex - 1);
+            items.forEach((el, i) => el.classList.toggle('active', i === _mentionIndex));
+            return;
+        }
+        if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            _mentionIndex = Math.min(items.length - 1, _mentionIndex + 1);
+            items.forEach((el, i) => el.classList.toggle('active', i === _mentionIndex));
+            return;
+        }
+        if ((event.key === 'Enter' || event.key === 'Tab') && items[_mentionIndex]) {
+            event.preventDefault();
+            items[_mentionIndex].dispatchEvent(new MouseEvent('mousedown'));
+            return;
+        }
+    }
+
     if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault();
         sendMessage();
+    }
+}
+
+// ── Avatar upload ─────────────────────────────────────────────────────────────
+
+async function uploadUserAvatar(event) {
+    const input = event.target;
+    const file = input.files[0];
+    if (!file) return;
+    // Reset immediately (sync, in user-gesture context) so re-selection always triggers onchange
+    input.value = '';
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+        const res = await fetch('/api/users/me/avatar', {
+            method: 'POST',
+            credentials: 'include',
+            body: formData
+        });
+        const data = await res.json();
+        if (!res.ok) { alert(data.error || 'Upload failed'); return; }
+        state.currentUser.avatar = data.avatar;
+        if (state.currentServer) {
+            await loadServerMembers(state.currentServer.id);
+        }
+        renderMessages();
+    } catch (err) {
+        console.error('Avatar upload error:', err);
+        alert('Failed to upload avatar');
     }
 }
 
@@ -431,6 +549,7 @@ async function sendMessage() {
         if (response.ok) {
             input.value = '';
             input.style.height = 'auto';
+            hideMentionDropdown();
             selectedFiles = [];
             renderFilePreview();
             document.getElementById('fileInput').value = '';

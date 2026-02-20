@@ -219,6 +219,75 @@ function attachMessageContextMenu(el, message) {
     });
 }
 
+// ── Attach right-click to a category header ──────────────────────────────────
+function attachCategoryContextMenu(el, category) {
+    el.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const isOwner = state.currentServer && state.currentUser &&
+            state.currentServer.owner_id === state.currentUser.id;
+        if (!isOwner) return;
+
+        ctxMenu._handlers.renameCategory = () => promptRenameCategory(category);
+        ctxMenu._handlers.deleteCategory = () => promptDeleteCategory(category);
+        ctxMenu.show(e.clientX, e.clientY, [
+            { label: 'Rename Category', action: 'renameCategory' },
+            { label: 'Delete Category', action: 'deleteCategory', danger: true }
+        ]);
+    });
+}
+
+function promptRenameCategory(category) {
+    async function doSave() {
+        const val = getModalInputValue().trim();
+        if (!val) { showModalError('Name cannot be empty.'); return; }
+        const res = await fetch(
+            `/api/channels/servers/${state.currentServer.id}/categories/${category.id}`,
+            { method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+              credentials: 'include', body: JSON.stringify({ name: val }) }
+        );
+        if (res.ok) { closeModal(); }
+        else { const d = await res.json(); showModalError(d.error || 'Failed to rename.'); }
+    }
+    showModal({
+        title: 'Rename Category',
+        inputType: 'text',
+        inputValue: category.name,
+        inputPlaceholder: 'Category name',
+        buttons: [
+            { text: 'Cancel', style: 'secondary', action: closeModal },
+            { text: 'Save', style: 'primary', action: doSave }
+        ],
+        onEnter: doSave
+    });
+}
+
+function promptDeleteCategory(category) {
+    showModal({
+        title: 'Delete Category',
+        message: `Delete "${category.name}"? Channels inside will move to uncategorized.`,
+        buttons: [
+            {
+                text: 'Cancel',
+                style: 'secondary',
+                action: closeModal
+            },
+            {
+                text: 'Delete',
+                style: 'danger',
+                action: async () => {
+                    const res = await fetch(
+                        `/api/channels/servers/${state.currentServer.id}/categories/${category.id}`,
+                        { method: 'DELETE', credentials: 'include' }
+                    );
+                    if (res.ok) { closeModal(); }
+                    else { const d = await res.json(); showModalError(d.error || 'Failed to delete.'); }
+                }
+            }
+        ]
+    });
+}
+
 // ── Attach right-click to a channel button ───────────────────────────────────
 function attachChannelContextMenu(el, channel) {
     el.addEventListener('contextmenu', (e) => {
@@ -279,6 +348,7 @@ function attachMemberContextMenu(el, member) {
 
         if (isSelf) {
             items.push({ label: 'Change Nickname', action: 'changeNickname' });
+            items.push({ label: 'Change Avatar', action: 'changeAvatar' });
             items.push('divider');
         }
 
@@ -286,6 +356,7 @@ function attachMemberContextMenu(el, member) {
 
         ctxMenu._handlers.dmUser = () => startDMWithUser(member.id, member.username);
         ctxMenu._handlers.changeNickname = () => openChangeNicknameModal();
+        ctxMenu._handlers.changeAvatar = () => document.getElementById('avatarFileInput')?.click();
         ctxMenu._handlers.copyUsername = () => navigator.clipboard.writeText(member.username);
 
         ctxMenu.show(e.clientX, e.clientY, items);
