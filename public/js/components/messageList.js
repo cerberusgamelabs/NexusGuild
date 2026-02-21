@@ -69,6 +69,7 @@ function renderMessages() {
             const messageContent = message.content ? highlightMentions(escapeHtml(message.content)) : '';
             const editedTag = message.edited_at ? ' <span class="edited-tag">(edited)</span>' : '';
             const isOwn = message.user_id === state.currentUser.id;
+            const isMentioned = parseMentions(message.content);
 
             // Render reactions if they exist
             const reactionsHTML = message.reactions ? renderReactions(message.reactions, message.id) : '';
@@ -82,7 +83,7 @@ function renderMessages() {
 
             if (showHeader) {
                 return `
-            <div class="message" data-message-id="${message.id}">
+            <div class="message${isMentioned ? ' mention-highlight' : ''}" data-message-id="${message.id}">
               <div class="message-header">
                 ${authorAvatar}
                 <span class="message-author"${authorColor}>${authorName}</span>
@@ -95,7 +96,7 @@ function renderMessages() {
             </div>`;
             } else {
                 return `
-            <div class="message compact" data-message-id="${message.id}">
+            <div class="message compact${isMentioned ? ' mention-highlight' : ''}" data-message-id="${message.id}">
               <div class="message-content" data-content-id="${message.id}" style="margin-left:48px;">${messageContent}${editedTag}</div>
               <div class="message-edit-area" data-edit-id="${message.id}" style="display:none; margin-left:48px;"></div>
               ${attachmentsHtml ? `<div style="margin-left:48px;">${attachmentsHtml}</div>` : ''}

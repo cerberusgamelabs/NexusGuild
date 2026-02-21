@@ -363,6 +363,15 @@ body {
         background-color: #32353b;
     }
 
+.message.mention-highlight {
+    background-color: rgba(250, 166, 26, 0.06);
+    border-left: 3px solid #faa61a;
+    padding-left: 12px;
+}
+.message.mention-highlight:hover {
+    background-color: rgba(250, 166, 26, 0.1);
+}
+
 .message-header {
     display: flex;
     align-items: center;
@@ -1759,6 +1768,29 @@ textarea.modal-input {
 }
 .role-item:hover { background: #35373c; }
 .role-item.selected { background: #404249; color: #fff; }
+.role-item.dragging { opacity: 0.4; }
+.role-item.drag-over {
+    outline: 2px solid #5865f2;
+    outline-offset: -2px;
+    border-radius: 4px;
+}
+.role-drag-handle {
+    cursor: grab;
+    color: #949ba4;
+    font-size: 14px;
+    flex-shrink: 0;
+    padding-right: 2px;
+    user-select: none;
+}
+.role-hoist-badge {
+    margin-left: auto;
+    font-size: 10px;
+    background: #5865f2;
+    color: #fff;
+    border-radius: 3px;
+    padding: 1px 4px;
+    font-weight: 700;
+}
 .role-color-dot {
     display: inline-block;
     width: 10px;

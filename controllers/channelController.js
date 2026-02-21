@@ -3,6 +3,29 @@
 import db from "../config/database.js";
 import { generateSnowflake } from "#utils/functions";
 import { log, tags } from "#utils/logging";
+import { PermissionHandler, PERMISSIONS } from "../config/permissions.js";
+
+// Resolve channelId → serverId and check if userId holds the given permission.
+// Returns { serverId, allowed } or null if the channel doesn't exist.
+async function checkChannelPerm(userId, channelId, permission) {
+    const chanRes = await db.query('SELECT server_id FROM channels WHERE id = $1', [channelId]);
+    if (chanRes.rows.length === 0) return null;
+    const serverId = chanRes.rows[0].server_id;
+    const ownerRes = await db.query('SELECT owner_id FROM servers WHERE id = $1', [serverId]);
+    if (ownerRes.rows[0]?.owner_id === userId) return { serverId, allowed: true };
+    const [rolesRes, everyoneRes] = await Promise.all([
+        db.query(
+            `SELECT COALESCE(bit_or(r.permissions::bigint), 0)::text AS perms
+             FROM roles r JOIN user_roles ur ON r.id = ur.role_id
+             WHERE ur.user_id = $1 AND ur.server_id = $2`,
+            [userId, serverId]
+        ),
+        db.query(`SELECT permissions FROM roles WHERE server_id = $1 AND name = '@everyone'`, [serverId]),
+    ]);
+    let perms = BigInt(rolesRes.rows[0]?.perms || '0');
+    if (everyoneRes.rows[0]) perms |= BigInt(everyoneRes.rows[0].permissions);
+    return { serverId, allowed: PermissionHandler.hasPermission(perms, permission) };
+}
 
 class ChannelController {
     static async getServerChannels(req, res) {
@@ -124,6 +147,11 @@ class ChannelController {
         try {
             const { channelId } = req.params;
             const { name, topic, position } = req.body;
+            const userId = req.session.user.id;
+
+            const perm = await checkChannelPerm(userId, channelId, PERMISSIONS.MANAGE_CHANNELS);
+            if (perm === null) return res.status(404).json({ error: 'Channel not found' });
+            if (!perm.allowed) return res.status(403).json({ error: 'Insufficient permissions' });
 
             const result = await db.query(
                 `UPDATE channels
@@ -135,29 +163,18 @@ class ChannelController {
                 [name, topic, position, channelId]
             );
 
-            if (result.rows.length === 0) {
-                return res.status(404).json({ error: 'Channel not found' });
-            }
-
+            if (result.rows.length === 0) return res.status(404).json({ error: 'Channel not found' });
             log(tags.info, `Channel updated: "${result.rows[0].name}" [${channelId}]`);
 
-            const serverResult = await db.query(
-                'SELECT server_id FROM channels WHERE id = $1',
-                [channelId]
-            );
-
             const io = req.app.get('io');
-            if (io && serverResult.rows.length > 0) {
-                io.to(`server:${serverResult.rows[0].server_id}`).emit('channel_updated', {
-                    serverId: serverResult.rows[0].server_id,
+            if (io) {
+                io.to(`server:${perm.serverId}`).emit('channel_updated', {
+                    serverId: perm.serverId,
                     channel: result.rows[0]
                 });
             }
 
-            res.json({
-                message: 'Channel updated successfully',
-                channel: result.rows[0]
-            });
+            res.json({ message: 'Channel updated successfully', channel: result.rows[0] });
         } catch (error) {
             log(tags.error, 'Update channel error:', error);
             res.status(500).json({ error: 'Failed to update channel' });
@@ -167,6 +184,7 @@ class ChannelController {
     static async deleteChannel(req, res) {
         try {
             const { channelId } = req.params;
+            const userId = req.session.user.id;
 
             const channelResult = await db.query(
                 'SELECT server_id, name FROM channels WHERE id = $1',
@@ -178,6 +196,9 @@ class ChannelController {
             }
 
             const { server_id: serverId, name: channelName } = channelResult.rows[0];
+
+            const perm = await checkChannelPerm(userId, channelId, PERMISSIONS.MANAGE_CHANNELS);
+            if (!perm?.allowed) return res.status(403).json({ error: 'Insufficient permissions' });
 
             await db.query('DELETE FROM channels WHERE id = $1', [channelId]);
 

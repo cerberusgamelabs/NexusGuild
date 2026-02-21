@@ -6,9 +6,28 @@ import { fileURLToPath } from 'url';
 import db from "../config/database.js";
 import { generateSnowflake } from "#utils/functions";
 import { log, tags } from "#utils/logging";
+import { PermissionHandler, PERMISSIONS } from "../config/permissions.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Returns true if userId is the server owner or holds the given permission.
+async function hasServerPerm(userId, serverId, permission) {
+    const ownerRes = await db.query('SELECT owner_id FROM servers WHERE id = $1', [serverId]);
+    if (ownerRes.rows[0]?.owner_id === userId) return true;
+    const [rolesRes, everyoneRes] = await Promise.all([
+        db.query(
+            `SELECT COALESCE(bit_or(r.permissions::bigint), 0)::text AS perms
+             FROM roles r JOIN user_roles ur ON r.id = ur.role_id
+             WHERE ur.user_id = $1 AND ur.server_id = $2`,
+            [userId, serverId]
+        ),
+        db.query(`SELECT permissions FROM roles WHERE server_id = $1 AND name = '@everyone'`, [serverId]),
+    ]);
+    let perms = BigInt(rolesRes.rows[0]?.perms || '0');
+    if (everyoneRes.rows[0]) perms |= BigInt(everyoneRes.rows[0].permissions);
+    return PermissionHandler.hasPermission(perms, permission);
+}
 
 class MessageController {
     static async getChannelMessages(req, res) {
@@ -61,6 +80,17 @@ class MessageController {
             // Allow empty content if there are attachments
             if (!content && !attachments) {
                 return res.status(400).json({ error: 'Message must have content or attachments' });
+            }
+
+            // MENTION_EVERYONE check — block @everyone / @here for users without permission
+            if (content && /@everyone\b|@here\b/i.test(content)) {
+                const chanRes = await db.query('SELECT server_id FROM channels WHERE id = $1', [channelId]);
+                if (chanRes.rows.length > 0) {
+                    const allowed = await hasServerPerm(userId, chanRes.rows[0].server_id, PERMISSIONS.MENTION_EVERYONE);
+                    if (!allowed) {
+                        return res.status(403).json({ error: 'You do not have permission to use @everyone or @here' });
+                    }
+                }
             }
 
             const id = generateSnowflake();
@@ -193,7 +223,13 @@ class MessageController {
                 return res.status(404).json({ error: 'Message not found' });
             }
             if (checkResult.rows[0].user_id !== userId) {
-                return res.status(403).json({ error: 'You can only delete your own messages' });
+                // Allow users with MANAGE_MESSAGES to delete others' messages
+                const chanRes = await db.query('SELECT server_id FROM channels WHERE id = $1', [checkResult.rows[0].channel_id]);
+                const allowed = chanRes.rows.length > 0 &&
+                    await hasServerPerm(userId, chanRes.rows[0].server_id, PERMISSIONS.MANAGE_MESSAGES);
+                if (!allowed) {
+                    return res.status(403).json({ error: 'You can only delete your own messages' });
+                }
             }
 
             await db.query('DELETE FROM messages WHERE id = $1', [messageId]);

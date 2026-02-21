@@ -3,24 +3,42 @@ function renderMemberList() {
     const panel = document.getElementById('membersPanel');
     if (!panel) return;
 
-    // Group members by online status
     const online = state.members.filter(m => m.status === 'online');
-    const offline = state.members.filter(m => m.status === 'offline');
+    const offline = state.members.filter(m => m.status !== 'online');
+
+    // Group online members by their highest hoisted role
+    const hoistGroups = new Map(); // position -> { name, position, members[] }
+    const nonHoisted = [];
+
+    online.forEach(m => {
+        if (m.hoist_role_name != null) {
+            const key = m.hoist_role_position;
+            if (!hoistGroups.has(key)) {
+                hoistGroups.set(key, { name: m.hoist_role_name, position: key, members: [] });
+            }
+            hoistGroups.get(key).members.push(m);
+        } else {
+            nonHoisted.push(m);
+        }
+    });
+
+    // Sort hoisted groups highest position first
+    const sortedGroups = [...hoistGroups.values()].sort((a, b) => b.position - a.position);
 
     let html = '';
+    sortedGroups.forEach(group => {
+        html += `<div class="member-role">${group.name} \u2014 ${group.members.length}</div>`;
+        group.members.forEach(m => { html += renderMember(m); });
+    });
 
-    if (online.length > 0) {
-        html += `<div class="member-role">Online - ${online.length}</div>`;
-        online.forEach(member => {
-            html += renderMember(member);
-        });
+    if (nonHoisted.length > 0) {
+        html += `<div class="member-role">Online \u2014 ${nonHoisted.length}</div>`;
+        nonHoisted.forEach(m => { html += renderMember(m); });
     }
 
     if (offline.length > 0) {
-        html += `<div class="member-role">Offline - ${offline.length}</div>`;
-        offline.forEach(member => {
-            html += renderMember(member);
-        });
+        html += `<div class="member-role">Offline \u2014 ${offline.length}</div>`;
+        offline.forEach(m => { html += renderMember(m); });
     }
 
     panel.innerHTML = html;

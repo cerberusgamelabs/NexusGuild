@@ -196,8 +196,8 @@ function toggleServerMenu() {
     const dd = document.getElementById('serverDropdown');
     const isVisible = dd.style.display !== 'none';
     if (!isVisible && state.currentServer) {
-        const isOwner = state.currentServer.owner_id === state.currentUser?.id;
-        document.getElementById('serverSettingsBtn').style.display = isOwner ? 'block' : 'none';
+        const canSettings = clientHasPermission(CLIENT_PERMS.MANAGE_GUILD) || clientHasPermission(CLIENT_PERMS.MANAGE_ROLES) || clientHasPermission(CLIENT_PERMS.MANAGE_CHANNELS) || clientHasPermission(CLIENT_PERMS.KICK_MEMBERS) || clientHasPermission(CLIENT_PERMS.BAN_MEMBERS);
+        document.getElementById('serverSettingsBtn').style.display = canSettings ? 'block' : 'none';
         document.getElementById('changeNicknameBtn').style.display = 'block';
     }
     dd.style.display = isVisible ? 'none' : 'block';

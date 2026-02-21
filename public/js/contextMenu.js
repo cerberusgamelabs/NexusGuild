@@ -199,12 +199,13 @@ function attachMessageContextMenu(el, message) {
         e.stopPropagation();
 
         const isOwner = state.currentUser && message.user_id === state.currentUser.id;
+        const canManageMessages = clientHasPermission(CLIENT_PERMS.MANAGE_MESSAGES);
         const items = [];
 
         items.push({ label: 'Add Reaction', action: 'addReaction' });
-        if (isOwner) {
+        if (isOwner || canManageMessages) {
             items.push('divider');
-            items.push({ label: 'Edit Message', action: 'editMsg' });
+            if (isOwner) items.push({ label: 'Edit Message', action: 'editMsg' });
             items.push({ label: 'Delete Message', action: 'deleteMsg', danger: true });
         }
         items.push('divider');
@@ -224,9 +225,7 @@ function attachCategoryContextMenu(el, category) {
     el.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        const isOwner = state.currentServer && state.currentUser &&
-            state.currentServer.owner_id === state.currentUser.id;
-        if (!isOwner) return;
+        if (!clientHasPermission(CLIENT_PERMS.MANAGE_CHANNELS)) return;
 
         ctxMenu._handlers.renameCategory = () => promptRenameCategory(category);
         ctxMenu._handlers.deleteCategory = () => promptDeleteCategory(category);
@@ -294,9 +293,7 @@ function attachChannelContextMenu(el, channel) {
         e.preventDefault();
         e.stopPropagation();
 
-        const isOwner = state.currentServer && state.currentUser &&
-            state.currentServer.owner_id === state.currentUser.id;
-        if (!isOwner) return;
+        if (!clientHasPermission(CLIENT_PERMS.MANAGE_CHANNELS)) return;
 
         ctxMenu._handlers.renameChannel = () => promptRenameChannel(channel);
         ctxMenu._handlers.deleteChannel = () => promptDeleteChannel(channel);
@@ -339,10 +336,12 @@ function attachMemberContextMenu(el, member) {
         e.stopPropagation();
 
         const isSelf = state.currentUser && member.id === state.currentUser.id;
+        const isTargetOwner = state.currentServer && member.id === state.currentServer.owner_id;
         const items = [];
 
         if (!isSelf) {
-            items.push({ label: '💬 Message', action: 'dmUser' });
+            items.push({ label: 'Message', action: 'dmUser' });
+            items.push({ label: '@Mention', action: 'mentionUser' });
             items.push('divider');
         }
 
@@ -352,14 +351,185 @@ function attachMemberContextMenu(el, member) {
             items.push('divider');
         }
 
+        if (!isSelf && clientHasPermission(CLIENT_PERMS.MANAGE_NICKNAMES)) {
+            items.push({ label: 'Set Nickname', action: 'setNickname' });
+        }
+        if (clientHasPermission(CLIENT_PERMS.MANAGE_ROLES)) {
+            items.push({ label: 'Manage Roles', action: 'manageRoles' });
+        }
+
         items.push({ label: 'Copy Username', action: 'copyUsername' });
 
-        ctxMenu._handlers.dmUser = () => startDMWithUser(member.id, member.username);
+        if (!isSelf && !isTargetOwner) {
+            const canKick = clientHasPermission(CLIENT_PERMS.KICK_MEMBERS);
+            const canBan  = clientHasPermission(CLIENT_PERMS.BAN_MEMBERS);
+            if (canKick || canBan) {
+                items.push('divider');
+                if (canKick) items.push({ label: 'Kick Member', action: 'kickMember', danger: true });
+                if (canBan)  items.push({ label: 'Ban Member',  action: 'banMember',  danger: true });
+            }
+        }
+
+        ctxMenu._handlers.dmUser        = () => startDMWithUser(member.id, member.username);
+        ctxMenu._handlers.mentionUser    = () => ctxMentionUser(member.nickname || member.username);
         ctxMenu._handlers.changeNickname = () => openChangeNicknameModal();
-        ctxMenu._handlers.changeAvatar = () => document.getElementById('avatarFileInput')?.click();
-        ctxMenu._handlers.copyUsername = () => navigator.clipboard.writeText(member.username);
+        ctxMenu._handlers.changeAvatar   = () => document.getElementById('avatarFileInput')?.click();
+        ctxMenu._handlers.setNickname    = () => ctxSetNicknameForMember(member);
+        ctxMenu._handlers.manageRoles    = () => ctxOpenRoleAssignMenu(member);
+        ctxMenu._handlers.copyUsername   = () => navigator.clipboard.writeText(member.username);
+        ctxMenu._handlers.kickMember     = () => ctxKickMember(member);
+        ctxMenu._handlers.banMember      = () => ctxBanMember(member);
 
         ctxMenu.show(e.clientX, e.clientY, items);
+    });
+}
+
+function ctxMentionUser(username) {
+    const input = document.getElementById('messageInput');
+    if (!input) return;
+    const val = input.value;
+    const mention = `@${username} `;
+    const start = input.selectionStart ?? val.length;
+    const end   = input.selectionEnd   ?? val.length;
+    input.value = val.slice(0, start) + mention + val.slice(end);
+    const newPos = start + mention.length;
+    input.setSelectionRange(newPos, newPos);
+    input.focus();
+}
+
+function ctxSetNicknameForMember(member) {
+    async function doSave() {
+        const nick = getModalInputValue().trim();
+        const res = await fetch(`/api/servers/${state.currentServer.id}/members/${member.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ nickname: nick }),
+        });
+        if (res.ok) {
+            closeModal();
+            const m = state.members.find(m => m.id === member.id);
+            if (m) { m.nickname = nick || null; renderMemberList(); }
+            showToast('Nickname updated.');
+        } else {
+            const d = await res.json();
+            showModalError(d.error || 'Failed to set nickname.');
+        }
+    }
+    showModal({
+        title: `Set Nickname — ${member.username}`,
+        inputType: 'text',
+        inputValue: member.nickname || '',
+        inputPlaceholder: 'Nickname (blank to clear)',
+        buttons: [
+            { text: 'Cancel', style: 'secondary', action: closeModal },
+            { text: 'Save', style: 'primary', action: doSave },
+        ],
+        onEnter: doSave,
+    });
+}
+
+async function ctxOpenRoleAssignMenu(member) {
+    if (!state.currentServer) return;
+    let roles = [];
+    try {
+        const res = await fetch(`/api/servers/${state.currentServer.id}/roles`, { credentials: 'include' });
+        const data = await res.json();
+        roles = (data.roles || []).filter(r => r.name !== '@everyone');
+    } catch { showToast('Failed to load roles.'); return; }
+
+    let memberRoleIds = new Set();
+    try {
+        const res = await fetch(`/api/servers/${state.currentServer.id}/members/${member.id}/roles`, { credentials: 'include' });
+        const data = await res.json();
+        (data.roles || []).forEach(r => memberRoleIds.add(r.id));
+    } catch {}
+
+    const itemsHtml = roles.map(r => `
+        <label class="role-assign-item">
+            <input type="checkbox" ${memberRoleIds.has(r.id) ? 'checked' : ''}
+                   onchange="ctxToggleMemberRole('${member.id}', '${r.id}', this.checked)">
+            <span class="role-color-dot" style="background:${r.color}"></span>
+            ${r.name}
+        </label>
+    `).join('');
+
+    showModal({
+        title: `Roles \u2014 ${member.username}`,
+        message: roles.length ? null : 'No roles to assign (create roles first).',
+        buttons: [{ text: 'Done', style: 'primary', action: closeModal }]
+    });
+
+    if (roles.length) {
+        const msgEl = document.getElementById('modalMessage');
+        const inputEl = document.getElementById('modalInput');
+        inputEl.style.display = 'none';
+        msgEl.style.display = 'block';
+        msgEl.innerHTML = `<div class="role-assign-list">${itemsHtml}</div>`;
+    }
+}
+
+async function ctxToggleMemberRole(memberId, roleId, assign) {
+    if (!state.currentServer) return;
+    const url = `/api/servers/${state.currentServer.id}/members/${memberId}/roles${assign ? '' : '/' + roleId}`;
+    const method = assign ? 'POST' : 'DELETE';
+    const body = assign ? JSON.stringify({ roleId }) : undefined;
+    const headers = assign ? { 'Content-Type': 'application/json' } : {};
+    const res = await fetch(url, { method, headers, credentials: 'include', body });
+    if (!res.ok) showToast('Failed to update role.');
+}
+
+function ctxKickMember(member) {
+    showModal({
+        title: 'Kick Member',
+        message: `Kick ${member.nickname || member.username} from the server?`,
+        buttons: [
+            { text: 'Cancel', style: 'secondary', action: closeModal },
+            { text: 'Kick', style: 'danger', action: async () => {
+                const res = await fetch(`/api/servers/${state.currentServer.id}/members/${member.id}`, {
+                    method: 'DELETE', credentials: 'include'
+                });
+                if (res.ok) {
+                    closeModal();
+                    state.members = state.members.filter(m => m.id !== member.id);
+                    renderMemberList();
+                    showToast(`${member.username} kicked.`);
+                } else {
+                    const d = await res.json();
+                    showModalError(d.error || 'Failed to kick.');
+                }
+            }}
+        ]
+    });
+}
+
+function ctxBanMember(member) {
+    showModal({
+        title: 'Ban Member',
+        message: `Ban ${member.nickname || member.username}? They won't be able to rejoin.`,
+        inputType: 'text',
+        inputPlaceholder: 'Reason (optional)',
+        buttons: [
+            { text: 'Cancel', style: 'secondary', action: closeModal },
+            { text: 'Ban', style: 'danger', action: async () => {
+                const reason = getModalInputValue().trim();
+                const res = await fetch(`/api/servers/${state.currentServer.id}/bans/${member.id}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ reason }),
+                });
+                if (res.ok) {
+                    closeModal();
+                    state.members = state.members.filter(m => m.id !== member.id);
+                    renderMemberList();
+                    showToast(`${member.username} banned.`);
+                } else {
+                    const d = await res.json();
+                    showModalError(d.error || 'Failed to ban.');
+                }
+            }}
+        ]
     });
 }
 

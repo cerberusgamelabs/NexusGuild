@@ -13,7 +13,30 @@ const state = {
     hasMoreMessages: true,
     isLoadingMessages: false,
     unread: {},
+    myPermissions: 0n,  // current user's effective permissions in currentServer (BigInt)
 };
+
+// Client-side permission bit values — matches Discord's bit positions exactly
+const CLIENT_PERMS = {
+    KICK_MEMBERS:      2n,
+    BAN_MEMBERS:       4n,
+    ADMINISTRATOR:     8n,
+    MANAGE_CHANNELS:   16n,
+    MANAGE_GUILD:      32n,
+    MANAGE_MESSAGES:   8192n,
+    MANAGE_ROLES:      268435456n,
+    MANAGE_NICKNAMES:  134217728n,
+};
+
+// Returns true if the current user has the given permission in the current server.
+// Server owners always return true.
+function clientHasPermission(perm) {
+    if (!state.currentServer || !state.currentUser) return false;
+    if (state.currentServer.owner_id === state.currentUser.id) return true;
+    const perms = state.myPermissions || 0n;
+    if ((perms & CLIENT_PERMS.ADMINISTRATOR) === CLIENT_PERMS.ADMINISTRATOR) return true;
+    return (perms & perm) === perm;
+}
 
 // ── Unread / Mention helpers ──────────────────────────────────────────────────
 
@@ -163,7 +186,7 @@ function showAuth() {
 
 function showApp() {
     document.getElementById('auth-screen').style.display = 'none';
-    document.getElementById('app-screen').style.display = 'block';
+    document.getElementById('app-screen').style.display = 'flex';
 
     if (state.currentUser) {
         document.getElementById('currentUsername').textContent = state.currentUser.username;
@@ -208,6 +231,7 @@ function selectServer(serverId) {
     if (!server) return;
 
     state.currentServer = server;
+    state.myPermissions = 0n;  // reset until loadServerMembers resolves
 
     if (state.socket) {
         state.socket.emit('join_server', serverId);
@@ -215,14 +239,7 @@ function selectServer(serverId) {
 
     document.getElementById('currentServerName').textContent = server.name;
     loadServerChannels(serverId);
-    loadServerMembers(serverId);
-
-    // Show Create Channel/Category only to the server owner
-    const isOwner = state.currentUser && server.owner_id === state.currentUser.id;
-    const createChannelBtn = document.getElementById('createChannelBtn');
-    if (createChannelBtn) createChannelBtn.style.display = isOwner ? 'block' : 'none';
-    const createCategoryBtn = document.getElementById('createCategoryBtn');
-    if (createCategoryBtn) createCategoryBtn.style.display = isOwner ? 'block' : 'none';
+    loadServerMembers(serverId);  // updates myPermissions + management buttons when done
 
     // Update UI
     document.querySelectorAll('.space-rail button').forEach(btn => {
@@ -347,6 +364,15 @@ async function loadServerMembers(serverId) {
         if (response.ok) {
             const data = await response.json();
             state.members = data.members;
+            state.myPermissions = BigInt(data.myPermissions || '0');
+
+            // Update management buttons now that we know the user's permissions
+            const canManage = clientHasPermission(CLIENT_PERMS.MANAGE_CHANNELS);
+            const createChannelBtn = document.getElementById('createChannelBtn');
+            if (createChannelBtn) createChannelBtn.style.display = canManage ? 'block' : 'none';
+            const createCategoryBtn = document.getElementById('createCategoryBtn');
+            if (createCategoryBtn) createCategoryBtn.style.display = canManage ? 'block' : 'none';
+
             renderMemberList();
             // Re-render messages now that avatar/role-color maps are available
             if (state.messages?.length > 0) renderMessages();

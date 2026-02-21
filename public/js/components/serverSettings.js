@@ -13,33 +13,49 @@ const PERM_GROUPS = [
     {
         label: 'General',
         perms: [
-            { key: 'VIEW_CHANNEL',    name: 'View Channels',     desc: 'Allows members to view channels' },
-            { key: 'MANAGE_CHANNELS', name: 'Manage Channels',   desc: 'Allows members to create, edit, or delete channels' },
-            { key: 'MANAGE_SERVER',   name: 'Manage Server',     desc: 'Allows members to change server settings' },
-            { key: 'MANAGE_ROLES',    name: 'Manage Roles',      desc: 'Allows members to create and manage roles' },
-            { key: 'CREATE_INVITE',   name: 'Create Invite',     desc: 'Allows members to invite new people' },
-            { key: 'ADMINISTRATOR',   name: 'Administrator',     desc: 'Grants all permissions — use with care' },
+            { key: 'VIEW_CHANNEL',          name: 'View Channels',        desc: 'Allows members to view channels' },
+            { key: 'MANAGE_CHANNELS',       name: 'Manage Channels',      desc: 'Allows members to create, edit, or delete channels' },
+            { key: 'MANAGE_GUILD',          name: 'Manage Server',        desc: 'Allows members to change server settings' },
+            { key: 'MANAGE_ROLES',          name: 'Manage Roles',         desc: 'Allows members to create and manage roles' },
+            { key: 'MANAGE_GUILD_EXPRESSIONS', name: 'Manage Expressions', desc: 'Allows members to add or remove custom emoji and stickers' },
+            { key: 'CREATE_INSTANT_INVITE', name: 'Create Invite',        desc: 'Allows members to invite new people' },
+            { key: 'VIEW_AUDIT_LOG',        name: 'View Audit Log',       desc: 'Allows members to view the server audit log' },
+            { key: 'ADMINISTRATOR',         name: 'Administrator',        desc: 'Grants all permissions — use with care' },
         ]
     },
     {
         label: 'Text',
         perms: [
-            { key: 'SEND_MESSAGES',    name: 'Send Messages',      desc: 'Allows members to send messages' },
-            { key: 'MANAGE_MESSAGES',  name: 'Manage Messages',    desc: 'Allows members to delete others\' messages' },
-            { key: 'EMBED_LINKS',      name: 'Embed Links',        desc: 'Links posted will show as embeds' },
-            { key: 'ATTACH_FILES',     name: 'Attach Files',       desc: 'Allows members to upload files' },
-            { key: 'ADD_REACTIONS',    name: 'Add Reactions',      desc: 'Allows members to add emoji reactions' },
-            { key: 'MENTION_EVERYONE', name: 'Mention @everyone',  desc: 'Allows members to use @everyone and @here' },
+            { key: 'SEND_MESSAGES',       name: 'Send Messages',        desc: 'Allows members to send messages' },
+            { key: 'MANAGE_MESSAGES',     name: 'Manage Messages',      desc: 'Allows members to delete others\' messages' },
+            { key: 'EMBED_LINKS',         name: 'Embed Links',          desc: 'Links posted will show as embeds' },
+            { key: 'ATTACH_FILES',        name: 'Attach Files',         desc: 'Allows members to upload files' },
+            { key: 'READ_MESSAGE_HISTORY',name: 'Read Message History', desc: 'Allows members to read past messages in a channel' },
+            { key: 'ADD_REACTIONS',       name: 'Add Reactions',        desc: 'Allows members to add emoji reactions' },
+            { key: 'USE_EXTERNAL_EMOJIS', name: 'Use External Emojis',  desc: 'Allows members to use emojis from other servers' },
+            { key: 'MENTION_EVERYONE',    name: 'Mention @everyone',    desc: 'Allows members to use @everyone and @here' },
         ]
     },
     {
         label: 'Voice',
         perms: [
-            { key: 'CONNECT',        name: 'Connect',         desc: 'Allows members to join voice channels' },
-            { key: 'SPEAK',          name: 'Speak',           desc: 'Allows members to speak in voice channels' },
-            { key: 'MUTE_MEMBERS',   name: 'Mute Members',    desc: 'Allows members to mute others in voice' },
-            { key: 'DEAFEN_MEMBERS', name: 'Deafen Members',  desc: 'Allows members to deafen others in voice' },
-            { key: 'MOVE_MEMBERS',   name: 'Move Members',    desc: 'Allows members to move others between channels' },
+            { key: 'CONNECT',          name: 'Connect',          desc: 'Allows members to join voice channels' },
+            { key: 'SPEAK',            name: 'Speak',            desc: 'Allows members to speak in voice channels' },
+            { key: 'STREAM',           name: 'Video',            desc: 'Allows members to share their screen or camera' },
+            { key: 'USE_VAD',          name: 'Use Voice Activity', desc: 'Allows members to use voice activity detection instead of push-to-talk' },
+            { key: 'PRIORITY_SPEAKER', name: 'Priority Speaker', desc: 'Allows members to speak over others (volume reduced for others)' },
+            { key: 'MUTE_MEMBERS',     name: 'Mute Members',     desc: 'Allows members to mute others in voice' },
+            { key: 'DEAFEN_MEMBERS',   name: 'Deafen Members',   desc: 'Allows members to deafen others in voice' },
+            { key: 'MOVE_MEMBERS',     name: 'Move Members',     desc: 'Allows members to move others between channels' },
+        ]
+    },
+    {
+        label: 'Threads',
+        perms: [
+            { key: 'CREATE_PUBLIC_THREADS',    name: 'Create Public Threads',  desc: 'Allows members to create public threads' },
+            { key: 'CREATE_PRIVATE_THREADS',   name: 'Create Private Threads', desc: 'Allows members to create private threads' },
+            { key: 'MANAGE_THREADS',           name: 'Manage Threads',         desc: 'Allows members to rename, delete, and archive threads' },
+            { key: 'SEND_MESSAGES_IN_THREADS', name: 'Send Messages in Threads', desc: 'Allows members to send messages in threads' },
         ]
     },
     {
@@ -52,8 +68,9 @@ const PERM_GROUPS = [
     {
         label: 'Members',
         perms: [
-            { key: 'KICK_MEMBERS', name: 'Kick Members', desc: 'Allows members to kick other members' },
-            { key: 'BAN_MEMBERS',  name: 'Ban Members',  desc: 'Allows members to ban other members' },
+            { key: 'KICK_MEMBERS',    name: 'Kick Members',   desc: 'Allows members to kick other members' },
+            { key: 'BAN_MEMBERS',     name: 'Ban Members',    desc: 'Allows members to ban other members' },
+            { key: 'MODERATE_MEMBERS',name: 'Timeout Members',desc: 'Allows members to put others in timeout' },
         ]
     },
 ];
@@ -64,6 +81,7 @@ let _settingsTab = 'overview';
 let _selectedRoleId = null;
 let _settingsRoles = [];
 let _settingsMembersFilter = '';
+let _dragSourceRoleId = null;
 
 // ── Open / Close ─────────────────────────────────────────────────────────────
 
@@ -228,9 +246,17 @@ async function renderRolesTab(container) {
 function _rebuildRolesUI(container) {
     const listHtml = _settingsRoles.map(r => `
         <div class="role-item ${r.id === _selectedRoleId ? 'selected' : ''}"
+             draggable="true"
+             data-role-id="${r.id}"
+             ondragstart="rolesDragStart(event,'${r.id}')"
+             ondragover="rolesDragOver(event)"
+             ondrop="rolesDrop(event,'${r.id}')"
+             ondragend="rolesDragEnd(event)"
              onclick="selectSettingsRole('${r.id}')">
+            <span class="role-drag-handle">&#x2807;</span>
             <span class="role-color-dot" style="background:${r.color}"></span>
             ${escHtml(r.name)}
+            ${r.hoist ? '<span class="role-hoist-badge" title="Hoisted">H</span>' : ''}
         </div>
     `).join('');
 
@@ -290,6 +316,17 @@ function _buildRoleEditor() {
             </div>
         </div>
         <div id="roleEditorError" style="color:#f23f43;font-size:13px;margin-bottom:12px;display:none;"></div>
+        ${!isEveryone ? `
+        <div class="perm-toggle-row" style="margin-bottom:16px;">
+            <div class="perm-toggle-label">
+                <div class="perm-toggle-name">Display role members separately</div>
+                <div class="perm-toggle-desc">Online members with this role appear in their own group in the member list</div>
+            </div>
+            <label class="perm-toggle">
+                <input type="checkbox" id="roleHoistToggle" ${role.hoist ? 'checked' : ''}>
+                <span class="perm-toggle-slider"></span>
+            </label>
+        </div>` : ''}
         ${groupsHtml}
         <div style="margin-top:20px;display:flex;gap:8px;">
             <button class="settings-btn" onclick="saveSettingsRole()">Save Role</button>
@@ -352,13 +389,14 @@ async function saveSettingsRole() {
     document.querySelectorAll('#roleEditorPanel input[data-perm]').forEach(cb => {
         if (cb.checked) perms |= Number(cb.dataset.perm);
     });
+    const hoist = document.getElementById('roleHoistToggle')?.checked ?? false;
 
     try {
         const res = await fetch(`/api/servers/${_settingsServerId}/roles/${_selectedRoleId}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
-            body: JSON.stringify({ name, color, permissions: String(perms) }),
+            body: JSON.stringify({ name, color, permissions: String(perms), hoist }),
         });
         const data = await res.json();
         if (!res.ok) { errEl.textContent = data.error || 'Failed to save.'; errEl.style.display = 'block'; return; }
@@ -399,6 +437,52 @@ async function deleteSettingsRole() {
     });
 }
 
+// ── Role Drag-to-Reorder ──────────────────────────────────────────────────────
+
+function rolesDragStart(e, roleId) {
+    _dragSourceRoleId = roleId;
+    e.dataTransfer.effectAllowed = 'move';
+    e.currentTarget.classList.add('dragging');
+}
+
+function rolesDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    document.querySelectorAll('.role-item').forEach(el => el.classList.remove('drag-over'));
+    e.currentTarget.classList.add('drag-over');
+}
+
+function rolesDrop(e, targetRoleId) {
+    e.preventDefault();
+    if (!_dragSourceRoleId || _dragSourceRoleId === targetRoleId) return;
+    const srcIdx = _settingsRoles.findIndex(r => r.id === _dragSourceRoleId);
+    const tgtIdx = _settingsRoles.findIndex(r => r.id === targetRoleId);
+    if (srcIdx === -1 || tgtIdx === -1) return;
+    const [moved] = _settingsRoles.splice(srcIdx, 1);
+    _settingsRoles.splice(tgtIdx, 0, moved);
+    _rebuildRolesUI(document.getElementById('settingsContent'));
+    saveRoleOrder();
+}
+
+function rolesDragEnd(e) {
+    document.querySelectorAll('.role-item').forEach(el =>
+        el.classList.remove('dragging', 'drag-over'));
+    _dragSourceRoleId = null;
+}
+
+async function saveRoleOrder() {
+    const orderedIds = _settingsRoles.filter(r => r.name !== '@everyone').map(r => r.id);
+    try {
+        const res = await fetch(`/api/servers/${_settingsServerId}/roles/reorder`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ order: orderedIds }),
+        });
+        if (!res.ok) showToast('Failed to save role order');
+    } catch { showToast('Failed to save role order'); }
+}
+
 // ── Members Tab ───────────────────────────────────────────────────────────────
 
 let _settingsMembers = [];
@@ -435,27 +519,30 @@ function _rebuildMembersUI(container) {
         ).join('');
         const isSelf = m.id === state.currentUser?.id;
         const isMemberOwner = m.id === state.currentServer?.owner_id;
-        // Full actions (kick/ban/nick/roles) on others — owner only, not on yourself or the owner
-        const canActOnOther = isOwner && !isSelf && !isMemberOwner;
-        // Self actions — anyone can try to set their own nickname; owner can also manage own roles
-        const canActOnSelf = isSelf;
+        const canKick = clientHasPermission(CLIENT_PERMS.KICK_MEMBERS) && !isSelf && !isMemberOwner;
+        const canBan  = clientHasPermission(CLIENT_PERMS.BAN_MEMBERS)  && !isSelf && !isMemberOwner;
+        const canManageNickOther = clientHasPermission(CLIENT_PERMS.MANAGE_NICKNAMES) && !isSelf;
+        const canManageRoles = clientHasPermission(CLIENT_PERMS.MANAGE_ROLES);
+        const hasOtherActions = canKick || canBan || canManageNickOther || canManageRoles;
 
         let actionsHtml = '';
-        if (canActOnOther) {
+        if (!isSelf && hasOtherActions) {
+            let menuItems = '';
+            if (canManageNickOther) menuItems += `<button onclick="openNicknameModal('${m.id}', '${escAttr(m.nickname || '')}')">Set Nickname</button>`;
+            if (canManageRoles)     menuItems += `<button onclick="openRoleAssignMenu('${m.id}', event)">Assign Roles ▸</button>`;
+            if (canKick)            menuItems += `<button class="danger" onclick="confirmKick('${m.id}', '${escAttr(m.username)}')">Kick Member</button>`;
+            if (canBan)             menuItems += `<button class="danger" onclick="confirmBan('${m.id}', '${escAttr(m.username)}')">Ban Member</button>`;
             actionsHtml = `
                 <button class="member-action-btn" onclick="toggleMemberActionsMenu('${m.id}', event)">Actions ▾</button>
                 <div class="member-actions-menu" id="memberMenu_${m.id}" style="display:none;">
-                    <button onclick="openNicknameModal('${m.id}', '${escAttr(m.nickname || '')}')">Set Nickname</button>
-                    <button onclick="openRoleAssignMenu('${m.id}', event)">Assign Roles ▸</button>
-                    <button class="danger" onclick="confirmKick('${m.id}', '${escAttr(m.username)}')">Kick Member</button>
-                    <button class="danger" onclick="confirmBan('${m.id}', '${escAttr(m.username)}')">Ban Member</button>
+                    ${menuItems}
                 </div>`;
-        } else if (canActOnSelf) {
+        } else if (isSelf) {
             actionsHtml = `
                 <button class="member-action-btn" onclick="toggleMemberActionsMenu('${m.id}', event)">Edit ▾</button>
                 <div class="member-actions-menu" id="memberMenu_${m.id}" style="display:none;">
                     <button onclick="openNicknameModal('${m.id}', '${escAttr(m.nickname || '')}')">Set Nickname</button>
-                    ${isOwner ? `<button onclick="openRoleAssignMenu('${m.id}', event)">Assign Roles ▸</button>` : ''}
+                    ${canManageRoles ? `<button onclick="openRoleAssignMenu('${m.id}', event)">Assign Roles ▸</button>` : ''}
                 </div>`;
         }
 

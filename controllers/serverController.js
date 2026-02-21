@@ -1,7 +1,7 @@
 // File Location: /controllers/serverController.js
 
 import db from "../config/database.js";
-import { DEFAULT_PERMISSIONS } from "../config/permissions.js";
+import { DEFAULT_PERMISSIONS, PERMISSIONS, PermissionHandler } from "../config/permissions.js";
 import { v4 as uuidv4 } from "uuid";
 import { generateSnowflake } from "#utils/functions";
 import { log, tags } from "#utils/logging";
@@ -284,21 +284,48 @@ class ServerController {
     static async getServerMembers(req, res) {
         try {
             const { serverId } = req.params;
-            const result = await db.query(
-                `SELECT u.id, u.username, u.avatar, u.status, sm.nickname, sm.joined_at,
-                        (SELECT r.color FROM roles r
-                         JOIN user_roles ur ON r.id = ur.role_id
-                         WHERE ur.user_id = u.id AND ur.server_id = $1
-                           AND r.name != '@everyone'
-                         ORDER BY r.position DESC
-                         LIMIT 1) AS role_color
-                 FROM users u
-                 JOIN server_members sm ON u.id = sm.user_id
-                 WHERE sm.server_id = $1
-                 ORDER BY u.username`,
-                [serverId]
-            );
-            res.json({ members: result.rows });
+            const userId = req.session.user.id;
+            const [membersResult, myPermsResult] = await Promise.all([
+                db.query(
+                    `SELECT u.id, u.username, u.avatar, u.status, sm.nickname, sm.joined_at,
+                            (SELECT r.color FROM roles r
+                             JOIN user_roles ur ON r.id = ur.role_id
+                             WHERE ur.user_id = u.id AND ur.server_id = $1
+                               AND r.name != '@everyone'
+                             ORDER BY r.position DESC
+                             LIMIT 1) AS role_color,
+                            (SELECT r.name FROM roles r
+                             JOIN user_roles ur ON r.id = ur.role_id
+                             WHERE ur.user_id = u.id AND ur.server_id = $1
+                               AND r.hoist = TRUE
+                             ORDER BY r.position DESC
+                             LIMIT 1) AS hoist_role_name,
+                            (SELECT r.position FROM roles r
+                             JOIN user_roles ur ON r.id = ur.role_id
+                             WHERE ur.user_id = u.id AND ur.server_id = $1
+                               AND r.hoist = TRUE
+                             ORDER BY r.position DESC
+                             LIMIT 1) AS hoist_role_position
+                     FROM users u
+                     JOIN server_members sm ON u.id = sm.user_id
+                     WHERE sm.server_id = $1
+                     ORDER BY u.username`,
+                    [serverId]
+                ),
+                db.query(
+                    `SELECT COALESCE(bit_or(r.permissions), 0) AS my_permissions
+                     FROM roles r
+                     WHERE r.server_id = $1
+                       AND (r.name = '@everyone' OR r.id IN (
+                         SELECT role_id FROM user_roles WHERE user_id = $2 AND server_id = $1
+                       ))`,
+                    [serverId, userId]
+                )
+            ]);
+            res.json({
+                members: membersResult.rows,
+                myPermissions: String(myPermsResult.rows[0]?.my_permissions || '0')
+            });
         } catch (error) {
             log(tags.error, 'Get server members error:', error);
             res.status(500).json({ error: 'Failed to get server members' });
@@ -433,20 +460,19 @@ class ServerController {
             const isOwner = ownerCheck.rows[0]?.owner_id === userId;
 
             if (!isOwner) {
-                // Determine required permission based on whether it's self or other
-                const requiredPerm = isSelf ? 8192n /* CHANGE_NICKNAME */ : 16384n /* MANAGE_NICKNAMES */;
-                const rolesResult = await db.query(
-                    `SELECT r.permissions FROM roles r
-                     JOIN user_roles ur ON r.id = ur.role_id
-                     WHERE ur.user_id = $1 AND ur.server_id = $2`,
-                    [userId, serverId]
-                );
-                let userPerms = 0n;
-                for (const row of rolesResult.rows) userPerms |= BigInt(row.permissions);
-                // Check ADMINISTRATOR or required permission
-                const hasAdmin = (userPerms & 1048576n) === 1048576n;
-                const hasPerm = (userPerms & requiredPerm) === requiredPerm;
-                if (!hasAdmin && !hasPerm) {
+                const requiredPerm = isSelf ? PERMISSIONS.CHANGE_NICKNAME : PERMISSIONS.MANAGE_NICKNAMES;
+                const [rolesResult, everyoneResult] = await Promise.all([
+                    db.query(
+                        `SELECT COALESCE(bit_or(r.permissions::bigint), 0)::text AS perms
+                         FROM roles r JOIN user_roles ur ON r.id = ur.role_id
+                         WHERE ur.user_id = $1 AND ur.server_id = $2`,
+                        [userId, serverId]
+                    ),
+                    db.query(`SELECT permissions FROM roles WHERE server_id = $1 AND name = '@everyone'`, [serverId]),
+                ]);
+                let userPerms = BigInt(rolesResult.rows[0]?.perms || '0');
+                if (everyoneResult.rows[0]) userPerms |= BigInt(everyoneResult.rows[0].permissions);
+                if (!PermissionHandler.hasPermission(userPerms, requiredPerm)) {
                     return res.status(403).json({ error: 'Insufficient permissions' });
                 }
             }

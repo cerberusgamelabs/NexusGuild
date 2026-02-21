@@ -48,7 +48,7 @@ class RoleController {
     static async updateRole(req, res) {
         try {
             const { serverId, roleId } = req.params;
-            const { name, color, permissions } = req.body;
+            const { name, color, permissions, hoist } = req.body;
             const check = await db.query(`SELECT name FROM roles WHERE id = $1`, [roleId]);
             if (check.rows[0]?.name === '@everyone' && name && name !== '@everyone') {
                 return res.status(400).json({ error: 'Cannot rename @everyone' });
@@ -57,9 +57,10 @@ class RoleController {
                 `UPDATE roles SET
                    name = COALESCE($1, name),
                    color = COALESCE($2, color),
-                   permissions = COALESCE($3, permissions)
+                   permissions = COALESCE($3, permissions),
+                   hoist = COALESCE($6, hoist)
                  WHERE id = $4 AND server_id = $5 RETURNING *`,
-                [name, color, permissions, roleId, serverId]
+                [name, color, permissions, roleId, serverId, hoist ?? null]
             );
             if (result.rows.length === 0) return res.status(404).json({ error: 'Role not found' });
             const io = req.app.get('io');
@@ -68,6 +69,27 @@ class RoleController {
         } catch (error) {
             log(tags.error, 'Update role error:', error);
             res.status(500).json({ error: 'Failed to update role' });
+        }
+    }
+
+    // PATCH /api/servers/:serverId/roles/reorder
+    static async reorderRoles(req, res) {
+        try {
+            const { serverId } = req.params;
+            const { order } = req.body;
+            if (!Array.isArray(order)) return res.status(400).json({ error: 'order must be an array' });
+            await Promise.all(order.map((roleId, idx) =>
+                db.query(
+                    `UPDATE roles SET position = $1 WHERE id = $2 AND server_id = $3 AND name != '@everyone'`,
+                    [order.length - idx, roleId, serverId]
+                )
+            ));
+            const io = req.app.get('io');
+            io?.to(`server:${serverId}`).emit('role_updated', { serverId });
+            res.json({ message: 'Role order updated' });
+        } catch (error) {
+            log(tags.error, 'Reorder roles error:', error);
+            res.status(500).json({ error: 'Failed to reorder roles' });
         }
     }
 
