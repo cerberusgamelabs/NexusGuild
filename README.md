@@ -10,9 +10,6 @@ A full-featured real-time chat platform built with Node.js, Express, Socket.io, 
 
 - [Features](#features)
 - [Tech Stack](#tech-stack)
-- [Prerequisites](#prerequisites)
-- [Setup & Running](#setup--running)
-- [Environment Variables](#environment-variables)
 - [REST API Reference](#rest-api-reference)
   - [Authentication](#authentication)
   - [Users](#users)
@@ -51,7 +48,7 @@ A full-featured real-time chat platform built with Node.js, Express, Socket.io, 
 | Server create / rename / delete / icon upload | Implemented |
 | Invite links with expiry and use limits | Implemented |
 | Text, voice, announcement, forum, and media channels | Implemented |
-| Categories with drag-to-organize | Implemented |
+| Categories (create / rename / delete) | Implemented |
 | Real-time messaging with file attachments | Implemented |
 | Message edit and delete | Implemented |
 | Paginated message history (scroll-to-load) | Implemented |
@@ -87,61 +84,6 @@ A full-featured real-time chat platform built with Node.js, Express, Socket.io, 
 | Password hashing | bcryptjs |
 | File uploads | multer |
 | Frontend | Vanilla JS, CSS3 |
-
----
-
-## Prerequisites
-
-- **Node.js** v18 or later
-- **PostgreSQL** 14 or later (or a hosted instance — the project uses Supabase in production)
-- A `.env` file (see [Environment Variables](#environment-variables))
-
----
-
-## Setup & Running
-
-```bash
-# Install dependencies
-npm install
-
-# Start in production mode
-npm start
-
-# Start in development mode (auto-reload via nodemon)
-npm run dev
-```
-
-The server listens on `PORT` (default `3000`). Both HTTP and Socket.io share the same port.
-
-### Database
-
-Run the schema from `DEV/database_setup.sql` against your PostgreSQL instance before first launch. The app will not auto-migrate on startup.
-
-```bash
-psql -U <user> -d <database> -f DEV/database_setup.sql
-```
-
----
-
-## Environment Variables
-
-Create a `.env` file in the project root:
-
-```env
-PORT=3000
-DATABASE_URL=postgresql://user:password@host:5432/dbname
-SESSION_SECRET=your-secret-here
-CLIENT_URL=http://localhost:3000
-NODE_ENV=development
-```
-
-| Variable | Description |
-|---|---|
-| `PORT` | HTTP server port (default: 3000) |
-| `DATABASE_URL` | PostgreSQL connection string |
-| `SESSION_SECRET` | Secret used to sign session cookies |
-| `CLIENT_URL` | CORS allowed origin |
-| `NODE_ENV` | `development` or `production` (affects secure cookies) |
 
 ---
 
