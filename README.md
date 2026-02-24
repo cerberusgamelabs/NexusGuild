@@ -35,7 +35,6 @@ A full-featured real-time chat platform built with Node.js, Express, Socket.io, 
   - [Permission Flags](#permission-flags)
   - [ID Format](#id-format)
   - [File Uploads](#file-uploads)
-- [Sub-Servers](#sub-servers)
 - [License](#license)
 
 ---
@@ -590,22 +589,6 @@ fetch(`/api/messages/channels/${channelId}/messages`, {
 ```
 
 Uploaded files are served from `/uploads/` on the main server. Avatar URLs and attachment URLs in API responses are relative paths — prepend the server origin to resolve them.
-
----
-
-## Sub-Servers
-
-Five auxiliary Express servers run on separate ports, independently of the main app:
-
-| Port | Entry point | Purpose |
-|---|---|---|
-| 3001 | `dev-server.js` | Developer portal (placeholder) |
-| 3002 | `tos-server.js` | Terms of Service |
-| 3003 | `privacy-server.js` | Privacy Policy |
-| 3004 | `reporting-server.js` | Bug/incident reporting (placeholder) |
-| 3005 | `status-server.js` | Platform status page (planned) |
-
-Each serves its corresponding `public_*/` static folder. Start individually with `node <server-file>.js`.
 
 ---
 
