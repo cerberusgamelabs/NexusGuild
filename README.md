@@ -494,7 +494,7 @@ This section describes how to write a custom client (desktop app, mobile app, bo
 ```js
 import { io } from 'socket.io-client';
 
-const socket = io('https://your-server.com', {
+const socket = io('https://nexusguild.gg', {
   withCredentials: true // required — sends the session cookie
 });
 
