@@ -1,0 +1,83 @@
+===============================================================================
+NexusGuild Licensing Overview – Cerberus Game Labs (2026)
+===============================================================================
+
+This repository contains multiple components of the NexusGuild platform. Each component
+is licensed separately, as detailed below. By accessing this repository, you agree
+to the terms of each component’s license.
+
+===============================================================================
+1. Backend & Infrastructure – Proprietary, Viewable Only
+===============================================================================
+
+Copyright (c) 2026 Cerberus Game Labs. All rights reserved.
+
+You may:
+  - View and inspect the source code for educational, audit, or reference purposes.
+  - Study implementation details, algorithms, and architecture.
+
+You may NOT:
+  - Run the backend or infrastructure in any production, public, or commercial environment.
+  - Modify, fork, distribute, or use the backend/infrastructure code to provide services to third parties.
+  - Attempt to bypass security, authentication, monetization, or other platform controls.
+  - Use the backend or infrastructure code to create a competing service or platform.
+
+===============================================================================
+2. Client Apps, SDKs, and Protocol – Business Source License (BSL 1.1)
+===============================================================================
+
+Licensor:
+  Cerberus Game Labs
+
+Licensed Work:
+  Client applications, SDKs, protocol definitions, and any code specifically marked
+  as BSL within this repository.
+
+Copyright:
+  Copyright (c) 2026 Cerberus Game Labs
+
+Additional Use Grant:
+
+You may:
+  - View, fork, and modify the BSL-licensed code for personal, educational, or internal development purposes.
+  - Contribute changes back to the repository.
+
+You may NOT:
+  - Use this software to operate a hosted or managed communication platform for third parties.
+  - Deploy the software in production environments intended for public or commercial use without explicit written permission.
+  - Modify client or server components in a manner intended to:
+     - bypass security mechanisms,
+     - bypass authentication or authorization systems,
+     - bypass usage controls or platform restrictions,
+     - bypass or interfere with monetization systems,
+     - enable unauthorized access to platform features or services.
+
+Production Use Definition:
+  “Production Use” means running the software in any environment that provides services
+  to users outside of personal development, testing, or internal organizational use.
+
+Federation Restriction:
+  The BSL-licensed components may not be used to create or operate federated or
+  distributed nodes intended to interconnect with Cerberus Game Labs infrastructure
+  without explicit written permission.
+
+Change Date:
+  January 1, 2031
+
+Change License:
+  On the Change Date above, BSL-licensed components will automatically be made available
+  under the MIT License.
+
+Future Licensing Notice:
+  Cerberus Game Labs reserves the right to license future versions of the BSL-licensed
+  components under different terms, including fully proprietary licensing.
+
+===============================================================================
+3. General Disclaimer
+===============================================================================
+
+THE SOFTWARE IS PROVIDED “AS IS,” WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE, AND NON-INFRINGEMENT.
+
+===============================================================================
