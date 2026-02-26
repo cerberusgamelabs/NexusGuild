@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NexusGuild Status</title>
+	<link rel="icon" href="https://www.nexusguild.gg/img/favicon.ico">
+    <link rel="stylesheet" href="css/main.css">
+</head>
+<body>
+    <div class="page">
+
+        <header class="site-header">
+            <a class="back-link" href="https://www.nexusguild.gg">← NexusGuild</a>
+            <h1>System Status</h1>
+        </header>
+
+        <div class="overall-banner" id="overallBanner">
+            <span class="banner-icon" id="bannerIcon"></span>
+            <span class="banner-text" id="bannerText">Loading…</span>
+        </div>
+
+        <section class="subsystems-section">
+            <div class="subsystems-list" id="subsystemsList">
+                <!-- Populated by JS -->
+            </div>
+            <div class="history-labels">
+                <span>90 days ago</span>
+                <span>Today</span>
+            </div>
+        </section>
+
+        <p class="last-updated" id="lastUpdated"></p>
+
+        <footer class="site-footer">
+            <p>Questions? <a href="mailto:cerberusgamelabs@gmail.com">cerberusgamelabs@gmail.com</a></p>
+        </footer>
+
+    </div>
+
+    <div class="tooltip" id="tooltip"></div>
+
+    <script>
+        const REFRESH_MS = 60000;
+        let refreshTimer = null;
+        let secondsAgo = 0;
+        let secondsTimer = null;
+
+        const STATUS_LABEL = {
+            operational: 'Operational',
+            degraded:    'Degraded',
+            outage:      'Outage',
+            unknown:     'Unknown',
+            'no-data':   'No data',
+        };
+
+        const OVERALL_CONFIG = {
+            operational: { label: 'All Systems Operational', cls: 'banner--ok' },
+            degraded:    { label: 'Partial Outage',          cls: 'banner--warn' },
+            outage:      { label: 'Major Outage',            cls: 'banner--error' },
+        };
+
+        function formatDate(iso) {
+            const d = new Date(iso + 'T00:00:00Z');
+            return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+        }
+
+        function renderSubsystem(sub) {
+            const statusCls = `status--${sub.current}`;
+            const bars = sub.history.map(h => {
+                const label = `${formatDate(h.day)}\n${STATUS_LABEL[h.status] || h.status}${h.avg_ms !== null ? ' · ' + h.avg_ms + 'ms avg' : ''}`;
+                return `<div class="bar bar--${h.status}" data-tip="${label.replace(/"/g, '&quot;')}"></div>`;
+            }).join('');
+
+            return `
+                <div class="subsystem-row">
+                    <div class="subsystem-name">${sub.name}</div>
+                    <div class="subsystem-bars">${bars}</div>
+                    <div class="subsystem-status">
+                        <span class="status-badge ${statusCls}">${STATUS_LABEL[sub.current] || sub.current}</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function loadStatus() {
+            try {
+                const res = await fetch('/api/status');
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const data = await res.json();
+
+                // Overall banner
+                const cfg = OVERALL_CONFIG[data.overall] || OVERALL_CONFIG.degraded;
+                const banner = document.getElementById('overallBanner');
+                banner.className = `overall-banner ${cfg.cls}`;
+                document.getElementById('bannerText').textContent = cfg.label;
+
+                // Subsystems
+                document.getElementById('subsystemsList').innerHTML =
+                    data.subsystems.map(renderSubsystem).join('');
+
+                // Attach tooltip handlers
+                document.querySelectorAll('.bar[data-tip]').forEach(el => {
+                    el.addEventListener('mouseenter', e => showTooltip(e, el.dataset.tip));
+                    el.addEventListener('mouseleave', hideTooltip);
+                });
+
+                secondsAgo = 0;
+                updateLastUpdated();
+            } catch (e) {
+                console.error('Failed to load status:', e);
+                document.getElementById('bannerText').textContent = 'Status unavailable';
+            }
+        }
+
+        function updateLastUpdated() {
+            const el = document.getElementById('lastUpdated');
+            if (secondsAgo < 5) {
+                el.textContent = 'Last updated just now';
+            } else {
+                el.textContent = `Last updated ${secondsAgo}s ago`;
+            }
+        }
+
+        const tooltip = document.getElementById('tooltip');
+
+        function showTooltip(e, text) {
+            tooltip.innerHTML = text.replace(/\n/g, '<br>');
+            tooltip.classList.add('visible');
+            positionTooltip(e);
+        }
+
+        function hideTooltip() {
+            tooltip.classList.remove('visible');
+        }
+
+        function positionTooltip(e) {
+            const x = e.clientX + 12;
+            const y = e.clientY - 8;
+            const tw = tooltip.offsetWidth;
+            const th = tooltip.offsetHeight;
+            tooltip.style.left = (x + tw > window.innerWidth ? x - tw - 24 : x) + 'px';
+            tooltip.style.top  = (y + th > window.innerHeight ? y - th : y) + 'px';
+        }
+
+        document.addEventListener('mousemove', e => {
+            if (tooltip.classList.contains('visible')) positionTooltip(e);
+        });
+
+        // Boot
+        loadStatus();
+        refreshTimer = setInterval(loadStatus, REFRESH_MS);
+        secondsTimer = setInterval(() => { secondsAgo++; updateLastUpdated(); }, 1000);
+    </script>
+</body>
+</html>

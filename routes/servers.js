@@ -1,3 +1,4 @@
+// Proprietary — Cerberus Game Labs. See LICENSE for terms.
 // File Location: /routes/servers.js
 
 import express from "express";

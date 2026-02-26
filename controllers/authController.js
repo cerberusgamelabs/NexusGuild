@@ -1,3 +1,4 @@
+// Proprietary — Cerberus Game Labs. See LICENSE for terms.
 // File Location: /controllers/authController.js
 
 import bcrypt from "bcryptjs";
@@ -122,7 +123,7 @@ class AuthController {
                     `INSERT INTO user_channel_reads (user_id, channel_id, last_read_message_id)
                      SELECT $1, c.id, m_last.id
                      FROM server_members sm
-                     JOIN channels c ON c.server_id = sm.server_id AND c.type = 'text'
+                     JOIN channels c ON c.server_id = sm.server_id AND c.type IN ('text', 'announcement', 'forum', 'media')
                      JOIN LATERAL (
                          SELECT id FROM messages
                          WHERE channel_id = c.id

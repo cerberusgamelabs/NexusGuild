@@ -1,3 +1,4 @@
+// Proprietary — Cerberus Game Labs. See LICENSE for terms.
 ﻿// File Location: /config/database.js
 
 import { Pool } from "pg";
@@ -193,6 +194,16 @@ const initDB = async () => {
         `);
 
         await client.query(`
+            CREATE TABLE IF NOT EXISTS uptime_log (
+                id SERIAL PRIMARY KEY,
+                subsystem VARCHAR(50) NOT NULL,
+                status VARCHAR(20) NOT NULL,
+                response_ms INTEGER,
+                checked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        await client.query(`
             CREATE TABLE IF NOT EXISTS "session" (
                 "sid"    varchar        NOT NULL COLLATE "default",
                 "sess"   json           NOT NULL,
@@ -213,6 +224,8 @@ const initDB = async () => {
         await pool.query('CREATE INDEX IF NOT EXISTS idx_reactions_user ON reactions(user_id)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_custom_emojis_server ON custom_emojis(server_id)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_bans_server ON bans(server_id)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_uptime_log_subsystem ON uptime_log(subsystem)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_uptime_log_checked_at ON uptime_log(checked_at DESC)');
 
         log(tags.success, 'Database schema initialized successfully');
     } catch (e) {
@@ -224,8 +237,12 @@ const initDB = async () => {
     }
 };
 
+const cleanupUptime = () =>
+    pool.query(`DELETE FROM uptime_log WHERE checked_at < NOW() - INTERVAL '90 days'`);
+
 export default {
     query: (text, params) => pool.query(text, params),
     pool,
-    initDB
+    initDB,
+    cleanupUptime
 };

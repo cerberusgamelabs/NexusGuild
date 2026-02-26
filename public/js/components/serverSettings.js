@@ -317,13 +317,23 @@ function _buildRoleEditor() {
         </div>
         <div id="roleEditorError" style="color:#f23f43;font-size:13px;margin-bottom:12px;display:none;"></div>
         ${!isEveryone ? `
-        <div class="perm-toggle-row" style="margin-bottom:16px;">
+        <div class="perm-toggle-row" style="margin-bottom:8px;">
             <div class="perm-toggle-label">
                 <div class="perm-toggle-name">Display role members separately</div>
                 <div class="perm-toggle-desc">Online members with this role appear in their own group in the member list</div>
             </div>
             <label class="perm-toggle">
                 <input type="checkbox" id="roleHoistToggle" ${role.hoist ? 'checked' : ''}>
+                <span class="perm-toggle-slider"></span>
+            </label>
+        </div>
+        <div class="perm-toggle-row" style="margin-bottom:16px;">
+            <div class="perm-toggle-label">
+                <div class="perm-toggle-name">Allow anyone to @mention this role</div>
+                <div class="perm-toggle-desc">Anyone can mention this role to notify all members who have it</div>
+            </div>
+            <label class="perm-toggle">
+                <input type="checkbox" id="roleMentionableToggle" ${role.mentionable ? 'checked' : ''}>
                 <span class="perm-toggle-slider"></span>
             </label>
         </div>` : ''}
@@ -390,13 +400,14 @@ async function saveSettingsRole() {
         if (cb.checked) perms |= Number(cb.dataset.perm);
     });
     const hoist = document.getElementById('roleHoistToggle')?.checked ?? false;
+    const mentionable = document.getElementById('roleMentionableToggle')?.checked ?? false;
 
     try {
         const res = await fetch(`/api/servers/${_settingsServerId}/roles/${_selectedRoleId}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
-            body: JSON.stringify({ name, color, permissions: String(perms), hoist }),
+            body: JSON.stringify({ name, color, permissions: String(perms), hoist, mentionable }),
         });
         const data = await res.json();
         if (!res.ok) { errEl.textContent = data.error || 'Failed to save.'; errEl.style.display = 'block'; return; }

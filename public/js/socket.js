@@ -76,6 +76,12 @@ function initializeSocket() {
         }
     });
 
+    state.socket.on('server_joined', async ({ serverId }) => {
+        await loadUserServers();
+        const server = state.servers.find(s => s.id === serverId);
+        if (server) selectServer(serverId);
+    });
+
     state.socket.on('user_left', (data) => {
         state.members = state.members.filter(m => m.id !== data.userId);
         renderMemberList();
@@ -120,6 +126,26 @@ function initializeSocket() {
         if (state.currentServer?.id === data.serverId) loadServerChannels(data.serverId);
     });
 
+    state.socket.on('permissions_updated', async ({ serverId }) => {
+        if (state.currentServer && state.currentServer.id === serverId) {
+            await loadServerChannels(serverId);
+            renderChannelList(state.channels, state.categories);
+        }
+    });
+
+    // ── Forum Events ───────────────────────────────────────────────
+    state.socket.on('forum_post_created', (data) => {
+        if (typeof onForumPostCreated === 'function') onForumPostCreated(data);
+    });
+
+    state.socket.on('forum_reply_added', (data) => {
+        if (typeof onForumReplyAdded === 'function') onForumReplyAdded(data);
+    });
+
+    state.socket.on('forum_post_deleted', (data) => {
+        if (typeof onForumPostDeleted === 'function') onForumPostDeleted(data);
+    });
+
     state.socket.on('reaction_added', (data) => {
         const { messageId, reactions } = data;
         updateMessageReactions(messageId, reactions);
@@ -149,6 +175,15 @@ function initializeSocket() {
     state.socket.on('user_stop_typing', (data) => {
         typingUsers.delete(data.username);
         updateTypingIndicator();
+    });
+
+    // ── Voice presence ──────────────────────────────────────────────────────
+    state.socket.on('voice_state_update', (data) => {
+        if (typeof onVoiceStateUpdate === 'function') onVoiceStateUpdate(data);
+    });
+
+    state.socket.on('user_voice_state', (data) => {
+        if (typeof onUserVoiceState === 'function') onUserVoiceState(data);
     });
 
     function updateTypingIndicator() {

@@ -1,3 +1,4 @@
+// Proprietary — Cerberus Game Labs. See LICENSE for terms.
 // File Location: /utils/functions.js
 
 import fs from 'fs';

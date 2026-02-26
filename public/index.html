@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="/css/main.css">
     <link rel="stylesheet" href="/css/reactions.css">
     <link rel="stylesheet" href="/css/dm.css">
+    <link rel="stylesheet" href="/css/voice.css">
 </head>
 <body>
 
@@ -62,6 +63,18 @@
             <button class="toggle-button" onclick="logout()">
                 <img src="img/settings.png" alt="Settings">
             </button>
+        </div>
+
+        <!-- ── Voice connected bar (shown when user is in a voice channel) ── -->
+        <div id="voicePanel" class="voice-panel" style="display:none;">
+            <div class="voice-panel-header">
+                <div class="voice-panel-channel-info">
+                    <span class="voice-panel-icon">🔊</span>
+                    <span id="voicePanelChannelName" class="voice-panel-channel-name"></span>
+                </div>
+                <button class="voice-leave-btn" onclick="leaveVoice()" title="Disconnect from voice">&#128308;</button>
+            </div>
+            <div id="voiceParticipantList" class="voice-participant-list"></div>
         </div>
 
         <div class="main-container">
@@ -191,14 +204,13 @@
                 <p class="modal-hint">Choose a name and type for your new channel.</p>
                 <input type="text" id="createChannelName" class="modal-input" placeholder="Channel name"
                        onkeypress="if(event.key==='Enter') submitCreateChannel()">
-                <div class="channel-type-toggle">
-                    <label class="channel-type-option">
-                        <input type="radio" name="channelType" value="text" checked onchange="onChannelTypeChange(this)"> # Text
-                    </label>
-                    <label class="channel-type-option">
-                        <input type="radio" name="channelType" value="voice" onchange="onChannelTypeChange(this)"> 🔊 Voice
-                    </label>
-                </div>
+                <select id="createChannelType" class="modal-input" onchange="onChannelTypeChange(this)">
+                    <option value="text"># Text</option>
+                    <option value="voice">🔊 Voice</option>
+                    <option value="announcement">📢 Announcement</option>
+                    <option value="forum">💬 Forum</option>
+                    <option value="media">🖼️ Media</option>
+                </select>
                 <label style="display:flex; flex-direction:column; gap:6px; font-size:13px; color:#b5bac1;">
                     Category
                     <select id="createChannelCategory" class="modal-input" style="letter-spacing:normal;">
@@ -243,6 +255,9 @@
         </div>
     </div>
 
+    <!-- ── Channel Permissions Overlay ──────────────────────────────────────── -->
+    <div id="channelPermsOverlay" style="display:none;"></div>
+
     <!-- ── Server Settings Overlay ───────────────────────────────────────────── -->
     <div id="serverSettingsOverlay" class="settings-overlay" style="display:none;">
         <div class="settings-layout">
@@ -264,6 +279,7 @@
 
     <input type="file" id="avatarFileInput" accept="image/*" style="display:none" onchange="uploadUserAvatar(event)">
 
+    <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
     <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
     <script src="/js/app.js"></script>
     <script src="/js/socket.js"></script>
@@ -274,9 +290,12 @@
     <script src="/js/components/channelList.js"></script>
     <script src="/js/components/messageList.js"></script>
     <script src="/js/components/memberList.js"></script>
+    <script src="/js/components/voicePanel.js"></script>
     <script src="/js/components/emojiPicker.js"></script>
     <script src="/js/components/reactionDisplay.js"></script>
     <script src="/js/components/dmView.js"></script>
     <script src="/js/components/serverSettings.js"></script>
+    <script src="/js/components/channelPerms.js"></script>
+    <script src="/js/components/forumView.js"></script>
 </body>
 </html>

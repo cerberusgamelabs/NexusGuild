@@ -1,9 +1,11 @@
+// Proprietary — Cerberus Game Labs. See LICENSE for terms.
 // File Location: /controllers/channelController.js
 
 import db from "../config/database.js";
 import { generateSnowflake } from "#utils/functions";
 import { log, tags } from "#utils/logging";
 import { PermissionHandler, PERMISSIONS } from "../config/permissions.js";
+import { batchResolveChannelPerms } from "../utils/channelPerms.js";
 
 // Resolve channelId → serverId and check if userId holds the given permission.
 // Returns { serverId, allowed } or null if the channel doesn't exist.
@@ -64,9 +66,24 @@ class ChannelController {
                 [serverId, userId, username]
             );
 
+            // Resolve per-channel permissions and filter out invisible channels
+            const channelIds = channelsResult.rows.map(c => c.id);
+            const channelPerms = await batchResolveChannelPerms(userId, serverId, channelIds);
+
+            const visibleChannels = channelsResult.rows.filter(ch => {
+                const perms = channelPerms[ch.id] ?? 0n;
+                return PermissionHandler.hasPermission(perms, PERMISSIONS.VIEW_CHANNEL) ||
+                       PermissionHandler.hasPermission(perms, PERMISSIONS.ADMINISTRATOR);
+            });
+
+            const channels = visibleChannels.map(ch => ({
+                ...ch,
+                my_permissions: (channelPerms[ch.id] ?? 0n).toString(),
+            }));
+
             res.json({
                 categories: categoriesResult.rows,
-                channels: channelsResult.rows
+                channels,
             });
         } catch (error) {
             log(tags.error, 'Get server channels error:', error);

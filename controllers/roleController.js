@@ -1,3 +1,4 @@
+// Proprietary — Cerberus Game Labs. See LICENSE for terms.
 // File Location: /controllers/roleController.js
 
 import db from "../config/database.js";
@@ -48,7 +49,7 @@ class RoleController {
     static async updateRole(req, res) {
         try {
             const { serverId, roleId } = req.params;
-            const { name, color, permissions, hoist } = req.body;
+            const { name, color, permissions, hoist, mentionable } = req.body;
             const check = await db.query(`SELECT name FROM roles WHERE id = $1`, [roleId]);
             if (check.rows[0]?.name === '@everyone' && name && name !== '@everyone') {
                 return res.status(400).json({ error: 'Cannot rename @everyone' });
@@ -58,9 +59,10 @@ class RoleController {
                    name = COALESCE($1, name),
                    color = COALESCE($2, color),
                    permissions = COALESCE($3, permissions),
-                   hoist = COALESCE($6, hoist)
+                   hoist = COALESCE($6, hoist),
+                   mentionable = COALESCE($7, mentionable)
                  WHERE id = $4 AND server_id = $5 RETURNING *`,
-                [name, color, permissions, roleId, serverId, hoist ?? null]
+                [name, color, permissions, roleId, serverId, hoist ?? null, mentionable ?? null]
             );
             if (result.rows.length === 0) return res.status(404).json({ error: 'Role not found' });
             const io = req.app.get('io');

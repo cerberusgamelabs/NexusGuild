@@ -1,0 +1,324 @@
+// Proprietary — Cerberus Game Labs. See LICENSE for terms.
+// File Location: /public/js/components/voicePanel.js
+//
+// Manages the LiveKit voice connection and voice UI.
+// Globals used from other scripts:
+//   LivekitClient  — UMD CDN build on window
+//   state          — app.js global state object
+//   micMuted       — app.js global
+//   deafened       — app.js global
+//   renderChannelList — channelList.js
+//   getInitials    — memberList.js
+
+// ── Module state ──────────────────────────────────────────────────────────────
+
+let _lkRoom          = null;
+let _voiceChannelId  = null;
+let _voiceServerId   = null;
+let _activeSpeakerIds = new Set();
+
+// ── Public: join/leave ────────────────────────────────────────────────────────
+
+async function joinVoice(channelId, serverId) {
+    try {
+        await _joinVoiceInternal(channelId, serverId);
+    } catch (e) {
+        console.error('[voice] Unhandled error in joinVoice:', e);
+        showToast('Voice connection failed. Check the console for details.', 'error');
+        _lkRoom = null;
+        _voiceChannelId = null;
+        _voiceServerId = null;
+        _hideVoicePanel();
+    }
+}
+
+async function _joinVoiceInternal(channelId, serverId) {
+    // Idempotent — already in this channel
+    if (_lkRoom && _lkRoom.state !== 'disconnected' && _voiceChannelId === channelId) return;
+
+    // One connection at a time — leave current first
+    if (_lkRoom && _lkRoom.state !== 'disconnected') {
+        await leaveVoice();
+    }
+
+    _voiceChannelId = channelId;
+    _voiceServerId  = serverId;
+
+    // Fetch token from backend
+    let tokenData;
+    try {
+        const res = await fetch(
+            `/api/voice/token?channelId=${channelId}&serverId=${serverId}`,
+            { credentials: 'include' }
+        );
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.error || 'Failed to join voice channel', 'error');
+            _voiceChannelId = null;
+            _voiceServerId  = null;
+            return;
+        }
+        tokenData = await res.json();
+    } catch (e) {
+        console.error('Voice token fetch failed:', e);
+        showToast('Could not connect to voice. Please try again.', 'error');
+        _voiceChannelId = null;
+        _voiceServerId  = null;
+        return;
+    }
+
+    const { Room, RoomEvent } = LivekitClient;
+
+    _lkRoom = new Room({
+        adaptiveStream: true,
+        dynacast: true,
+    });
+
+    // Bind room events
+    _lkRoom
+        .on(RoomEvent.ParticipantConnected,    _onParticipantConnected)
+        .on(RoomEvent.ParticipantDisconnected, _onParticipantDisconnected)
+        .on(RoomEvent.ActiveSpeakersChanged,   _onActiveSpeakersChanged)
+        .on(RoomEvent.TrackSubscribed,         _onTrackSubscribed)
+        .on(RoomEvent.TrackUnsubscribed,       _onTrackUnsubscribed)
+        .on(RoomEvent.TrackMuted,              _onTrackMuted)
+        .on(RoomEvent.TrackUnmuted,            _onTrackUnmuted)
+        .on(RoomEvent.Disconnected,            _onRoomDisconnected);
+
+    // Connect to LiveKit Cloud
+    try {
+        await _lkRoom.connect(tokenData.url, tokenData.token);
+    } catch (e) {
+        console.error('LiveKit connect failed:', e);
+        showToast('Failed to connect to voice server.', 'error');
+        _lkRoom = null;
+        _voiceChannelId = null;
+        _voiceServerId  = null;
+        return;
+    }
+
+    // Enable mic (respects current mute/deafen state from app.js)
+    if (!micMuted && !deafened) {
+        await _lkRoom.localParticipant.setMicrophoneEnabled(true).catch(err => {
+            console.error('Could not enable microphone:', err);
+        });
+    }
+
+    // Apply current deafen state to any already-subscribed remote tracks
+    if (deafened) {
+        _lkRoom.remoteParticipants.forEach(p => {
+            p.trackPublications.forEach(pub => {
+                if (pub.track?.kind === 'audio') {
+                    pub.track.mediaStreamTrack.enabled = false;
+                }
+            });
+        });
+    }
+
+    // Notify Socket.io (drives channel list presence for all members)
+    if (state.socket) {
+        state.socket.emit('join_voice', { channelId, serverId });
+    }
+
+    _showVoicePanel(channelId);
+    _renderVoiceParticipants();
+}
+
+async function leaveVoice() {
+    if (!_lkRoom) return;
+
+    const channelId = _voiceChannelId;
+    const serverId  = _voiceServerId;
+
+    // Notify Socket.io before disconnect so serverId is still set
+    if (state.socket && channelId && serverId) {
+        state.socket.emit('leave_voice', { channelId, serverId });
+    }
+
+    try {
+        await _lkRoom.localParticipant.setMicrophoneEnabled(false);
+    } catch (_) {}
+
+    await _lkRoom.disconnect();
+
+    // Remove all injected audio elements
+    document.querySelectorAll('[id^="voice-audio-"]').forEach(el => el.remove());
+
+    _lkRoom          = null;
+    _voiceChannelId  = null;
+    _voiceServerId   = null;
+    _activeSpeakerIds.clear();
+
+    _hideVoicePanel();
+}
+
+// ── Public: called by toggleMic() / toggleDeafen() in app.js ─────────────────
+
+function setLiveKitMicMuted(muted) {
+    if (!_lkRoom) return;
+    _lkRoom.localParticipant.setMicrophoneEnabled(!muted)
+        .catch(err => console.error('setMicrophoneEnabled error:', err));
+}
+
+function setLiveKitDeafened(isDeafened) {
+    document.querySelectorAll('[id^="voice-audio-"]').forEach(el => {
+        el.muted = isDeafened;
+    });
+}
+
+// ── Room event handlers ───────────────────────────────────────────────────────
+
+function _onTrackSubscribed(track, publication, participant) {
+    if (track.kind !== 'audio') return;
+    const el = track.attach();
+    el.id = `voice-audio-${participant.identity}`;
+    el.muted = deafened;
+    document.body.appendChild(el);
+}
+
+function _onTrackUnsubscribed(track, publication, participant) {
+    if (track.kind !== 'audio') return;
+    track.detach().forEach(el => el.remove());
+}
+
+function _onParticipantConnected() {
+    _renderVoiceParticipants();
+}
+
+function _onParticipantDisconnected(participant) {
+    _activeSpeakerIds.delete(participant.identity);
+    _renderVoiceParticipants();
+}
+
+function _onActiveSpeakersChanged(speakers) {
+    _activeSpeakerIds.clear();
+    speakers.forEach(p => _activeSpeakerIds.add(p.identity));
+    _updateSpeakingIndicators();
+}
+
+function _onTrackMuted() {
+    _renderVoiceParticipants();
+}
+
+function _onTrackUnmuted() {
+    _renderVoiceParticipants();
+}
+
+function _onRoomDisconnected() {
+    const channelId = _voiceChannelId;
+    const serverId  = _voiceServerId;
+
+    if (state.socket && channelId && serverId) {
+        state.socket.emit('leave_voice', { channelId, serverId });
+    }
+
+    document.querySelectorAll('[id^="voice-audio-"]').forEach(el => el.remove());
+
+    _lkRoom          = null;
+    _voiceChannelId  = null;
+    _voiceServerId   = null;
+    _activeSpeakerIds.clear();
+    _hideVoicePanel();
+}
+
+// ── Panel UI ──────────────────────────────────────────────────────────────────
+
+function _showVoicePanel(channelId) {
+    const panel  = document.getElementById('voicePanel');
+    const nameEl = document.getElementById('voicePanelChannelName');
+    if (!panel) return;
+
+    const channel = state.channels.find(c => c.id === channelId);
+    if (nameEl) nameEl.textContent = channel ? channel.name : 'Voice Channel';
+
+    panel.style.display = 'flex';
+}
+
+function _hideVoicePanel() {
+    const panel = document.getElementById('voicePanel');
+    if (panel) panel.style.display = 'none';
+}
+
+function _renderVoiceParticipants() {
+    const list = document.getElementById('voiceParticipantList');
+    if (!list || !_lkRoom) return;
+
+    list.innerHTML = '';
+
+    // Local participant
+    const local = _lkRoom.localParticipant;
+    if (local) {
+        const isSpeaking = _activeSpeakerIds.has(local.identity);
+        const isMuted    = !local.isMicrophoneEnabled;
+        list.appendChild(_makeParticipantEl(local.identity, local.name || local.identity, isMuted, deafened, isSpeaking, true));
+    }
+
+    // Remote participants
+    _lkRoom.remoteParticipants.forEach(p => {
+        const isSpeaking = _activeSpeakerIds.has(p.identity);
+        let remoteMuted  = true;
+        p.trackPublications.forEach(pub => {
+            if (pub.source === LivekitClient.Track.Source.Microphone) {
+                remoteMuted = pub.isMuted;
+            }
+        });
+        list.appendChild(_makeParticipantEl(p.identity, p.name || p.identity, remoteMuted, false, isSpeaking, false));
+    });
+}
+
+function _makeParticipantEl(userId, displayName, muted, isDeafened, speaking, isLocal) {
+    const member    = state.members?.find(m => m.id === userId);
+    const avatar    = member?.avatar;
+    const roleColor = member?.role_color;
+
+    const avatarHtml = avatar
+        ? `<img src="${avatar}" class="voice-participant-avatar" alt="">`
+        : `<div class="voice-participant-avatar voice-participant-initials">${getInitials(displayName)}</div>`;
+
+    const nameStyle    = roleColor ? ` style="color:${roleColor}"` : '';
+    const speakingClass = speaking ? ' speaking' : '';
+    const label        = isLocal ? `${displayName} (you)` : displayName;
+
+    const el = document.createElement('div');
+    el.className    = `voice-participant${speakingClass}`;
+    el.dataset.userId = userId;
+    el.innerHTML = `
+        <div class="voice-participant-av-wrap${speakingClass}">${avatarHtml}</div>
+        <span class="voice-participant-name"${nameStyle}>${label}</span>
+        <div class="voice-participant-icons">
+            ${muted      ? '<span class="voice-icon" title="Muted">&#128263;</span>'     : ''}
+            ${isDeafened ? '<span class="voice-icon" title="Deafened">&#128264;</span>' : ''}
+        </div>`;
+    return el;
+}
+
+function _updateSpeakingIndicators() {
+    const list = document.getElementById('voiceParticipantList');
+    if (!list) return;
+
+    list.querySelectorAll('.voice-participant').forEach(el => {
+        const speaking = _activeSpeakerIds.has(el.dataset.userId);
+        el.classList.toggle('speaking', speaking);
+        el.querySelector('.voice-participant-av-wrap')?.classList.toggle('speaking', speaking);
+    });
+}
+
+// ── Socket event handlers (called from socket.js) ─────────────────────────────
+
+function onVoiceStateUpdate(data) {
+    if (!state.voiceStates) state.voiceStates = {};
+    if (data.joined) {
+        state.voiceStates[data.userId] = {
+            channelId: data.channelId,
+            username:  data.username,
+            userId:    data.userId,
+        };
+    } else {
+        delete state.voiceStates[data.userId];
+    }
+    renderChannelList(state.channels, state.categories);
+}
+
+function onUserVoiceState() {
+    _renderVoiceParticipants();
+}

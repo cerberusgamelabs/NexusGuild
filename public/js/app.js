@@ -8,34 +8,51 @@ const state = {
     categories: [],
     messages: [],
     members: [],
+    roles: [],
     socket: null,
     isAuthenticated: false,
     hasMoreMessages: true,
     isLoadingMessages: false,
     unread: {},
-    myPermissions: 0n,  // current user's effective permissions in currentServer (BigInt)
+    voiceStates: {},
+    myPermissions: 0n,      // current user's effective server-level permissions (BigInt)
+    myChannelPerms: {},     // { [channelId]: BigInt } — channel-level resolved perms
 };
 
 // Client-side permission bit values — matches Discord's bit positions exactly
 const CLIENT_PERMS = {
-    KICK_MEMBERS:      2n,
-    BAN_MEMBERS:       4n,
-    ADMINISTRATOR:     8n,
-    MANAGE_CHANNELS:   16n,
-    MANAGE_GUILD:      32n,
-    MANAGE_MESSAGES:   8192n,
-    MANAGE_ROLES:      268435456n,
-    MANAGE_NICKNAMES:  134217728n,
+    KICK_MEMBERS:         2n,
+    BAN_MEMBERS:          4n,
+    ADMINISTRATOR:        8n,
+    MANAGE_CHANNELS:      16n,
+    MANAGE_GUILD:         32n,
+    ADD_REACTIONS:        64n,
+    VIEW_CHANNEL:         1024n,
+    SEND_MESSAGES:        2048n,
+    MANAGE_MESSAGES:      8192n,
+    EMBED_LINKS:          16384n,
+    ATTACH_FILES:         32768n,
+    READ_MESSAGE_HISTORY: 65536n,
+    MENTION_EVERYONE:     131072n,
+    MANAGE_ROLES:         268435456n,
+    MANAGE_NICKNAMES:     134217728n,
+    CONNECT:              1048576n,
+    SPEAK:                2097152n,
 };
 
-// Returns true if the current user has the given permission in the current server.
+// Returns true if the current user has the given permission.
+// Pass channelId to check channel-level overrides; omit for server-level only.
 // Server owners always return true.
-function clientHasPermission(perm) {
+function clientHasPermission(perm, channelId = null) {
     if (!state.currentServer || !state.currentUser) return false;
     if (state.currentServer.owner_id === state.currentUser.id) return true;
-    const perms = state.myPermissions || 0n;
-    if ((perms & CLIENT_PERMS.ADMINISTRATOR) === CLIENT_PERMS.ADMINISTRATOR) return true;
-    return (perms & perm) === perm;
+    const serverPerms = state.myPermissions || 0n;
+    if ((serverPerms & CLIENT_PERMS.ADMINISTRATOR) === CLIENT_PERMS.ADMINISTRATOR) return true;
+    // Channel-level perms take precedence when available
+    if (channelId && state.myChannelPerms[channelId] !== undefined) {
+        return !!(state.myChannelPerms[channelId] & perm);
+    }
+    return !!(serverPerms & perm);
 }
 
 // ── Unread / Mention helpers ──────────────────────────────────────────────────
@@ -48,7 +65,14 @@ function parseMentions(content) {
     if (!content || !state.currentUser) return false;
     const lower = content.toLowerCase();
     const username = state.currentUser.username.toLowerCase();
-    return lower.includes(`@${username}`) || lower.includes('@everyone') || lower.includes('@here');
+    if (lower.includes(`@${username}`) || lower.includes('@everyone') || lower.includes('@here')) return true;
+    // Check if content mentions a mentionable role that the current user has
+    const myMember = (state.members || []).find(m => m.id === state.currentUser.id);
+    const myRoleIds = new Set((myMember?.roles || []).map(r => r.id));
+    for (const role of (state.roles || [])) {
+        if (role.mentionable && myRoleIds.has(role.id) && lower.includes(`@${role.name.toLowerCase()}`)) return true;
+    }
+    return false;
 }
 
 function trackUnread(channelId, serverId, isMention) {
@@ -98,6 +122,10 @@ function showBrowserNotification(username, content, channelId) {
     });
     n.onclick = () => { window.focus(); if (channel) selectChannel(channelId); n.close(); };
 }
+
+window.addEventListener('beforeunload', () => {
+    if (typeof leaveVoice === 'function') leaveVoice();
+});
 
 // Initialize app
 document.addEventListener('DOMContentLoaded', async () => {
@@ -222,6 +250,9 @@ async function loadUserServers() {
 }
 
 function selectServer(serverId) {
+    // Leave voice before switching servers
+    if (typeof leaveVoice === 'function') leaveVoice();
+
     // Guard for DM view teardown (may not be implemented yet)
     if (typeof teardownDMView === 'function') {
         teardownDMView();
@@ -231,7 +262,9 @@ function selectServer(serverId) {
     if (!server) return;
 
     state.currentServer = server;
-    state.myPermissions = 0n;  // reset until loadServerMembers resolves
+    state.myPermissions = 0n;      // reset until loadServerMembers resolves
+    state.myChannelPerms = {};     // reset until loadServerChannels resolves
+    state.roles = [];              // reset until loadServerMembers resolves
 
     if (state.socket) {
         state.socket.emit('join_server', serverId);
@@ -258,6 +291,13 @@ async function loadServerChannels(serverId) {
             const data = await response.json();
             state.channels = data.channels;
             state.categories = data.categories;
+
+            // Populate per-channel permission cache
+            state.myChannelPerms = {};
+            data.channels.forEach(ch => {
+                if (ch.my_permissions !== undefined)
+                    state.myChannelPerms[ch.id] = BigInt(ch.my_permissions);
+            });
 
             // Merge server-side unread counts into state.
             // null  → no user_channel_reads row yet — leave localStorage cache intact.
@@ -288,8 +328,8 @@ async function loadServerChannels(serverId) {
 
             renderChannelList(data.channels, data.categories);
 
-            // Auto-select first text channel
-            const firstTextChannel = data.channels.find(c => c.type === 'text');
+            // Auto-select first messageable channel
+            const firstTextChannel = data.channels.find(c => ['text', 'announcement', 'forum', 'media'].includes(c.type));
             if (firstTextChannel) {
                 selectChannel(firstTextChannel.id);
             }
@@ -316,10 +356,35 @@ function selectChannel(channelId) {
         state.socket.emit('join_channel', channelId);
     }
 
-    document.getElementById('currentChannelName').textContent =
-        channel.type === 'voice' ? `🔊 ${channel.name}` : `# ${channel.name}`;
+    const chIcon = channel.type === 'voice'        ? '🔊'
+                 : channel.type === 'announcement' ? '📢'
+                 : channel.type === 'forum'        ? '💬'
+                 : channel.type === 'media'        ? '🖼️'
+                 : '#';
+    document.getElementById('currentChannelName').textContent = `${chIcon} ${channel.name}`;
 
-    loadChannelMessages(channelId);
+    _updateInputForChannel(channel);
+
+    if (channel.type === 'voice') {
+        state.messages = [];
+        renderMessages();
+        const container = document.getElementById('messagesContainer');
+        if (container) container.innerHTML = `
+            <div class="channel-splash">
+                <div class="channel-splash-icon">🔊</div>
+                <div class="channel-splash-name">${channel.name}</div>
+                <button class="btn-primary voice-join-splash-btn"
+                        onclick="joinVoice('${channel.id}','${state.currentServer.id}')">
+                    Join Voice
+                </button>
+            </div>`;
+    } else if (channel.type === 'forum' || channel.type === 'media') {
+        state.messages = [];
+        openForumView(channel);
+    } else {
+        if (typeof closeForumView === 'function') closeForumView();
+        loadChannelMessages(channelId);
+    }
     mobileShowMessages();
 
     // Update UI
@@ -327,6 +392,31 @@ function selectChannel(channelId) {
         btn.classList.remove('active');
     });
     document.querySelector(`[data-channel-id="${channelId}"]`)?.classList.add('active');
+}
+
+function _updateInputForChannel(channel) {
+    const inputArea = document.querySelector('.input-area');
+    const msgInput  = document.getElementById('messageInput');
+    if (!inputArea || !msgInput) return;
+
+    if (channel.type === 'voice' || channel.type === 'forum' || channel.type === 'media') {
+        inputArea.style.display = 'none';
+        return;
+    }
+
+    inputArea.style.display = '';
+
+    const canSend = clientHasPermission(CLIENT_PERMS.SEND_MESSAGES, channel.id);
+
+    if (!canSend) {
+        msgInput.disabled = true;
+        msgInput.placeholder = channel.type === 'announcement'
+            ? 'You cannot send messages in announcement channels.'
+            : 'You do not have permission to send messages here.';
+    } else {
+        msgInput.disabled = false;
+        msgInput.placeholder = `Message #${channel.name}`;
+    }
 }
 
 async function loadChannelMessages(channelId) {
@@ -338,6 +428,8 @@ async function loadChannelMessages(channelId) {
         });
         if (response.ok) {
             const data = await response.json();
+            // Discard if the user navigated away while the fetch was in-flight
+            if (state.currentChannel?.id !== channelId) return;
             state.messages = data.messages;
             renderMessages();
             scrollToBottom();
@@ -357,12 +449,18 @@ async function loadChannelMessages(channelId) {
 
 async function loadServerMembers(serverId) {
     try {
-        const response = await fetch(`/api/servers/${serverId}/members`, {
-            credentials: 'include'
-        });
+        const [membersResponse, rolesResponse] = await Promise.all([
+            fetch(`/api/servers/${serverId}/members`, { credentials: 'include' }),
+            fetch(`/api/servers/${serverId}/roles`, { credentials: 'include' }),
+        ]);
 
-        if (response.ok) {
-            const data = await response.json();
+        if (rolesResponse.ok) {
+            const rolesData = await rolesResponse.json();
+            state.roles = rolesData.roles || [];
+        }
+
+        if (membersResponse.ok) {
+            const data = await membersResponse.json();
             state.members = data.members;
             state.myPermissions = BigInt(data.myPermissions || '0');
 
@@ -376,6 +474,8 @@ async function loadServerMembers(serverId) {
             renderMemberList();
             // Re-render messages now that avatar/role-color maps are available
             if (state.messages?.length > 0) renderMessages();
+            // Refresh input state now that channel-level perms are known
+            if (state.currentChannel) _updateInputForChannel(state.currentChannel);
         }
     } catch (error) {
         console.error('Error loading members:', error);
@@ -399,6 +499,11 @@ function updateMentionDropdown(textarea) {
     const matches = [];
     if ('everyone'.startsWith(lower)) matches.push({ id: '__everyone', displayName: 'everyone', sub: 'Notify all members' });
     if ('here'.startsWith(lower))     matches.push({ id: '__here',     displayName: 'here',     sub: 'Notify online members' });
+    for (const role of (state.roles || [])) {
+        if (!role.mentionable || role.name === '@everyone') continue;
+        if (role.name.toLowerCase().startsWith(lower))
+            matches.push({ id: `__role_${role.id}`, displayName: role.name, sub: 'Role', role_color: role.color });
+    }
     for (const m of (state.members || [])) {
         const nick  = (m.nickname || '').toLowerCase();
         const uname = m.username.toLowerCase();
@@ -614,6 +719,8 @@ function toggleMic() {
         if (state.socket) {
             state.socket.emit('voice_state_change', { muted: micMuted, deafened });
         }
+
+        if (typeof setLiveKitMicMuted === 'function') setLiveKitMicMuted(micMuted);
     }
 }
 
@@ -636,6 +743,9 @@ function toggleDeafen() {
     if (state.socket) {
         state.socket.emit('voice_state_change', { muted: micMuted, deafened });
     }
+
+    if (typeof setLiveKitMicMuted  === 'function') setLiveKitMicMuted(micMuted);
+    if (typeof setLiveKitDeafened  === 'function') setLiveKitDeafened(deafened);
 }
 
 // ── Mobile panel navigation ────────────────────────────────────────────────
@@ -752,7 +862,7 @@ function showCreateChannelModal() {
     if (!state.currentServer) return;
     document.getElementById('createChannelName').value = '';
     document.getElementById('createChannelError').style.display = 'none';
-    document.querySelector('input[name="channelType"][value="text"]').checked = true;
+    document.getElementById('createChannelType').value = 'text';
 
     // Populate category dropdown from current server's categories
     const select = document.getElementById('createChannelCategory');
@@ -829,7 +939,7 @@ function closeCreateChannelModal(e) {
 
 async function submitCreateChannel() {
     const name = document.getElementById('createChannelName').value.trim();
-    const type = document.querySelector('input[name="channelType"]:checked').value;
+    const type = document.getElementById('createChannelType').value;
     const categoryId = document.getElementById('createChannelCategory').value || null;
     const errorEl = document.getElementById('createChannelError');
     errorEl.style.display = 'none';

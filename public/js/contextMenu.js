@@ -297,10 +297,12 @@ function attachChannelContextMenu(el, channel) {
 
         ctxMenu._handlers.renameChannel = () => promptRenameChannel(channel);
         ctxMenu._handlers.deleteChannel = () => promptDeleteChannel(channel);
+        ctxMenu._handlers.editPerms     = () => openChannelPerms(channel);
 
         ctxMenu.show(e.clientX, e.clientY, [
-            { label: 'Rename Channel', action: 'renameChannel' },
-            { label: 'Delete Channel', action: 'deleteChannel', danger: true }
+            { label: 'Edit Permissions', action: 'editPerms' },
+            { label: 'Rename Channel',   action: 'renameChannel' },
+            { label: 'Delete Channel',   action: 'deleteChannel', danger: true }
         ]);
     });
 }
@@ -359,6 +361,7 @@ function attachMemberContextMenu(el, member) {
         }
 
         items.push({ label: 'Copy Username', action: 'copyUsername' });
+        items.push({ label: 'Copy User ID', action: 'copyUserId' });
 
         if (!isSelf && !isTargetOwner) {
             const canKick = clientHasPermission(CLIENT_PERMS.KICK_MEMBERS);
@@ -377,6 +380,7 @@ function attachMemberContextMenu(el, member) {
         ctxMenu._handlers.setNickname    = () => ctxSetNicknameForMember(member);
         ctxMenu._handlers.manageRoles    = () => ctxOpenRoleAssignMenu(member);
         ctxMenu._handlers.copyUsername   = () => navigator.clipboard.writeText(member.username);
+        ctxMenu._handlers.copyUserId     = () => navigator.clipboard.writeText(member.id);
         ctxMenu._handlers.kickMember     = () => ctxKickMember(member);
         ctxMenu._handlers.banMember      = () => ctxBanMember(member);
 

@@ -1,3 +1,4 @@
+// Proprietary — Cerberus Game Labs. See LICENSE for terms.
 // File Location: /controllers/serverController.js
 
 import db from "../config/database.js";

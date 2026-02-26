@@ -47,19 +47,20 @@
 .emoji-picker-content {
     max-height: 340px;
     overflow-y: auto;
-    padding: 12px;
+    overflow-x: hidden;
+    padding: 8px;
 }
 
 .emoji-picker-grid {
     display: grid;
-    grid-template-columns: repeat(8, 1fr);
-    gap: 4px;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 2px;
 }
 
 .emoji-option {
     background: none;
     border: none;
-    padding: 8px;
+    padding: 4px;
     font-size: 24px;
     cursor: pointer;
     border-radius: 4px;
@@ -214,6 +215,6 @@
 
     .emoji-option {
         font-size: 20px;
-        padding: 6px;
+        padding: 3px;
     }
 }

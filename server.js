@@ -1,3 +1,4 @@
+// Proprietary — Cerberus Game Labs. See LICENSE for terms.
 // File Location: /server.js
 
 import dotenv from "dotenv";
@@ -10,6 +11,7 @@ import connectPgSimple from 'connect-pg-simple';
 const pgSession = connectPgSimple(session);
 import cors from "cors";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { log, tags } from "#utils/logging";
@@ -28,6 +30,9 @@ import messageRoutes from "./routes/messages.js";
 import reactionRoutes from './routes/reactions.js';
 import dmRoutes from "./routes/dm.js";
 import userRoutes from "./routes/users.js";
+import importRoutes from "./routes/import.js";
+import forumRoutes from "./routes/forum.js";
+import voiceRoutes from "./routes/voice.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -70,9 +75,64 @@ const startServer = async () => {
         app.use('/api/reactions', reactionRoutes);
         app.use('/api/dm', dmRoutes);
         app.use('/api/users', userRoutes);
+        app.use('/api/import', importRoutes);
+        app.use('/api/forum', forumRoutes);
+        app.use('/api/voice', voiceRoutes);
 
         app.get('/api/health', (req, res) => {
             res.json({ status: 'ok', timestamp: new Date(), uptime: process.uptime() * 1000, memory: process.memoryUsage() });
+        });
+
+        app.get('/api/health/auth', async (req, res) => {
+            const start = Date.now();
+            try {
+                await db.query('SELECT 1 FROM users LIMIT 1');
+                res.json({ status: 'ok', subsystem: 'auth', response_ms: Date.now() - start });
+            } catch {
+                res.status(500).json({ status: 'error', subsystem: 'auth', response_ms: Date.now() - start });
+            }
+        });
+
+        app.get('/api/health/messaging', async (req, res) => {
+            const start = Date.now();
+            try {
+                await db.query('SELECT 1 FROM messages LIMIT 1');
+                res.json({ status: 'ok', subsystem: 'messaging', response_ms: Date.now() - start });
+            } catch {
+                res.status(500).json({ status: 'error', subsystem: 'messaging', response_ms: Date.now() - start });
+            }
+        });
+
+        app.get('/api/health/realtime', (req, res) => {
+            const start = Date.now();
+            try {
+                const io = req.app.get('io');
+                if (!io) throw new Error('not initialized');
+                const connected = io.engine.clientsCount;
+                res.json({ status: 'ok', subsystem: 'realtime', response_ms: Date.now() - start, connected });
+            } catch {
+                res.status(500).json({ status: 'error', subsystem: 'realtime', response_ms: Date.now() - start });
+            }
+        });
+
+        app.get('/api/health/media', async (req, res) => {
+            const start = Date.now();
+            try {
+                await fs.promises.access(path.join(__dirname, 'public', 'uploads'), fs.constants.R_OK);
+                res.json({ status: 'ok', subsystem: 'media', response_ms: Date.now() - start });
+            } catch {
+                res.status(500).json({ status: 'error', subsystem: 'media', response_ms: Date.now() - start });
+            }
+        });
+
+        app.get('/api/health/dm', async (req, res) => {
+            const start = Date.now();
+            try {
+                await db.query('SELECT 1 FROM direct_messages LIMIT 1');
+                res.json({ status: 'ok', subsystem: 'dm', response_ms: Date.now() - start });
+            } catch {
+                res.status(500).json({ status: 'error', subsystem: 'dm', response_ms: Date.now() - start });
+            }
         });
 
         // Expose permission flag values to the frontend (BigInts serialised as Numbers — all ≤ 2^20)

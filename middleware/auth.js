@@ -1,3 +1,4 @@
+// Proprietary — Cerberus Game Labs. See LICENSE for terms.
 // File Location: /middleware/auth.js
 
 const requireAuth = (req, res, next) => {

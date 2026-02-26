@@ -48,7 +48,11 @@ function renderChannelList(channels, categories) {
 }
 
 function _makeChannelEl(channel) {
-    const icon = channel.type === 'voice' ? '🔊' : '#';
+    const icon = channel.type === 'voice'        ? '🔊'
+               : channel.type === 'announcement' ? '📢'
+               : channel.type === 'forum'        ? '💬'
+               : channel.type === 'media'        ? '🖼️'
+               : '#';
     const isActive = state.currentChannel?.id === channel.id;
     const unread = state.unread?.[channel.id];
     const badge = unread?.mentions > 0
@@ -63,5 +67,33 @@ function _makeChannelEl(channel) {
     btn.innerHTML = `<span>${icon} ${channel.name}</span>${badge}`;
     btn.addEventListener('click', () => selectChannel(channel.id));
     attachChannelContextMenu(btn, channel);
-    return btn;
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'channel-group';
+    wrapper.appendChild(btn);
+
+    // Voice channel: show who's connected underneath
+    if (channel.type === 'voice') {
+        const voiceUsers = Object.values(state.voiceStates || {})
+            .filter(vs => vs.channelId === channel.id);
+
+        if (voiceUsers.length > 0) {
+            const sub = document.createElement('div');
+            sub.className = 'voice-channel-participants';
+            voiceUsers.forEach(vs => {
+                const m = state.members.find(m => m.id === vs.userId);
+                const name = m?.nickname || m?.username || vs.username;
+                const av = m?.avatar
+                    ? `<img src="${m.avatar}" class="voice-mini-av" alt="">`
+                    : `<span class="voice-mini-av voice-mini-initials">${getInitials(name)}</span>`;
+                const row = document.createElement('div');
+                row.className = 'voice-channel-participant';
+                row.innerHTML = `${av}<span class="voice-mini-name">${name}</span>`;
+                sub.appendChild(row);
+            });
+            wrapper.appendChild(sub);
+        }
+    }
+
+    return wrapper;
 }

@@ -1,3 +1,4 @@
+// Proprietary — Cerberus Game Labs. See LICENSE for terms.
 // File Location: /controllers/messageController.js
 
 import fs from 'fs';
@@ -7,6 +8,7 @@ import db from "../config/database.js";
 import { generateSnowflake } from "#utils/functions";
 import { log, tags } from "#utils/logging";
 import { PermissionHandler, PERMISSIONS } from "../config/permissions.js";
+import { resolveChannelPerms } from "../utils/channelPerms.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -33,7 +35,18 @@ class MessageController {
     static async getChannelMessages(req, res) {
         try {
             const { channelId } = req.params;
+            const userId = req.session.user.id;
             const { limit = 50, before } = req.query;
+
+            // Channel-level VIEW_CHANNEL + READ_MESSAGE_HISTORY check
+            const chanRes = await db.query('SELECT server_id FROM channels WHERE id = $1', [channelId]);
+            if (chanRes.rows.length > 0) {
+                const perms = await resolveChannelPerms(userId, chanRes.rows[0].server_id, channelId);
+                if (!PermissionHandler.hasPermission(perms, PERMISSIONS.VIEW_CHANNEL) ||
+                    !PermissionHandler.hasPermission(perms, PERMISSIONS.READ_MESSAGE_HISTORY)) {
+                    return res.status(403).json({ error: 'Missing channel permissions' });
+                }
+            }
 
             let query = `
                 SELECT m.*, u.username, u.avatar
@@ -82,14 +95,16 @@ class MessageController {
                 return res.status(400).json({ error: 'Message must have content or attachments' });
             }
 
-            // MENTION_EVERYONE check — block @everyone / @here for users without permission
-            if (content && /@everyone\b|@here\b/i.test(content)) {
-                const chanRes = await db.query('SELECT server_id FROM channels WHERE id = $1', [channelId]);
-                if (chanRes.rows.length > 0) {
-                    const allowed = await hasServerPerm(userId, chanRes.rows[0].server_id, PERMISSIONS.MENTION_EVERYONE);
-                    if (!allowed) {
-                        return res.status(403).json({ error: 'You do not have permission to use @everyone or @here' });
-                    }
+            // Channel-level permission checks (SEND_MESSAGES + MENTION_EVERYONE)
+            const chanRes = await db.query('SELECT server_id FROM channels WHERE id = $1', [channelId]);
+            if (chanRes.rows.length > 0) {
+                const chPerms = await resolveChannelPerms(userId, chanRes.rows[0].server_id, channelId);
+                if (!PermissionHandler.hasPermission(chPerms, PERMISSIONS.SEND_MESSAGES)) {
+                    return res.status(403).json({ error: 'You do not have permission to send messages in this channel' });
+                }
+                if (content && /@everyone\b|@here\b/i.test(content) &&
+                    !PermissionHandler.hasPermission(chPerms, PERMISSIONS.MENTION_EVERYONE)) {
+                    return res.status(403).json({ error: 'You do not have permission to use @everyone or @here' });
                 }
             }
 

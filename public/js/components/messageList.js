@@ -310,10 +310,19 @@ function escapeHtml(text) {
 function highlightMentions(html) {
     if (!state.currentUser) return html;
     const me = escapeRegex(state.currentUser.username);
-    const result = html
+    let result = html
         .replace(/@everyone/gi, '<span class="mention mention-ping">@everyone</span>')
         .replace(/@here/gi,     '<span class="mention mention-ping">@here</span>')
-        .replace(new RegExp(`@${me}`, 'gi'), `<span class="mention mention-me">@${state.currentUser.username}</span>`)
-        .replace(/@(\w+)/g,     '<span class="mention">@$1</span>');
+        .replace(new RegExp(`@${me}`, 'gi'), `<span class="mention mention-me">@${state.currentUser.username}</span>`);
+    // Highlight mentionable role pings with the role's color
+    for (const role of (state.roles || [])) {
+        if (!role.mentionable || role.name === '@everyone') continue;
+        const safeName = escapeRegex(role.name);
+        result = result.replace(
+            new RegExp(`@${safeName}`, 'gi'),
+            `<span class="mention mention-role" style="color:${role.color};background:${role.color}22;">@${role.name}</span>`
+        );
+    }
+    result = result.replace(/@(\w+)/g, '<span class="mention">@$1</span>');
     return result;
 }

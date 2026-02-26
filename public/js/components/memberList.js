@@ -61,7 +61,7 @@ function renderMember(member) {
 
     return `
     <div class="member" data-user-id="${member.id}">
-      <div style="position: relative;">
+      <div class="member-av-wrap">
         ${avatarHtml}
         <div class="member-status ${statusClass}"></div>
       </div>

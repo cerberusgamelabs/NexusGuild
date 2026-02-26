@@ -1,8 +1,10 @@
+// Proprietary — Cerberus Game Labs. See LICENSE for terms.
 // File Location: /routes/channels.js
 
 import express from "express";
 const router = express.Router();
 import ChannelController from "../controllers/channelController.js";
+import ChannelPermController from "../controllers/channelPermController.js";
 import { requireAuth } from "../middleware/auth.js";
 import { isServerMember, checkPermission, PERMISSIONS } from "../middleware/permissions.js";
 import { validateChannel } from "../middleware/validation.js";
@@ -65,5 +67,10 @@ router.delete(
 
 // Mark channel as read
 router.patch('/:channelId/read', requireAuth, ChannelController.markChannelRead);
+
+// Channel permission overrides
+router.get('/:channelId/permissions', requireAuth, ChannelPermController.getOverrides);
+router.put('/:channelId/permissions/:targetId', requireAuth, ChannelPermController.upsertOverride);
+router.delete('/:channelId/permissions/:targetId', requireAuth, ChannelPermController.deleteOverride);
 
 export default router;

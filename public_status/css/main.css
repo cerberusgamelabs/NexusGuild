@@ -1,0 +1,218 @@
+/* ─────────────────────────────────────────────
+   NexusGuild Status Page
+────────────────────────────────────────────── */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+    background: #111214;
+    color: #dcddde;
+    font-size: 14px;
+}
+
+.page {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 40px 24px 60px;
+}
+
+/* ── Header ──────────────────────────────── */
+
+.site-header {
+    margin-bottom: 28px;
+}
+
+.site-header h1 {
+    margin: 8px 0 0;
+    font-size: 26px;
+    font-weight: 700;
+    color: #fff;
+}
+
+.back-link {
+    font-size: 13px;
+    color: #7289da;
+    text-decoration: none;
+    opacity: 0.8;
+}
+
+.back-link:hover { opacity: 1; text-decoration: underline; }
+
+/* ── Overall Banner ──────────────────────── */
+
+.overall-banner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 20px;
+    border-radius: 8px;
+    font-size: 17px;
+    font-weight: 600;
+    margin-bottom: 36px;
+    background: #1e1f22;
+    color: #fff;
+    transition: background 0.3s;
+}
+
+.overall-banner::before {
+    content: '';
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.banner--ok    { background: #1a3a25; }
+.banner--ok::before    { background: #23a559; box-shadow: 0 0 6px #23a55988; }
+
+.banner--warn  { background: #3a2f10; }
+.banner--warn::before  { background: #f0b232; box-shadow: 0 0 6px #f0b23288; }
+
+.banner--error { background: #3a1313; }
+.banner--error::before { background: #ed4245; box-shadow: 0 0 6px #ed424588; }
+
+/* ── Subsystems ──────────────────────────── */
+
+.subsystems-section {
+    background: #1e1f22;
+    border-radius: 8px;
+    padding: 8px 20px 16px;
+    margin-bottom: 12px;
+}
+
+.subsystem-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 0;
+    border-bottom: 1px solid #2b2d31;
+}
+
+.subsystem-row:last-child { border-bottom: none; }
+
+.subsystem-name {
+    width: 148px;
+    flex-shrink: 0;
+    font-weight: 500;
+    color: #fff;
+    font-size: 14px;
+}
+
+.subsystem-bars {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+}
+
+.bar {
+    flex: 1;
+    max-width: 12px;
+    height: 28px;
+    border-radius: 2px;
+    cursor: default;
+    transition: opacity 0.15s, transform 0.15s;
+    flex-shrink: 0;
+}
+
+.bar:hover {
+    opacity: 0.85;
+    transform: scaleY(1.15);
+}
+
+.bar--operational { background: #23a559; }
+.bar--degraded    { background: #f0b232; }
+.bar--outage      { background: #ed4245; }
+.bar--no-data     { background: #2d2f33; }
+.bar--unknown     { background: #2d2f33; }
+
+.subsystem-status {
+    width: 106px;
+    flex-shrink: 0;
+    text-align: right;
+}
+
+.status-badge {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 12px;
+    display: inline-block;
+}
+
+.status--operational { background: #1a3a25; color: #3ba55c; }
+.status--degraded    { background: #3a2f10; color: #f0b232; }
+.status--outage      { background: #3a1313; color: #ed4245; }
+.status--unknown     { background: #2b2d31; color: #72767d; }
+
+/* ── History axis labels ─────────────────── */
+
+.history-labels {
+    display: flex;
+    justify-content: space-between;
+    padding: 0 0 0 164px;
+    font-size: 11px;
+    color: #72767d;
+    margin-top: 4px;
+    padding-right: 122px;
+}
+
+/* ── Last updated ────────────────────────── */
+
+.last-updated {
+    font-size: 12px;
+    color: #72767d;
+    text-align: right;
+    margin: 0 0 0;
+    padding-right: 2px;
+}
+
+/* ── Footer ──────────────────────────────── */
+
+.site-footer {
+    margin-top: 48px;
+    font-size: 12px;
+    color: #72767d;
+}
+
+.site-footer a { color: #7289da; text-decoration: none; }
+.site-footer a:hover { text-decoration: underline; }
+
+/* ── Tooltip ─────────────────────────────── */
+
+.tooltip {
+    position: fixed;
+    pointer-events: none;
+    background: #111214;
+    border: 1px solid #2b2d31;
+    color: #dcddde;
+    font-size: 12px;
+    line-height: 1.6;
+    padding: 7px 10px;
+    border-radius: 6px;
+    white-space: nowrap;
+    z-index: 9999;
+    opacity: 0;
+    transition: opacity 0.1s;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+}
+
+.tooltip.visible { opacity: 1; }
+
+/* ── Scrollbar ───────────────────────────── */
+
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-thumb { background: #2b2d31; border-radius: 4px; }
+
+/* ── Mobile ──────────────────────────────── */
+
+@media (max-width: 600px) {
+    .subsystem-name { width: 100px; font-size: 13px; }
+    .subsystem-status { width: 80px; }
+    .history-labels { padding-left: 116px; padding-right: 96px; }
+    .bar { height: 22px; }
+}

@@ -1,3 +1,4 @@
+// Proprietary — Cerberus Game Labs. See LICENSE for terms.
 // File Location: /middleware/validation.js
 
 import { body, param, validationResult } from "express-validator";
@@ -51,7 +52,7 @@ const validateChannel = [
         .trim(),
     body('type')
         .optional()
-        .isIn(['text', 'voice', 'announcement'])
+        .isIn(['text', 'voice', 'announcement', 'forum', 'media'])
         .withMessage('Invalid channel type'),
     validate
 ];
