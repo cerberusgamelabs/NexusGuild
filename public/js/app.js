@@ -328,6 +328,8 @@ function selectServer(serverId) {
     document.getElementById('currentServerName').textContent = server.name;
     loadServerChannels(serverId);
     loadServerMembers(serverId);  // updates myPermissions + management buttons when done
+    // Pre-load server emoji so autocomplete has them ready
+    if (typeof loadServerEmojis === 'function') loadServerEmojis(serverId);
 
     // Update UI
     document.querySelectorAll('.space-rail button').forEach(btn => {
@@ -619,10 +621,154 @@ function selectMention(name, event) {
     ta.focus();
 }
 
+// ── Emoji Shortcode Autocomplete ──────────────────────────────────────────────
+
+let _emojiIndex = -1;
+
+function getEmojiQuery(textarea) {
+    const before = textarea.value.slice(0, textarea.selectionStart);
+    const match = before.match(/:(\w+)$/);
+    return match ? match[1] : null;
+}
+
+// Routes oninput between emoji autocomplete and mention autocomplete
+function updateAutocomplete(textarea) {
+    const emojiQuery = getEmojiQuery(textarea);
+    if (emojiQuery !== null) {
+        hideMentionDropdown();
+        _showEmojiMatches(emojiQuery, textarea);
+        return;
+    }
+    hideEmojiDropdown();
+    updateMentionDropdown(textarea);
+}
+
+function hideAllAutocomplete() {
+    hideMentionDropdown();
+    hideEmojiDropdown();
+}
+
+function hideEmojiDropdown() {
+    const dd = document.getElementById('emojiDropdown');
+    if (dd) dd.style.display = 'none';
+    _emojiIndex = 0;
+}
+
+function _showEmojiMatches(q, textarea) {
+    const lower = q.toLowerCase();
+    const matches = [];
+
+    // Custom server emoji first (from emojiPicker.js global `serverEmojis`)
+    if (typeof serverEmojis !== 'undefined' && serverEmojis.server) {
+        for (const e of serverEmojis.server) {
+            if (e.name.includes(lower)) {
+                matches.push({ name: e.name, char: null, isCustom: true, serverId: e.server_id, filename: e.filename });
+                if (matches.length >= 5) break;
+            }
+        }
+    }
+
+    // Unicode emoji — startsWith first for better UX, then includes
+    if (typeof EMOJI_SHORTCODES !== 'undefined') {
+        const starts = [], contains = [];
+        for (const name of Object.keys(EMOJI_SHORTCODES)) {
+            if (name.startsWith(lower)) starts.push(name);
+            else if (name.includes(lower)) contains.push(name);
+        }
+        for (const name of [...starts, ...contains]) {
+            if (matches.length >= 10) break;
+            if (!matches.some(m => m.name === name)) {
+                matches.push({ name, char: EMOJI_SHORTCODES[name], isCustom: false });
+            }
+        }
+    }
+
+    if (matches.length === 0) { hideEmojiDropdown(); return; }
+    _emojiIndex = 0;
+    _renderEmojiDropdown(matches);
+}
+
+function _renderEmojiDropdown(matches) {
+    const dd = document.getElementById('emojiDropdown');
+    if (!dd) return;
+
+    // Group into sections if both custom and unicode present
+    const customMatches = matches.filter(m => m.isCustom);
+    const unicodeMatches = matches.filter(m => !m.isCustom);
+    const hasBoth = customMatches.length > 0 && unicodeMatches.length > 0;
+
+    let html = '';
+    let globalIdx = 0;
+
+    if (hasBoth) {
+        html += `<div class="emoji-section-header">Server Emoji</div>`;
+    }
+    for (const m of customMatches) {
+        const isActive = globalIdx === _emojiIndex ? ' active' : '';
+        const safeName = m.name.replace(/'/g, "\\'");
+        html += `<div class="emoji-item${isActive}" data-idx="${globalIdx}" onmousedown="selectEmojiShortcode('${safeName}',event)">
+            <span class="emoji-item-char"><img src="/img/emoji/${m.serverId}/${m.filename}" style="width:20px;height:20px;object-fit:contain;" alt=":${m.name}:"></span>
+            <span class="emoji-item-name">:${m.name}:</span>
+        </div>`;
+        globalIdx++;
+    }
+    if (hasBoth) {
+        html += `<div class="emoji-section-header">Unicode Emoji</div>`;
+    }
+    for (const m of unicodeMatches) {
+        const isActive = globalIdx === _emojiIndex ? ' active' : '';
+        const safeName = m.name.replace(/'/g, "\\'");
+        html += `<div class="emoji-item${isActive}" data-idx="${globalIdx}" onmousedown="selectEmojiShortcode('${safeName}',event)">
+            <span class="emoji-item-char">${m.char}</span>
+            <span class="emoji-item-name">:${m.name}:</span>
+        </div>`;
+        globalIdx++;
+    }
+
+    dd.innerHTML = html;
+    dd.style.display = 'block';
+}
+
+function selectEmojiShortcode(name, event) {
+    if (event) event.preventDefault();
+    const ta = document.getElementById('messageInput');
+    const pos = ta.selectionStart;
+    const before = ta.value.slice(0, pos).replace(/:(\w+)$/, `:${name}: `);
+    ta.value = before + ta.value.slice(pos);
+    ta.selectionStart = ta.selectionEnd = before.length;
+    hideEmojiDropdown();
+    ta.focus();
+}
+
 // Message handling
 function handleMessageInput(event) {
-    if (event.key === 'Escape') { hideMentionDropdown(); return; }
+    if (event.key === 'Escape') { hideAllAutocomplete(); return; }
 
+    // Emoji dropdown keyboard nav
+    const edd = document.getElementById('emojiDropdown');
+    const emojiOpen = edd && edd.style.display !== 'none';
+    if (emojiOpen) {
+        const items = edd.querySelectorAll('.emoji-item');
+        if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            _emojiIndex = Math.max(0, _emojiIndex - 1);
+            items.forEach((el, i) => el.classList.toggle('active', i === _emojiIndex));
+            return;
+        }
+        if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            _emojiIndex = Math.min(items.length - 1, _emojiIndex + 1);
+            items.forEach((el, i) => el.classList.toggle('active', i === _emojiIndex));
+            return;
+        }
+        if ((event.key === 'Enter' || event.key === 'Tab') && items[_emojiIndex]) {
+            event.preventDefault();
+            items[_emojiIndex].dispatchEvent(new MouseEvent('mousedown'));
+            return;
+        }
+    }
+
+    // Mention dropdown keyboard nav
     const dd = document.getElementById('mentionDropdown');
     const open = dd && dd.style.display !== 'none';
     if (open) {
@@ -760,6 +906,7 @@ async function sendMessage() {
             input.value = '';
             input.style.height = 'auto';
             hideMentionDropdown();
+            hideEmojiDropdown();
             selectedFiles = [];
             renderFilePreview();
             document.getElementById('fileInput').value = '';

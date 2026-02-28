@@ -1,5 +1,25 @@
 // Message list rendering
 
+// ── Emoji shortcode rendering ─────────────────────────────────────────────────
+
+function parseEmojiShortcodes(html) {
+    return html.replace(/:(\w+):/g, (match, name) => {
+        // Custom server emoji takes priority
+        if (typeof serverEmojis !== 'undefined' && serverEmojis.server) {
+            const custom = serverEmojis.server.find(e => e.name === name);
+            if (custom) {
+                return `<img src="/img/emoji/${custom.server_id}/${custom.filename}" class="inline-emoji" alt=":${name}:" title=":${name}:">`;
+            }
+        }
+        // Unicode shortcode lookup
+        if (typeof EMOJI_SHORTCODES !== 'undefined') {
+            const char = EMOJI_SHORTCODES[name];
+            if (char) return `<span class="emoji-char">${char}</span>`;
+        }
+        return match; // leave unknown shortcodes as-is
+    });
+}
+
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
 function buildMemberLookups() {
@@ -48,7 +68,7 @@ function buildMessageHTML(message, prevMessage, { roleColorMap = {}, nicknameMap
         }).join('');
     }
 
-    const messageContent = message.content ? linkifyUrls(highlightMentions(escapeHtml(message.content))) : '';
+    const messageContent = message.content ? linkifyUrls(highlightMentions(parseEmojiShortcodes(escapeHtml(message.content)))) : '';
     const editedTag = message.edited_at ? ' <span class="edited-tag">(edited)</span>' : '';
     const pinIcon = message.is_pinned ? ' <span class="pin-indicator" title="Pinned message">📌</span>' : '';
     const isMentioned = parseMentions(message.content);
