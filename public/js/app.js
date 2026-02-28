@@ -369,15 +369,21 @@ function selectChannel(channelId) {
         state.messages = [];
         renderMessages();
         const container = document.getElementById('messagesContainer');
-        if (container) container.innerHTML = `
-            <div class="channel-splash">
-                <div class="channel-splash-icon">🔊</div>
-                <div class="channel-splash-name">${channel.name}</div>
-                <button class="btn-primary voice-join-splash-btn"
-                        onclick="joinVoice('${channel.id}','${state.currentServer.id}')">
-                    Join Voice
-                </button>
-            </div>`;
+
+        // Already connected to this channel — show the full voice panel
+        if (typeof isInVoiceChannel === 'function' && isInVoiceChannel(channel.id)) {
+            if (typeof showVoiceView === 'function') showVoiceView();
+        } else if (container) {
+            container.innerHTML = `
+                <div class="channel-splash">
+                    <div class="channel-splash-icon">🔊</div>
+                    <div class="channel-splash-name">${channel.name}</div>
+                    <button class="btn-primary voice-join-splash-btn"
+                            onclick="joinVoice('${channel.id}','${state.currentServer.id}')">
+                        Join Voice
+                    </button>
+                </div>`;
+        }
     } else if (channel.type === 'forum' || channel.type === 'media') {
         state.messages = [];
         openForumView(channel);
@@ -964,7 +970,8 @@ async function submitCreateChannel() {
             document.getElementById('createChannelModal').style.display = 'none';
             await loadServerChannels(state.currentServer.id);
         } else {
-            errorEl.textContent = data.error || 'Failed to create channel.';
+            const msg = data.error || (data.errors?.[0]?.msg) || `Failed to create channel (${response.status}).`;
+            errorEl.textContent = msg;
             errorEl.style.display = 'block';
         }
     } catch (error) {

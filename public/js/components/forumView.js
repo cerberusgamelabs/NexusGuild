@@ -98,17 +98,19 @@ function _fvRenderMediaGrid(container) {
     container.innerHTML = `
         <div class="fv-header">
             <h2 class="fv-title">🖼️ ${escapeHtml(_fvChannel.name)}</h2>
-            ${canPost ? `<button class="fv-new-btn" onclick="_fvShowNewPostForm()">+ New Post</button>` : ''}
+            ${canPost ? `<button class="fv-new-btn" onclick="_fvShowNewPostForm()">+ Upload</button>` : ''}
         </div>
         <div class="fv-media-grid">
             ${_fvPosts.length === 0
-                ? '<div class="fv-empty" style="grid-column:1/-1">No media yet. Share something!</div>'
+                ? '<div class="fv-empty fv-empty-grid">No media yet. Be the first to share something!</div>'
                 : _fvPosts.map(_fvMakeMediaCard).join('')}
         </div>`;
 }
 
 function _fvMakeMediaCard(post) {
-    let thumb = '<div class="fv-media-thumb-placeholder">📎</div>';
+    let thumbHtml = '<div class="fv-media-thumb-placeholder">📎</div>';
+    let isVideo = false;
+
     if (post.opener_attachments) {
         try {
             const atts = typeof post.opener_attachments === 'string'
@@ -116,18 +118,29 @@ function _fvMakeMediaCard(post) {
                 : post.opener_attachments;
             if (atts?.[0]) {
                 const a = atts[0];
-                thumb = a.mimetype?.startsWith('image/')
-                    ? `<img src="${a.url}" class="fv-media-thumb" alt="${escapeHtml(a.originalName || '')}" loading="lazy">`
-                    : `<div class="fv-media-thumb-placeholder">📎</div>`;
+                if (a.mimetype?.startsWith('image/')) {
+                    thumbHtml = `<img src="${a.url}" class="fv-media-thumb" alt="${escapeHtml(a.originalName || '')}" loading="lazy">`;
+                } else if (a.mimetype?.startsWith('video/')) {
+                    isVideo = true;
+                    thumbHtml = `<video src="${a.url}" class="fv-media-thumb" preload="none" muted playsinline></video>`;
+                }
             }
         } catch (_) {}
     }
+
+    const date = new Date(post.created_at).toLocaleDateString();
+    const replies = post.reply_count ?? 0;
+    const replyStr = replies > 0 ? ' \u00b7 ' + replies + (replies === 1 ? ' reply' : ' replies') : '';
+
     return `
         <div class="fv-media-card" onclick="_fvOpenPost('${post.id}')">
-            <div class="fv-media-thumb-wrap">${thumb}</div>
-            <div class="fv-media-card-info">
-                <div class="fv-media-card-title">${escapeHtml(post.title)}</div>
-                <div class="fv-media-card-meta">${escapeHtml(post.username)} · ${post.reply_count ?? 0} replies</div>
+            <div class="fv-media-thumb-wrap">
+                ${thumbHtml}
+                ${isVideo ? '<div class="fv-media-play-icon">&#9654;</div>' : ''}
+                <div class="fv-media-card-overlay">
+                    <span class="fv-media-overlay-name">${escapeHtml(post.username)}</span>
+                    <span class="fv-media-overlay-meta">${date}${replyStr}</span>
+                </div>
             </div>
         </div>`;
 }

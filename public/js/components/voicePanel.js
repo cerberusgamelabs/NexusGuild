@@ -121,7 +121,7 @@ async function _joinVoiceInternal(channelId, serverId) {
     }
 
     _showVoicePanel(channelId);
-    _renderVoiceParticipants();
+    showVoiceView();
 }
 
 async function leaveVoice() {
@@ -144,12 +144,32 @@ async function leaveVoice() {
     // Remove all injected audio elements
     document.querySelectorAll('[id^="voice-audio-"]').forEach(el => el.remove());
 
+    const wasChannelId  = _voiceChannelId;
+    const wasServerId   = _voiceServerId;
+
     _lkRoom          = null;
     _voiceChannelId  = null;
     _voiceServerId   = null;
     _activeSpeakerIds.clear();
 
     _hideVoicePanel();
+
+    // If still viewing the voice channel, restore the join splash
+    if (state.currentChannel?.id === wasChannelId) {
+        const channel   = state.channels.find(c => c.id === wasChannelId);
+        const container = document.getElementById('messagesContainer');
+        if (container && channel) {
+            container.innerHTML = `
+                <div class="channel-splash">
+                    <div class="channel-splash-icon">🔊</div>
+                    <div class="channel-splash-name">${channel.name}</div>
+                    <button class="btn-primary voice-join-splash-btn"
+                            onclick="joinVoice('${channel.id}','${wasServerId}')">
+                        Join Voice
+                    </button>
+                </div>`;
+        }
+    }
 }
 
 // ── Public: called by toggleMic() / toggleDeafen() in app.js ─────────────────
@@ -214,11 +234,30 @@ function _onRoomDisconnected() {
 
     document.querySelectorAll('[id^="voice-audio-"]').forEach(el => el.remove());
 
+    const wasChannelId = _voiceChannelId;
+    const wasServerId  = _voiceServerId;
+
     _lkRoom          = null;
     _voiceChannelId  = null;
     _voiceServerId   = null;
     _activeSpeakerIds.clear();
     _hideVoicePanel();
+
+    if (state.currentChannel?.id === wasChannelId) {
+        const channel   = state.channels.find(c => c.id === wasChannelId);
+        const container = document.getElementById('messagesContainer');
+        if (container && channel) {
+            container.innerHTML = `
+                <div class="channel-splash">
+                    <div class="channel-splash-icon">🔊</div>
+                    <div class="channel-splash-name">${channel.name}</div>
+                    <button class="btn-primary voice-join-splash-btn"
+                            onclick="joinVoice('${channel.id}','${wasServerId}')">
+                        Join Voice
+                    </button>
+                </div>`;
+        }
+    }
 }
 
 // ── Panel UI ──────────────────────────────────────────────────────────────────
@@ -240,12 +279,16 @@ function _hideVoicePanel() {
 }
 
 function _renderVoiceParticipants() {
+    _renderThinBar();
+    _renderFullGrid();
+}
+
+function _renderThinBar() {
     const list = document.getElementById('voiceParticipantList');
     if (!list || !_lkRoom) return;
 
     list.innerHTML = '';
 
-    // Local participant
     const local = _lkRoom.localParticipant;
     if (local) {
         const isSpeaking = _activeSpeakerIds.has(local.identity);
@@ -253,16 +296,36 @@ function _renderVoiceParticipants() {
         list.appendChild(_makeParticipantEl(local.identity, local.name || local.identity, isMuted, deafened, isSpeaking, true));
     }
 
-    // Remote participants
     _lkRoom.remoteParticipants.forEach(p => {
         const isSpeaking = _activeSpeakerIds.has(p.identity);
         let remoteMuted  = true;
         p.trackPublications.forEach(pub => {
-            if (pub.source === LivekitClient.Track.Source.Microphone) {
-                remoteMuted = pub.isMuted;
-            }
+            if (pub.source === LivekitClient.Track.Source.Microphone) remoteMuted = pub.isMuted;
         });
         list.appendChild(_makeParticipantEl(p.identity, p.name || p.identity, remoteMuted, false, isSpeaking, false));
+    });
+}
+
+function _renderFullGrid() {
+    const grid = document.getElementById('voiceFullGrid');
+    if (!grid || !_lkRoom) return;
+
+    grid.innerHTML = '';
+
+    const local = _lkRoom.localParticipant;
+    if (local) {
+        const isSpeaking = _activeSpeakerIds.has(local.identity);
+        const isMuted    = !local.isMicrophoneEnabled;
+        grid.appendChild(_makeVoiceTile(local.identity, local.name || local.identity, isMuted, deafened, isSpeaking, true));
+    }
+
+    _lkRoom.remoteParticipants.forEach(p => {
+        const isSpeaking = _activeSpeakerIds.has(p.identity);
+        let remoteMuted  = true;
+        p.trackPublications.forEach(pub => {
+            if (pub.source === LivekitClient.Track.Source.Microphone) remoteMuted = pub.isMuted;
+        });
+        grid.appendChild(_makeVoiceTile(p.identity, p.name || p.identity, remoteMuted, false, isSpeaking, false));
     });
 }
 
@@ -293,14 +356,76 @@ function _makeParticipantEl(userId, displayName, muted, isDeafened, speaking, is
 }
 
 function _updateSpeakingIndicators() {
+    // Thin bar
     const list = document.getElementById('voiceParticipantList');
-    if (!list) return;
+    if (list) {
+        list.querySelectorAll('.voice-participant').forEach(el => {
+            const speaking = _activeSpeakerIds.has(el.dataset.userId);
+            el.classList.toggle('speaking', speaking);
+            el.querySelector('.voice-participant-av-wrap')?.classList.toggle('speaking', speaking);
+        });
+    }
 
-    list.querySelectorAll('.voice-participant').forEach(el => {
-        const speaking = _activeSpeakerIds.has(el.dataset.userId);
-        el.classList.toggle('speaking', speaking);
-        el.querySelector('.voice-participant-av-wrap')?.classList.toggle('speaking', speaking);
-    });
+    // Full grid
+    const grid = document.getElementById('voiceFullGrid');
+    if (grid) {
+        grid.querySelectorAll('.voice-tile').forEach(el => {
+            const speaking = _activeSpeakerIds.has(el.dataset.userId);
+            el.classList.toggle('speaking', speaking);
+            el.querySelector('.voice-tile-av-wrap')?.classList.toggle('speaking', speaking);
+        });
+    }
+}
+
+// ── Full voice view (rendered into messagesContainer) ─────────────────────────
+
+function isInVoiceChannel(channelId) {
+    return !!(_lkRoom && _lkRoom.state !== 'disconnected' && _voiceChannelId === channelId);
+}
+
+function showVoiceView() {
+    const container = document.getElementById('messagesContainer');
+    if (!container || !_lkRoom) return;
+
+    const channel = state.channels.find(c => c.id === _voiceChannelId);
+    const channelName = channel ? channel.name : 'Voice Channel';
+
+    container.innerHTML = `
+        <div class="voice-full-view">
+            <div class="voice-full-header">🔊 ${channelName}</div>
+            <div class="voice-full-grid" id="voiceFullGrid"></div>
+            <div class="voice-full-controls">
+                <button class="voice-full-leave-btn" onclick="leaveVoice()">Leave Call</button>
+            </div>
+        </div>`;
+
+    _renderFullGrid();
+}
+
+function _makeVoiceTile(userId, displayName, muted, isDeafened, speaking, isLocal) {
+    const member    = state.members?.find(m => m.id === userId);
+    const avatar    = member?.avatar;
+    const roleColor = member?.role_color;
+
+    const avatarHtml = avatar
+        ? `<img src="${avatar}" class="voice-tile-avatar" alt="">`
+        : `<div class="voice-tile-avatar voice-tile-initials">${getInitials(displayName)}</div>`;
+
+    const nameStyle     = roleColor ? ` style="color:${roleColor}"` : '';
+    const speakingClass = speaking ? ' speaking' : '';
+    const label         = isLocal ? `${displayName} (you)` : displayName;
+
+    const el = document.createElement('div');
+    el.className     = `voice-tile${speakingClass}`;
+    el.dataset.userId = userId;
+    el.innerHTML = `
+        <div class="voice-tile-av-wrap${speakingClass}">${avatarHtml}</div>
+        <div class="voice-tile-name"${nameStyle}>${label}</div>
+        <div class="voice-tile-icons">
+            ${muted      ? '<span class="voice-icon" title="Muted">&#128263;</span>'     : ''}
+            ${isDeafened ? '<span class="voice-icon" title="Deafened">&#128264;</span>' : ''}
+        </div>`;
+    return el;
 }
 
 // ── Socket event handlers (called from socket.js) ─────────────────────────────
