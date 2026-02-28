@@ -10,8 +10,9 @@ import { isServerOwner, isServerMember, checkPermission, PERMISSIONS } from "../
 import { validateServer } from "../middleware/validation.js";
 import { uploadSingle, handleUploadError } from "../middleware/upload.js";
 
-// ✅ /join must come BEFORE /:serverId or Express swallows it as a param
+// ✅ Static paths must come BEFORE /:serverId or Express swallows them as params
 router.post('/join', requireAuth, ServerController.joinServer);
+router.get('/preview/:code', ServerController.getInvitePreview);
 
 router.get('/', requireAuth, ServerController.getUserServers);
 router.post('/', requireAuth, validateServer, ServerController.createServer);

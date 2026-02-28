@@ -333,6 +333,9 @@ body {
     font-weight: 600;
     font-size: 16px;
     color: #fff;
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
 .mobile-back-btn {
@@ -2293,3 +2296,249 @@ textarea.modal-input {
 #messagesContainer:has(.fv-thread-messages) .fv-thread-messages {
     flex: 1; overflow-y: auto;
 }
+
+/* ── Message Pinning ────────────────────────────────────────────────────────── */
+.pinned-message {
+    background: rgba(255, 200, 0, 0.04);
+    border-left: 2px solid #f0b132;
+}
+.pin-indicator {
+    font-size: 11px;
+    margin-left: 4px;
+    opacity: 0.7;
+    vertical-align: middle;
+}
+
+/* Pins panel modal */
+.pins-panel {
+    max-height: 420px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.pins-empty {
+    color: #72767d;
+    font-size: 14px;
+    text-align: center;
+    padding: 20px 0;
+}
+.pin-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px 10px;
+    background: #2b2d31;
+    border-radius: 6px;
+    position: relative;
+}
+.pin-icon { font-size: 16px; flex-shrink: 0; margin-top: 2px; }
+.pin-body { flex: 1; min-width: 0; }
+.pin-author { font-size: 13px; font-weight: 600; color: #f2f3f5; margin-bottom: 2px; }
+.pin-content {
+    font-size: 13px;
+    color: #b5bac1;
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.4;
+}
+.pin-meta { font-size: 11px; color: #72767d; margin-top: 4px; }
+.pin-remove-btn {
+    background: none;
+    border: none;
+    color: #72767d;
+    cursor: pointer;
+    font-size: 13px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+.pin-remove-btn:hover { color: #f23f43; background: rgba(242, 63, 67, 0.1); }
+
+/* Pins button in channel header */
+.header-icon-btn {
+    background: none;
+    border: none;
+    color: #b5bac1;
+    cursor: pointer;
+    font-size: 16px;
+    padding: 4px 6px;
+    border-radius: 4px;
+    line-height: 1;
+}
+.header-icon-btn:hover { color: #f2f3f5; background: #3c3f45; }
+
+/* ── Custom User Status ─────────────────────────────────────────────────────── */
+.member-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+}
+.member-custom-status {
+    font-size: 11px;
+    color: #72767d;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 130px;
+    line-height: 1.3;
+}
+#currentStatus {
+    transition: color 0.15s;
+}
+#currentStatus.has-custom-status {
+    color: #b5bac1;
+    font-style: italic;
+}
+#currentStatus:hover { color: #f2f3f5; }
+
+/* ── Inline links in message content ───────────────────────────────────────── */
+.message-content a {
+    color: #00aff4;
+    text-decoration: none;
+}
+.message-content a:visited { color: #7eb8d4; }
+.message-content a:hover { text-decoration: underline; }
+
+/* ── Rich Link Embeds ───────────────────────────────────────────────────────── */
+.msg-embeds { display: flex; flex-direction: column; gap: 6px; }
+.msg-embed {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 4px;
+    border-left: 4px solid #5865f2;
+    background: #2b2d31;
+    border-radius: 0 4px 4px 0;
+    padding: 10px 12px;
+    max-width: 440px;
+    margin-top: 4px;
+}
+.msg-embed-site {
+    font-size: 12px;
+    color: #b5bac1;
+    text-transform: none;
+}
+.msg-embed-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #00aff4;
+    text-decoration: none;
+    word-break: break-word;
+}
+.msg-embed-title:hover { text-decoration: underline; }
+.msg-embed-description {
+    font-size: 13px;
+    color: #b5bac1;
+    line-height: 1.45;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    word-break: break-word;
+}
+.msg-embed-image {
+    max-width: 400px;
+    max-height: 300px;
+    border-radius: 4px;
+    object-fit: cover;
+    margin-top: 6px;
+}
+
+/* ── Video embeds (YouTube / Twitch) ─────────────────────────────────────── */
+.msg-embed-video-wrapper {
+    position: relative;
+    width: 100%;
+    max-width: 500px;
+    aspect-ratio: 16 / 9;
+    margin-top: 4px;
+    border-radius: 4px;
+    overflow: hidden;
+    background: #000;
+}
+.msg-embed-video-wrapper iframe {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    border: none;
+}
+
+/* ── Invite card ─────────────────────────────────────────────────────────── */
+.msg-embed-invite {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 10px;
+    background: #2b2d31;
+    border: 1px solid #1e1f22;
+    border-radius: 8px;
+    padding: 14px 16px;
+    max-width: 420px;
+    margin-top: 4px;
+}
+.msg-embed-invite-header {
+    font-size: 11px;
+    font-weight: 700;
+    color: #b5bac1;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.msg-embed-invite-body {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.msg-embed-invite-icon-img,
+.msg-embed-invite-icon-fallback {
+    width: 50px;
+    height: 50px;
+    border-radius: 16px;
+    flex-shrink: 0;
+}
+.msg-embed-invite-icon-img { object-fit: cover; }
+.msg-embed-invite-icon-fallback {
+    background: #5865f2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    font-weight: 700;
+    color: #fff;
+}
+.msg-embed-invite-info {
+    flex: 1;
+    min-width: 0;
+}
+.msg-embed-invite-name {
+    font-size: 15px;
+    font-weight: 700;
+    color: #f2f3f5;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.msg-embed-invite-meta {
+    font-size: 12px;
+    color: #b5bac1;
+    margin-top: 2px;
+}
+.msg-embed-invite-expired {
+    font-size: 12px;
+    color: #f23f43;
+    margin-top: 2px;
+}
+.msg-embed-invite-btn {
+    background: #248046;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 18px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.15s;
+}
+.msg-embed-invite-btn:hover:not(:disabled) { background: #1a6334; }
+.msg-embed-invite-btn:disabled,
+.msg-embed-invite-btn.joined { background: #4e5058; cursor: default; }
+

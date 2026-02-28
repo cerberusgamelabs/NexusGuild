@@ -151,10 +151,26 @@ const initDB = async () => {
                 id VARCHAR(20) PRIMARY KEY,
                 dm_id VARCHAR(20) REFERENCES direct_messages(id) ON DELETE CASCADE,
                 sender_id VARCHAR(20) REFERENCES users(id) ON DELETE SET NULL,
-                content TEXT NOT NULL,
+                content TEXT NOT NULL DEFAULT '',
                 attachments JSONB,
                 edited_at TIMESTAMP,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        // Idempotent: add attachments column to existing dm_messages rows (no-op if already present)
+        await client.query(`
+            ALTER TABLE dm_messages ADD COLUMN IF NOT EXISTS attachments JSONB
+        `);
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS dm_reactions (
+                id VARCHAR(20) PRIMARY KEY,
+                message_id VARCHAR(20) REFERENCES dm_messages(id) ON DELETE CASCADE,
+                user_id    VARCHAR(20) REFERENCES users(id)       ON DELETE CASCADE,
+                emoji      TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(message_id, user_id, emoji)
             )
         `);
 
@@ -190,6 +206,16 @@ const initDB = async () => {
                 reason TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(server_id, user_id)
+            )
+        `);
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS pinned_messages (
+                channel_id  VARCHAR(20) REFERENCES channels(id) ON DELETE CASCADE,
+                message_id  VARCHAR(20) REFERENCES messages(id) ON DELETE CASCADE,
+                pinned_by   VARCHAR(20) REFERENCES users(id) ON DELETE SET NULL,
+                pinned_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (channel_id, message_id)
             )
         `);
 

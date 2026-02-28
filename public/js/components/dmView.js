@@ -44,11 +44,19 @@ async function showDMHome() {
     renderDMHomeScreen();
     await loadDMConversations();
 
-    // Register edit/delete socket listeners once
+    // Register DM socket listeners once
     if (state.socket && !state.socket._dmEditListenersSetup) {
         state.socket._dmEditListenersSetup = true;
         state.socket.on('dm_message_updated', onDMMessageUpdated);
         state.socket.on('dm_message_deleted', onDMMessageDeleted);
+        state.socket.on('dm_reaction_added', (data) => {
+            if (dmState.currentDM?.id === data.dmId)
+                updateDMMessageReactions(data.messageId, data.reactions, data.dmId);
+        });
+        state.socket.on('dm_reaction_removed', (data) => {
+            if (dmState.currentDM?.id === data.dmId)
+                updateDMMessageReactions(data.messageId, data.reactions, data.dmId);
+        });
     }
 
     const searchInput = document.getElementById('dmSearchInput');
@@ -79,7 +87,11 @@ function teardownDMView() {
     if (membersPanel) membersPanel.style.display = '';
 
     const channelHeader = document.getElementById('channelHeader');
-    if (channelHeader) channelHeader.innerHTML = `<span id="currentChannelName"># general</span>`;
+    if (channelHeader) channelHeader.innerHTML = `
+        <span id="currentChannelName"># general</span>
+        <button id="pinsBtn" class="header-icon-btn" title="Pinned Messages"
+                onclick="state.currentChannel && showPinsPanel(state.currentChannel.id)"
+                style="display:none;">📌</button>`;
 
     const msgInput = document.getElementById('messageInput');
     if (msgInput) msgInput.placeholder = 'Message...';
@@ -223,6 +235,7 @@ async function loadDMMessages(dmId, before = null) {
         const msgs = data.messages || [];
 
         if (msgs.length < 50) dmState.hasMore = false;
+
         dmState.messages = before ? [...msgs, ...dmState.messages] : msgs;
 
         renderDMMessages(!!before);
@@ -263,12 +276,28 @@ function renderDMMessages(prepending = false) {
             prev.sender_id !== msg.sender_id ||
             (new Date(msg.created_at) - new Date(prev.created_at)) > 300000;
 
-        const content = escapeHtmlDM(msg.content);
+        const rawContent = escapeHtmlDM(msg.content);
+        const content = typeof linkifyUrls === 'function' ? linkifyUrls(rawContent) : rawContent;
         const editedTag = msg.edited_at ? ' <span class="edited-tag">(edited)</span>' : '';
-        // Use app.js formatTimestamp if available, otherwise fall back
         const ts = (typeof formatTimestamp === 'function')
             ? formatTimestamp(msg.created_at)
             : new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+        // Render attachments
+        let attachmentsHtml = '';
+        if (msg.attachments) {
+            const atts = typeof msg.attachments === 'string' ? JSON.parse(msg.attachments) : msg.attachments;
+            attachmentsHtml = atts.map(att => {
+                const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(att.filename);
+                if (isImage) {
+                    return `<div class="message-attachment"><a href="${att.url}" target="_blank"><img src="${att.url}" alt="${escapeHtmlDM(att.originalName)}" class="attachment-image" /></a></div>`;
+                }
+                const fileSize = (att.size / 1024).toFixed(1) + ' KB';
+                return `<div class="message-attachment file-attachment"><a href="${att.url}" target="_blank" download="${escapeHtmlDM(att.originalName)}"><div class="file-icon">&#128196;</div><div class="file-info"><div class="file-name">${escapeHtmlDM(att.originalName)}</div><div class="file-size">${fileSize}</div></div></a></div>`;
+            }).join('');
+        }
+
+        const reactionsHTML = msg.reactions ? renderDMReactions(msg.reactions, msg.id) : '';
 
         if (showHeader) {
             return `
@@ -280,12 +309,18 @@ function renderDMMessages(prepending = false) {
               </div>
               <div class="message-content" data-content-id="${msg.id}">${content}${editedTag}</div>
               <div class="message-edit-area" data-edit-id="${msg.id}" style="display:none;"></div>
+              ${attachmentsHtml}
+              <div class="msg-embeds" data-embed-id="${msg.id}"></div>
+              ${reactionsHTML}
             </div>`;
         } else {
             return `
             <div class="message compact" data-message-id="${msg.id}">
               <div class="message-content" data-content-id="${msg.id}" style="margin-left:48px;">${content}${editedTag}</div>
               <div class="message-edit-area" data-edit-id="${msg.id}" style="display:none; margin-left:48px;"></div>
+              ${attachmentsHtml ? `<div style="margin-left:48px;">${attachmentsHtml}</div>` : ''}
+              <div class="msg-embeds" data-embed-id="${msg.id}" style="margin-left:48px;"></div>
+              ${reactionsHTML ? `<div style="margin-left:48px;">${reactionsHTML}</div>` : ''}
             </div>`;
         }
     }).join('');
@@ -299,6 +334,15 @@ function renderDMMessages(prepending = false) {
         const el = container.querySelector(`[data-message-id="${msg.id}"]`);
         if (el) attachDMMessageContextMenu(el, msg);
     });
+
+    // Inject link previews (non-blocking, uses shared cache from messageList.js)
+    if (typeof injectEmbed === 'function') {
+        dmState.messages.forEach(msg => {
+            if (!msg.content) return;
+            const slot = container.querySelector(`[data-embed-id="${msg.id}"]`);
+            if (slot && !slot.dataset.embedLoaded) injectEmbed(msg, slot);
+        });
+    }
 
     container.onscroll = () => {
         if (container.scrollTop < 100 && dmState.hasMore && !dmState.isLoading) {
@@ -315,15 +359,19 @@ function attachDMMessageContextMenu(el, msg) {
         e.stopPropagation();
 
         const isOwn = state.currentUser && msg.sender_id === state.currentUser.id;
+        const dmId = dmState.currentDM?.id;
         const items = [];
 
+        items.push({ label: 'Add Reaction', action: 'addDMReaction' });
         if (isOwn) {
+            items.push('divider');
             items.push({ label: 'Edit Message',   action: 'editDM' });
             items.push({ label: 'Delete Message', action: 'deleteDM', danger: true });
-            items.push('divider');
         }
+        items.push('divider');
         items.push({ label: 'Copy Text', action: 'copyDM' });
 
+        ctxMenu._handlers.addDMReaction = () => showReactionModal(msg.id, dmId);
         ctxMenu._handlers.editDM   = () => activateDMInlineEdit(msg);
         ctxMenu._handlers.deleteDM = () => deleteDMMessage(msg);
         ctxMenu._handlers.copyDM   = () => navigator.clipboard.writeText(msg.content);
@@ -465,17 +513,91 @@ function onDMMessageDeleted({ message_id, dm_id }) {
     renderDMMessages();
 }
 
-// ─── Send message ─────────────────────────────────────────────────────────────
-async function sendDMMessage(content) {
-    if (!dmState.currentDM || !content.trim()) return;
+// ─── DM Reactions ─────────────────────────────────────────────────────────────
+function renderDMReactions(reactions, messageId, dmId) {
+    if (!reactions || reactions.length === 0) return '';
+    const effectiveDmId = dmId || dmState.currentDM?.id;
+    return `<div class="message-reactions" data-message-id="${messageId}">
+        ${reactions.map(r => {
+            const userIds = r.users.map(u => u.userId || u.userid);
+            const hasReacted = userIds.includes(state.currentUser?.id);
+            const activeClass = hasReacted ? 'reacted' : '';
+            const usernames = r.users.map(u => u.username).join(', ');
+            const safeEmoji = r.emoji.replace(/'/g, "\\'");
+            return `<button class="reaction-bubble ${activeClass}"
+                onclick="toggleDMReaction('${messageId}', '${safeEmoji}', '${effectiveDmId}')"
+                title="${usernames}" data-emoji="${escapeHtmlDM(r.emoji)}">
+                <span class="reaction-emoji">${r.emoji}</span>
+                <span class="reaction-count">${r.count}</span>
+            </button>`;
+        }).join('')}
+    </div>`;
+}
+
+function updateDMMessageReactions(messageId, reactions, dmId) {
+    const msg = dmState.messages.find(m => m.id === messageId);
+    if (msg) msg.reactions = reactions.length > 0 ? reactions : [];
+
+    const msgEl = document.querySelector(`[data-message-id="${messageId}"]`);
+    if (!msgEl) return;
+
+    const reactionsContainer = msgEl.querySelector('.message-reactions');
+    if (reactions.length === 0) {
+        reactionsContainer?.remove();
+        return;
+    }
+
+    const html = renderDMReactions(reactions, messageId, dmId);
+    if (reactionsContainer) {
+        reactionsContainer.outerHTML = html;
+    } else {
+        const anchor = msgEl.querySelector('.msg-embeds') ||
+                       msgEl.querySelector('.message-attachment') ||
+                       msgEl.querySelector('.message-content');
+        anchor?.insertAdjacentHTML('afterend', html);
+    }
+}
+
+async function toggleDMReaction(messageId, emoji, dmId) {
     try {
-        const res = await fetch(`/api/dm/${dmState.currentDM.id}/messages`, {
-            method: 'POST',
+        const msgEl = document.querySelector(`[data-message-id="${messageId}"]`);
+        const bubble = msgEl?.querySelector(`.reaction-bubble[data-emoji="${emoji}"]`);
+        const hasReacted = bubble?.classList.contains('reacted');
+        await fetch(`/api/dm/${dmId}/messages/${messageId}/reactions`, {
+            method: hasReacted ? 'DELETE' : 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
-            body: JSON.stringify({ content: content.trim() })
+            body: JSON.stringify({ emoji })
+        });
+    } catch (err) {
+        console.error('DM reaction toggle error:', err);
+    }
+}
+
+// ─── Send message ─────────────────────────────────────────────────────────────
+async function sendDMMessage(content) {
+    if (!dmState.currentDM) return;
+    const hasFiles = typeof selectedFiles !== 'undefined' && selectedFiles.length > 0;
+    if (!content.trim() && !hasFiles) return;
+
+    try {
+        const formData = new FormData();
+        if (content.trim()) formData.append('content', content.trim());
+        if (hasFiles) selectedFiles.forEach(f => formData.append('files', f));
+
+        const res = await fetch(`/api/dm/${dmState.currentDM.id}/messages`, {
+            method: 'POST',
+            credentials: 'include',
+            body: formData
         });
         if (!res.ok) console.error('DM send error:', await res.json());
+
+        if (hasFiles) {
+            selectedFiles = [];
+            if (typeof renderFilePreview === 'function') renderFilePreview();
+            const fileInput = document.getElementById('fileInput');
+            if (fileInput) fileInput.value = '';
+        }
     } catch (err) {
         console.error('Failed to send DM:', err);
     }
@@ -541,7 +663,8 @@ async function startDMWithUser(userId, username) {
 function onDMMessageCreated(message) {
     const conv = dmState.conversations.find(c => c.id === message.dm_id);
     if (conv) {
-        conv.last_message = message.content;
+        conv.last_message = message.content ||
+            (message.attachments?.length ? '📎 Attachment' : '');
         conv.last_message_at = message.created_at;
         dmState.conversations = [conv, ...dmState.conversations.filter(c => c.id !== conv.id)];
     }
@@ -609,8 +732,9 @@ function initDMMessageInterceptor() {
             return _origSendMessage?.apply(this, arguments);
         }
         const input = document.getElementById('messageInput');
-        const content = input?.value.trim();
-        if (!content) return;
+        const content = input?.value.trim() || '';
+        const hasFiles = typeof selectedFiles !== 'undefined' && selectedFiles.length > 0;
+        if (!content && !hasFiles) return;
         input.value = '';
         input.style.height = 'auto';
         if (state.socket) state.socket.emit('dm_stop_typing', dmState.currentDM.id);
@@ -625,8 +749,9 @@ function initDMMessageInterceptor() {
         if (e.key === 'Enter' && !e.shiftKey && isInDMMode() && dmState.currentDM) {
             e.preventDefault();
             const input = document.getElementById('messageInput');
-            const content = input?.value.trim();
-            if (!content) return;
+            const content = input?.value.trim() || '';
+            const hasFiles = typeof selectedFiles !== 'undefined' && selectedFiles.length > 0;
+            if (!content && !hasFiles) return;
             input.value = '';
             input.style.height = 'auto';
             if (state.socket) state.socket.emit('dm_stop_typing', dmState.currentDM.id);

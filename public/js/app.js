@@ -224,7 +224,62 @@ function showApp() {
         } else {
             uaEl.textContent = state.currentUser.username.substring(0, 2).toUpperCase();
         }
+        renderUserStatus();
     }
+}
+
+function renderUserStatus() {
+    const statusEl = document.getElementById('currentStatus');
+    if (!statusEl || !state.currentUser) return;
+    const cs = state.currentUser.custom_status;
+    if (cs) {
+        statusEl.textContent = cs;
+        statusEl.title = cs;
+        statusEl.classList.add('has-custom-status');
+    } else {
+        statusEl.textContent = 'Online';
+        statusEl.title = 'Click to set a custom status';
+        statusEl.classList.remove('has-custom-status');
+    }
+}
+
+function openCustomStatusModal() {
+    const current = state.currentUser?.custom_status || '';
+
+    async function doSave() {
+        const val = getModalInputValue().trim().slice(0, 128);
+        try {
+            const res = await fetch('/api/users/me/status', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ custom_status: val })
+            });
+            if (res.ok) {
+                state.currentUser.custom_status = val || null;
+                renderUserStatus();
+                closeModal();
+            } else {
+                const d = await res.json();
+                showModalError(d.error || 'Failed to update status');
+            }
+        } catch {
+            showModalError('Failed to update status');
+        }
+    }
+
+    showModal({
+        title: 'Set Custom Status',
+        message: 'Enter a status message (up to 128 characters, leave blank to clear).',
+        inputType: 'text',
+        inputValue: current,
+        inputPlaceholder: 'What\'s on your mind?',
+        buttons: [
+            { text: 'Cancel', style: 'secondary', action: closeModal },
+            { text: 'Save', style: 'primary', action: doSave }
+        ],
+        onEnter: doSave
+    });
 }
 
 // Server management
@@ -362,6 +417,13 @@ function selectChannel(channelId) {
                  : channel.type === 'media'        ? '🖼️'
                  : '#';
     document.getElementById('currentChannelName').textContent = `${chIcon} ${channel.name}`;
+
+    // Show pins button only for text/announcement channels (not voice/forum/media)
+    const pinsBtn = document.getElementById('pinsBtn');
+    if (pinsBtn) {
+        const showPins = channel.type === 'text' || channel.type === 'announcement';
+        pinsBtn.style.display = showPins ? '' : 'none';
+    }
 
     _updateInputForChannel(channel);
 

@@ -49,9 +49,12 @@ class MessageController {
             }
 
             let query = `
-                SELECT m.*, u.username, u.avatar
+                SELECT m.*, u.username, u.avatar,
+                       (pm.message_id IS NOT NULL) AS is_pinned
                 FROM messages m
                 JOIN users u ON m.user_id = u.id
+                LEFT JOIN pinned_messages pm
+                    ON pm.message_id = m.id AND pm.channel_id = m.channel_id
                 WHERE m.channel_id = $1
             `;
             const params = [channelId];
@@ -221,6 +224,111 @@ class MessageController {
         } catch (error) {
             log(tags.error, 'Update message error:', error);
             res.status(500).json({ error: 'Failed to update message' });
+        }
+    }
+
+    static async pinMessage(req, res) {
+        try {
+            const { messageId } = req.params;
+            const userId = req.session.user.id;
+
+            const msgRes = await db.query('SELECT channel_id FROM messages WHERE id = $1', [messageId]);
+            if (msgRes.rows.length === 0) return res.status(404).json({ error: 'Message not found' });
+            const channelId = msgRes.rows[0].channel_id;
+
+            const chanRes = await db.query('SELECT server_id FROM channels WHERE id = $1', [channelId]);
+            if (chanRes.rows.length === 0) return res.status(404).json({ error: 'Channel not found' });
+            const serverId = chanRes.rows[0].server_id;
+
+            if (!await hasServerPerm(userId, serverId, PERMISSIONS.MANAGE_MESSAGES)) {
+                return res.status(403).json({ error: 'Missing MANAGE_MESSAGES permission' });
+            }
+
+            await db.query(
+                `INSERT INTO pinned_messages (channel_id, message_id, pinned_by)
+                 VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+                [channelId, messageId, userId]
+            );
+
+            const io = req.app.get('io');
+            if (io) io.to(`channel:${channelId}`).emit('message_pinned', { messageId, channelId });
+
+            log(tags.info, `Message ${messageId} pinned in channel ${channelId} by ${userId}`);
+            res.json({ message: 'Message pinned' });
+        } catch (error) {
+            log(tags.error, 'Pin message error:', error);
+            res.status(500).json({ error: 'Failed to pin message' });
+        }
+    }
+
+    static async unpinMessage(req, res) {
+        try {
+            const { messageId } = req.params;
+            const userId = req.session.user.id;
+
+            const msgRes = await db.query('SELECT channel_id FROM messages WHERE id = $1', [messageId]);
+            if (msgRes.rows.length === 0) return res.status(404).json({ error: 'Message not found' });
+            const channelId = msgRes.rows[0].channel_id;
+
+            const chanRes = await db.query('SELECT server_id FROM channels WHERE id = $1', [channelId]);
+            if (chanRes.rows.length === 0) return res.status(404).json({ error: 'Channel not found' });
+            const serverId = chanRes.rows[0].server_id;
+
+            if (!await hasServerPerm(userId, serverId, PERMISSIONS.MANAGE_MESSAGES)) {
+                return res.status(403).json({ error: 'Missing MANAGE_MESSAGES permission' });
+            }
+
+            await db.query(
+                'DELETE FROM pinned_messages WHERE channel_id = $1 AND message_id = $2',
+                [channelId, messageId]
+            );
+
+            const io = req.app.get('io');
+            if (io) io.to(`channel:${channelId}`).emit('message_unpinned', { messageId, channelId });
+
+            log(tags.info, `Message ${messageId} unpinned in channel ${channelId} by ${userId}`);
+            res.json({ message: 'Message unpinned' });
+        } catch (error) {
+            log(tags.error, 'Unpin message error:', error);
+            res.status(500).json({ error: 'Failed to unpin message' });
+        }
+    }
+
+    static async getPinnedMessages(req, res) {
+        try {
+            const { channelId } = req.params;
+            const userId = req.session.user.id;
+
+            // Verify membership
+            const chanRes = await db.query('SELECT server_id FROM channels WHERE id = $1', [channelId]);
+            if (chanRes.rows.length === 0) return res.status(404).json({ error: 'Channel not found' });
+            const serverId = chanRes.rows[0].server_id;
+
+            const memberCheck = await db.query(
+                'SELECT 1 FROM server_members WHERE server_id = $1 AND user_id = $2',
+                [serverId, userId]
+            );
+            if (memberCheck.rows.length === 0) {
+                return res.status(403).json({ error: 'Not a member of this server' });
+            }
+
+            const result = await db.query(
+                `SELECT m.*, u.username, u.avatar,
+                        pm.pinned_at, pm.pinned_by,
+                        pu.username AS pinned_by_username
+                 FROM pinned_messages pm
+                 JOIN messages m ON m.id = pm.message_id
+                 JOIN users u ON u.id = m.user_id
+                 LEFT JOIN users pu ON pu.id = pm.pinned_by
+                 WHERE pm.channel_id = $1
+                 ORDER BY pm.pinned_at DESC`,
+                [channelId]
+            );
+
+            res.json({ pins: result.rows });
+        } catch (error) {
+            log(tags.error, 'Get pinned messages error:', error);
+            res.status(500).json({ error: 'Failed to get pinned messages' });
         }
     }
 

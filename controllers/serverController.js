@@ -288,7 +288,7 @@ class ServerController {
             const userId = req.session.user.id;
             const [membersResult, myPermsResult] = await Promise.all([
                 db.query(
-                    `SELECT u.id, u.username, u.avatar, u.status, sm.nickname, sm.joined_at,
+                    `SELECT u.id, u.username, u.avatar, u.status, u.custom_status, sm.nickname, sm.joined_at,
                             (SELECT r.color FROM roles r
                              JOIN user_roles ur ON r.id = ur.role_id
                              WHERE ur.user_id = u.id AND ur.server_id = $1
@@ -503,6 +503,38 @@ class ServerController {
         } catch (error) {
             log(tags.error, 'Upload server icon error:', error);
             res.status(500).json({ error: 'Failed to upload server icon' });
+        }
+    }
+
+    // GET /api/servers/preview/:code — public, no auth required
+    static async getInvitePreview(req, res) {
+        try {
+            const { code } = req.params;
+            const result = await db.query(
+                `SELECT s.name, s.icon, s.id,
+                        u.username AS inviter_username,
+                        (SELECT COUNT(*) FROM server_members WHERE server_id = s.id) AS member_count,
+                        (i.expires_at IS NOT NULL AND i.expires_at < NOW())
+                            OR (i.max_uses > 0 AND i.uses >= i.max_uses) AS is_expired
+                 FROM invites i
+                 JOIN servers s ON s.id = i.server_id
+                 LEFT JOIN users u ON u.id = i.inviter_id
+                 WHERE UPPER(i.code) = UPPER($1)`,
+                [code]
+            );
+            if (result.rows.length === 0) return res.status(404).json({ error: 'Invite not found' });
+            const row = result.rows[0];
+            res.json({
+                serverName: row.name,
+                serverIcon: row.icon,
+                serverId: row.id,
+                inviterUsername: row.inviter_username,
+                memberCount: parseInt(row.member_count),
+                isExpired: row.is_expired,
+            });
+        } catch (error) {
+            log(tags.error, 'Get invite preview error:', error);
+            res.status(500).json({ error: 'Failed to get invite preview' });
         }
     }
 }

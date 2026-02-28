@@ -66,8 +66,9 @@ function renderMessages() {
                 }).join('');
             }
 
-            const messageContent = message.content ? highlightMentions(escapeHtml(message.content)) : '';
+            const messageContent = message.content ? linkifyUrls(highlightMentions(escapeHtml(message.content))) : '';
             const editedTag = message.edited_at ? ' <span class="edited-tag">(edited)</span>' : '';
+            const pinIcon = message.is_pinned ? ' <span class="pin-indicator" title="Pinned message">📌</span>' : '';
             const isOwn = message.user_id === state.currentUser.id;
             const isMentioned = parseMentions(message.content);
 
@@ -83,23 +84,25 @@ function renderMessages() {
 
             if (showHeader) {
                 return `
-            <div class="message${isMentioned ? ' mention-highlight' : ''}" data-message-id="${message.id}">
+            <div class="message${isMentioned ? ' mention-highlight' : ''}${message.is_pinned ? ' pinned-message' : ''}" data-message-id="${message.id}">
               <div class="message-header">
                 ${authorAvatar}
                 <span class="message-author"${authorColor}>${authorName}</span>
-                <span class="message-timestamp">${formatTimestamp(message.created_at)}</span>
+                <span class="message-timestamp">${formatTimestamp(message.created_at)}${pinIcon}</span>
               </div>
               <div class="message-content" data-content-id="${message.id}">${messageContent}${editedTag}</div>
               <div class="message-edit-area" data-edit-id="${message.id}" style="display:none;"></div>
               ${attachmentsHtml}
+              <div class="msg-embeds" data-embed-id="${message.id}"></div>
               ${reactionsHTML}
             </div>`;
             } else {
                 return `
-            <div class="message compact${isMentioned ? ' mention-highlight' : ''}" data-message-id="${message.id}">
+            <div class="message compact${isMentioned ? ' mention-highlight' : ''}${message.is_pinned ? ' pinned-message' : ''}" data-message-id="${message.id}">
               <div class="message-content" data-content-id="${message.id}" style="margin-left:48px;">${messageContent}${editedTag}</div>
               <div class="message-edit-area" data-edit-id="${message.id}" style="display:none; margin-left:48px;"></div>
               ${attachmentsHtml ? `<div style="margin-left:48px;">${attachmentsHtml}</div>` : ''}
+              <div class="msg-embeds" data-embed-id="${message.id}" style="margin-left:48px;"></div>
               ${reactionsHTML ? `<div style="margin-left:48px;">${reactionsHTML}</div>` : ''}
             </div>`;
             }
@@ -114,6 +117,186 @@ function renderMessages() {
         const el = container.querySelector(`[data-message-id="${message.id}"]`);
         if (el) attachMessageContextMenu(el, message);
     });
+
+    // Inject link previews only if the user has EMBED_LINKS permission
+    if (clientHasPermission('EMBED_LINKS')) {
+        state.messages.forEach(message => {
+            if (!message.content) return;
+            const embedSlot = container.querySelector(`[data-embed-id="${message.id}"]`);
+            if (!embedSlot || embedSlot.dataset.embedLoaded) return;
+            injectEmbed(message, embedSlot);
+        });
+    }
+}
+
+// ── Link embed cache & injection ─────────────────────────────────────────────
+const _embedCache = new Map();
+
+async function fetchEmbed(url) {
+    if (_embedCache.has(url)) return _embedCache.get(url);
+    try {
+        const res = await fetch(`/api/embed?url=${encodeURIComponent(url)}`, { credentials: 'include' });
+        if (res.status === 204 || !res.ok) { _embedCache.set(url, null); return null; }
+        const data = await res.json();
+        _embedCache.set(url, data);
+        return data;
+    } catch {
+        _embedCache.set(url, null);
+        return null;
+    }
+}
+
+async function injectEmbed(message, slot) {
+    slot.dataset.embedLoaded = 'true';
+
+    const urlMatch = message.content.match(/https?:\/\/[^\s<>"]+/);
+    if (!urlMatch) return;
+
+    const url = urlMatch[0];
+    const isMedia = /\.(jpg|jpeg|png|gif|webp|mp4|mov|avi|webm)(\?.*)?$/i.test(url);
+    if (isMedia && message.attachments) return;
+
+    // ── NexusGuild invite links ────────────────────────────────────────────────
+    const inviteMatch = url.match(/\/invite\/([A-Z0-9]{4,12})/i);
+    if (inviteMatch) {
+        const code = inviteMatch[1].toUpperCase();
+        try {
+            const res = await fetch(`/api/servers/preview/${code}`, { credentials: 'include' });
+            if (!res.ok) return;
+            const data = await res.json();
+            if (!document.contains(slot)) return;
+            const iconHtml = data.serverIcon
+                ? `<img src="${escapeHtml(data.serverIcon)}" alt="" class="msg-embed-invite-icon-img">`
+                : `<div class="msg-embed-invite-icon-fallback">${escapeHtml(data.serverName.slice(0, 2).toUpperCase())}</div>`;
+            const memberText = data.memberCount === 1 ? '1 Member' : `${data.memberCount.toLocaleString()} Members`;
+            const inviterText = data.inviterUsername ? `Invited by ${escapeHtml(data.inviterUsername)}` : '';
+            if (data.isExpired) {
+                slot.innerHTML = `
+                    <div class="msg-embed-invite">
+                        <div class="msg-embed-invite-header">Server Invite</div>
+                        <div class="msg-embed-invite-body">
+                            ${iconHtml}
+                            <div class="msg-embed-invite-info">
+                                <div class="msg-embed-invite-name">${escapeHtml(data.serverName)}</div>
+                                <div class="msg-embed-invite-expired">Invite expired</div>
+                            </div>
+                        </div>
+                    </div>`;
+            } else {
+                slot.innerHTML = `
+                    <div class="msg-embed-invite">
+                        <div class="msg-embed-invite-header">You've been invited to join a server!</div>
+                        <div class="msg-embed-invite-body">
+                            ${iconHtml}
+                            <div class="msg-embed-invite-info">
+                                <div class="msg-embed-invite-name">${escapeHtml(data.serverName)}</div>
+                                <div class="msg-embed-invite-meta">${memberText}${inviterText ? ' · ' + inviterText : ''}</div>
+                            </div>
+                            <button class="msg-embed-invite-btn" onclick="joinFromEmbed('${code}', this)">Join</button>
+                        </div>
+                    </div>`;
+            }
+        } catch { /* silent */ }
+        return;
+    }
+
+    // ── YouTube ────────────────────────────────────────────────────────────────
+    const ytMatch = url.match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+    if (ytMatch) {
+        if (!document.contains(slot)) return;
+        slot.innerHTML = `
+            <div class="msg-embed-video-wrapper">
+                <iframe src="https://www.youtube.com/embed/${ytMatch[1]}"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowfullscreen loading="lazy"></iframe>
+            </div>`;
+        return;
+    }
+
+    // ── Twitch ─────────────────────────────────────────────────────────────────
+    const parent = encodeURIComponent(window.location.hostname);
+
+    const twitchVodMatch = url.match(/twitch\.tv\/videos\/(\d+)/);
+    if (twitchVodMatch) {
+        if (!document.contains(slot)) return;
+        slot.innerHTML = `
+            <div class="msg-embed-video-wrapper">
+                <iframe src="https://player.twitch.tv/?video=${twitchVodMatch[1]}&parent=${parent}"
+                    allowfullscreen loading="lazy"></iframe>
+            </div>`;
+        return;
+    }
+
+    const twitchClipMatch = url.match(/(?:clips\.twitch\.tv\/|twitch\.tv\/\w+\/clip\/)([a-zA-Z0-9_-]+)/);
+    if (twitchClipMatch) {
+        if (!document.contains(slot)) return;
+        slot.innerHTML = `
+            <div class="msg-embed-video-wrapper">
+                <iframe src="https://clips.twitch.tv/embed?clip=${twitchClipMatch[1]}&parent=${parent}"
+                    allowfullscreen loading="lazy"></iframe>
+            </div>`;
+        return;
+    }
+
+    const twitchStreamMatch = url.match(/twitch\.tv\/([a-zA-Z0-9_]+)\/?(?:\?.*)?$/);
+    if (twitchStreamMatch) {
+        if (!document.contains(slot)) return;
+        slot.innerHTML = `
+            <div class="msg-embed-video-wrapper">
+                <iframe src="https://player.twitch.tv/?channel=${twitchStreamMatch[1]}&parent=${parent}"
+                    allowfullscreen loading="lazy"></iframe>
+            </div>`;
+        return;
+    }
+
+    // ── Generic OG embed ──────────────────────────────────────────────────────
+    const data = await fetchEmbed(url);
+    if (!data || !data.title) return;
+    if (!document.contains(slot)) return;
+
+    const imgHtml = data.image
+        ? `<img class="msg-embed-image" src="${escapeHtml(data.image)}" alt="" loading="lazy" onerror="this.style.display='none'">`
+        : '';
+    const siteHtml = data.siteName
+        ? `<div class="msg-embed-site">${escapeHtml(data.siteName)}</div>`
+        : '';
+    const descHtml = data.description
+        ? `<div class="msg-embed-description">${escapeHtml(data.description)}</div>`
+        : '';
+
+    slot.innerHTML = `
+        <div class="msg-embed">
+            ${siteHtml}
+            <a class="msg-embed-title" href="${escapeHtml(data.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(data.title)}</a>
+            ${descHtml}
+            ${imgHtml}
+        </div>
+    `;
+}
+
+async function joinFromEmbed(code, btn) {
+    btn.disabled = true;
+    btn.textContent = 'Joining...';
+    try {
+        const res = await fetch('/api/servers/join', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ code }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+            btn.textContent = 'Joined!';
+            btn.classList.add('joined');
+            if (typeof loadUserServers === 'function') loadUserServers();
+        } else {
+            btn.disabled = false;
+            btn.textContent = data.error === 'Already a member' ? 'Already Joined' : 'Join';
+        }
+    } catch {
+        btn.disabled = false;
+        btn.textContent = 'Join';
+    }
 }
 
 async function handleMessageScroll() {
@@ -305,6 +488,15 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML.replace(/\n/g, '<br>');
+}
+
+function linkifyUrls(html) {
+    // Wrap bare http(s) URLs in anchor tags. Runs after escapeHtml so the
+    // text is already safe; stops at whitespace or HTML delimiters.
+    return html.replace(
+        /(https?:\/\/[^\s<>"]+)/g,
+        (url) => `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`
+    );
 }
 
 function highlightMentions(html) {

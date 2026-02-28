@@ -132,7 +132,22 @@ class DMController {
             const userId = req.session.user.id;
             const { content } = req.body;
 
-            if (!content?.trim()) return res.status(400).json({ error: 'Content is required' });
+            // Build attachments array from uploaded files
+            let attachments = null;
+            if (req.files && req.files.length > 0) {
+                attachments = req.files.map(file => ({
+                    filename: file.filename,
+                    originalName: file.originalname,
+                    mimetype: file.mimetype,
+                    size: file.size,
+                    url: `/uploads/${file.filename}`
+                }));
+            }
+
+            const trimmed = content?.trim() || '';
+            if (!trimmed && !attachments) {
+                return res.status(400).json({ error: 'Message must have content or attachments' });
+            }
 
             // Verify user is part of this DM
             const dmCheck = await db.query(
@@ -143,8 +158,8 @@ class DMController {
 
             const id = generateSnowflake();
             const result = await db.query(
-                'INSERT INTO dm_messages (id, dm_id, sender_id, content) VALUES ($1, $2, $3, $4) RETURNING *',
-                [id, dmId, userId, content.trim()]
+                'INSERT INTO dm_messages (id, dm_id, sender_id, content, attachments) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+                [id, dmId, userId, trimmed, attachments ? JSON.stringify(attachments) : null]
             );
 
             // Update last_message_at on the conversation
@@ -164,9 +179,7 @@ class DMController {
                 avatar: userResult.rows[0].avatar
             };
 
-            // Emit to each user's personal room so both receive it regardless of
-            // whether they have this DM conversation currently open.
-            // (The dm:${dmId} room is still used for typing indicators.)
+            // Emit to each user's personal room
             const io = req.app.get('io');
             if (io) {
                 const dm = dmCheck.rows[0];
@@ -179,6 +192,136 @@ class DMController {
         } catch (error) {
             log(tags.error, 'Send DM message error:', error);
             res.status(500).json({ error: 'Failed to send message' });
+        }
+    }
+
+    // POST /api/dm/:dmId/messages/:messageId/reactions
+    static async addDMReaction(req, res) {
+        try {
+            const { dmId, messageId } = req.params;
+            const { emoji } = req.body;
+            const userId = req.session.user.id;
+
+            if (!emoji?.trim()) return res.status(400).json({ error: 'Emoji is required' });
+
+            // Verify user is part of this DM
+            const dmCheck = await db.query(
+                'SELECT * FROM direct_messages WHERE id = $1 AND (user1_id = $2 OR user2_id = $2)',
+                [dmId, userId]
+            );
+            if (dmCheck.rows.length === 0) return res.status(403).json({ error: 'Access denied' });
+
+            // Verify message belongs to this DM
+            const msgCheck = await db.query(
+                'SELECT id FROM dm_messages WHERE id = $1 AND dm_id = $2',
+                [messageId, dmId]
+            );
+            if (msgCheck.rows.length === 0) return res.status(404).json({ error: 'Message not found' });
+
+            const existing = await db.query(
+                'SELECT id FROM dm_reactions WHERE message_id = $1 AND user_id = $2 AND emoji = $3',
+                [messageId, userId, emoji]
+            );
+            if (existing.rows.length > 0) {
+                return res.status(400).json({ error: 'You already reacted with this emoji' });
+            }
+
+            await db.query(
+                'INSERT INTO dm_reactions (id, message_id, user_id, emoji) VALUES ($1, $2, $3, $4)',
+                [generateSnowflake(), messageId, userId, emoji]
+            );
+
+            const reactionsResult = await db.query(
+                `SELECT emoji, COUNT(*) AS count,
+                        ARRAY_AGG(JSON_BUILD_OBJECT('userId', user_id, 'username', u.username)) AS users
+                 FROM dm_reactions r JOIN users u ON r.user_id = u.id
+                 WHERE message_id = $1 GROUP BY emoji`,
+                [messageId]
+            );
+
+            const io = req.app.get('io');
+            if (io) {
+                const dm = dmCheck.rows[0];
+                const otherId = dm.user1_id === userId ? dm.user2_id : dm.user1_id;
+                const payload = { messageId, dmId, reactions: reactionsResult.rows };
+                io.to(`user:${userId}`).emit('dm_reaction_added', payload);
+                io.to(`user:${otherId}`).emit('dm_reaction_added', payload);
+            }
+
+            res.json({ reactions: reactionsResult.rows });
+        } catch (error) {
+            log(tags.error, 'Add DM reaction error:', error);
+            res.status(500).json({ error: 'Failed to add reaction' });
+        }
+    }
+
+    // DELETE /api/dm/:dmId/messages/:messageId/reactions
+    static async removeDMReaction(req, res) {
+        try {
+            const { dmId, messageId } = req.params;
+            const { emoji } = req.body;
+            const userId = req.session.user.id;
+
+            if (!emoji?.trim()) return res.status(400).json({ error: 'Emoji is required' });
+
+            const dmCheck = await db.query(
+                'SELECT * FROM direct_messages WHERE id = $1 AND (user1_id = $2 OR user2_id = $2)',
+                [dmId, userId]
+            );
+            if (dmCheck.rows.length === 0) return res.status(403).json({ error: 'Access denied' });
+
+            await db.query(
+                'DELETE FROM dm_reactions WHERE message_id = $1 AND user_id = $2 AND emoji = $3',
+                [messageId, userId, emoji]
+            );
+
+            const reactionsResult = await db.query(
+                `SELECT emoji, COUNT(*) AS count,
+                        ARRAY_AGG(JSON_BUILD_OBJECT('userId', user_id, 'username', u.username)) AS users
+                 FROM dm_reactions r JOIN users u ON r.user_id = u.id
+                 WHERE message_id = $1 GROUP BY emoji`,
+                [messageId]
+            );
+
+            const io = req.app.get('io');
+            if (io) {
+                const dm = dmCheck.rows[0];
+                const otherId = dm.user1_id === userId ? dm.user2_id : dm.user1_id;
+                const payload = { messageId, dmId, reactions: reactionsResult.rows };
+                io.to(`user:${userId}`).emit('dm_reaction_removed', payload);
+                io.to(`user:${otherId}`).emit('dm_reaction_removed', payload);
+            }
+
+            res.json({ reactions: reactionsResult.rows });
+        } catch (error) {
+            log(tags.error, 'Remove DM reaction error:', error);
+            res.status(500).json({ error: 'Failed to remove reaction' });
+        }
+    }
+
+    // GET /api/dm/:dmId/messages/:messageId/reactions
+    static async getDMReactions(req, res) {
+        try {
+            const { dmId, messageId } = req.params;
+            const userId = req.session.user.id;
+
+            const dmCheck = await db.query(
+                'SELECT 1 FROM direct_messages WHERE id = $1 AND (user1_id = $2 OR user2_id = $2)',
+                [dmId, userId]
+            );
+            if (dmCheck.rows.length === 0) return res.status(403).json({ error: 'Access denied' });
+
+            const result = await db.query(
+                `SELECT emoji, COUNT(*) AS count,
+                        ARRAY_AGG(JSON_BUILD_OBJECT('userId', user_id, 'username', u.username)) AS users
+                 FROM dm_reactions r JOIN users u ON r.user_id = u.id
+                 WHERE message_id = $1 GROUP BY emoji`,
+                [messageId]
+            );
+            res.json({ reactions: result.rows });
+        } catch (error) {
+            log(tags.error, 'Get DM reactions error:', error);
+            res.status(500).json({ error: 'Failed to get reactions' });
         }
     }
 

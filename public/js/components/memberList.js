@@ -59,13 +59,20 @@ function renderMember(member) {
         ? `<img src="${member.avatar}" alt="${displayName}" class="member-av-img">`
         : `<div class="member-avatar">${getInitials(displayName)}</div>`;
 
+    const statusText = member.custom_status
+        ? `<div class="member-custom-status" title="${escapeHtml(member.custom_status)}">${escapeHtml(member.custom_status)}</div>`
+        : '';
+
     return `
     <div class="member" data-user-id="${member.id}">
       <div class="member-av-wrap">
         ${avatarHtml}
         <div class="member-status ${statusClass}"></div>
       </div>
-      <span class="member-name"${nameStyle}>${displayName}${isOwner ? ' &#x1F451;' : ''}</span>
+      <div class="member-info">
+        <span class="member-name"${nameStyle}>${displayName}${isOwner ? ' &#x1F451;' : ''}</span>
+        ${statusText}
+      </div>
     </div>
   `;
 }

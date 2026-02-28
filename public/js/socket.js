@@ -146,6 +146,29 @@ function initializeSocket() {
         if (typeof onForumPostDeleted === 'function') onForumPostDeleted(data);
     });
 
+    state.socket.on('message_pinned', (data) => {
+        const msg = state.messages.find(m => m.id === data.messageId);
+        if (msg) { msg.is_pinned = true; renderMessages(); }
+    });
+
+    state.socket.on('message_unpinned', (data) => {
+        const msg = state.messages.find(m => m.id === data.messageId);
+        if (msg) { msg.is_pinned = false; renderMessages(); }
+    });
+
+    state.socket.on('custom_status_update', (data) => {
+        const member = state.members.find(m => m.id === data.userId);
+        if (member) {
+            member.custom_status = data.custom_status;
+            renderMemberList();
+        }
+        // Update own status display if it's the current user
+        if (state.currentUser && data.userId === state.currentUser.id) {
+            state.currentUser.custom_status = data.custom_status;
+            renderUserStatus();
+        }
+    });
+
     state.socket.on('reaction_added', (data) => {
         const { messageId, reactions } = data;
         updateMessageReactions(messageId, reactions);

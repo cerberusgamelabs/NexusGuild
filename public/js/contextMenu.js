@@ -203,8 +203,16 @@ function attachMessageContextMenu(el, message) {
         const items = [];
 
         items.push({ label: 'Add Reaction', action: 'addReaction' });
-        if (isOwner || canManageMessages) {
+        if (canManageMessages) {
             items.push('divider');
+            if (!message.is_pinned) {
+                items.push({ label: '📌 Pin Message', action: 'pinMsg' });
+            } else {
+                items.push({ label: '📌 Unpin Message', action: 'unpinMsg' });
+            }
+        }
+        if (isOwner || canManageMessages) {
+            if (!canManageMessages) items.push('divider');
             if (isOwner) items.push({ label: 'Edit Message', action: 'editMsg' });
             items.push({ label: 'Delete Message', action: 'deleteMsg', danger: true });
         }
@@ -212,6 +220,8 @@ function attachMessageContextMenu(el, message) {
         items.push({ label: 'Copy Text', action: 'copyText' });
 
         ctxMenu._handlers.addReaction = () => showReactionModal(message.id);
+        ctxMenu._handlers.pinMsg = () => pinMessage(message);
+        ctxMenu._handlers.unpinMsg = () => unpinMessage(message);
         ctxMenu._handlers.editMsg = () => startEditMessage(message);
         ctxMenu._handlers.deleteMsg = () => deleteMessage(message);
         ctxMenu._handlers.copyText = () => navigator.clipboard.writeText(message.content);
@@ -537,12 +547,104 @@ function ctxBanMember(member) {
     });
 }
 
-// ── Message edit/delete actions ──────────────────────────────────────────────
+// ── Pin / Unpin actions ───────────────────────────────────────────────────────
+async function pinMessage(message) {
+    try {
+        const res = await fetch(`/api/messages/${message.id}/pin`, {
+            method: 'PUT', credentials: 'include'
+        });
+        if (!res.ok) {
+            const d = await res.json();
+            showToast(d.error || 'Failed to pin message');
+        }
+    } catch { showToast('Failed to pin message'); }
+}
+
+async function unpinMessage(message) {
+    try {
+        const res = await fetch(`/api/messages/${message.id}/pin`, {
+            method: 'DELETE', credentials: 'include'
+        });
+        if (!res.ok) {
+            const d = await res.json();
+            showToast(d.error || 'Failed to unpin message');
+        }
+    } catch { showToast('Failed to unpin message'); }
+}
+
+async function showPinsPanel(channelId) {
+    let pins = [];
+    try {
+        const res = await fetch(`/api/messages/channels/${channelId}/pins`, { credentials: 'include' });
+        if (res.ok) {
+            const d = await res.json();
+            pins = d.pins || [];
+        } else {
+            showToast('Failed to load pinned messages');
+            return;
+        }
+    } catch {
+        showToast('Failed to load pinned messages');
+        return;
+    }
+
+    const canManage = clientHasPermission(CLIENT_PERMS.MANAGE_MESSAGES);
+
+    let html = `<div class="pins-panel">`;
+    if (pins.length === 0) {
+        html += `<div class="pins-empty">No pinned messages in this channel.</div>`;
+    } else {
+        pins.forEach(pin => {
+            const content = pin.content
+                ? (pin.content.length > 200 ? pin.content.slice(0, 200) + '…' : pin.content)
+                : '(attachment)';
+            const date = new Date(pin.pinned_at).toLocaleDateString();
+            html += `
+                <div class="pin-item" data-message-id="${pin.id}">
+                    <div class="pin-icon">📌</div>
+                    <div class="pin-body">
+                        <div class="pin-author">${escapeHtml(pin.username)}</div>
+                        <div class="pin-content">${escapeHtml(content)}</div>
+                        <div class="pin-meta">Pinned ${date}${pin.pinned_by_username ? ` by ${escapeHtml(pin.pinned_by_username)}` : ''}</div>
+                    </div>
+                    ${canManage ? `<button class="pin-remove-btn" onclick="unpinFromPanel('${pin.id}', '${channelId}')">✕</button>` : ''}
+                </div>
+            `;
+        });
+    }
+    html += `</div>`;
+
+    showModal({
+        title: `📌 Pinned Messages`,
+        customHTML: html,
+        buttons: [{ text: 'Close', style: 'secondary', action: closeModal }]
+    });
+}
+
+async function unpinFromPanel(messageId, channelId) {
+    try {
+        const res = await fetch(`/api/messages/${messageId}/pin`, {
+            method: 'DELETE', credentials: 'include'
+        });
+        if (res.ok) {
+            // Re-open the panel to refresh
+            closeModal();
+            showPinsPanel(channelId);
+        } else {
+            const d = await res.json();
+            showToast(d.error || 'Failed to unpin');
+        }
+    } catch { showToast('Failed to unpin message'); }
+}
+
+// ── Message edit/delete actions ───────────────────────────────────────────────
 let currentEditingMessage = null;
 let currentReactionMessageId = null;
+let currentReactionDmId = null;  // set when reacting to a DM message; null for channel messages
 
-async function showReactionModal(messageId) {
+async function showReactionModal(messageId, dmId = null) {
     currentReactionMessageId = messageId;
+    currentReactionDmId = dmId;
 
     // Load custom emojis if not already loaded
     let serverEmojis = { global: [], server: [] };
@@ -608,8 +710,13 @@ async function showReactionModal(messageId) {
 async function selectEmojiFromModal(emoji) {
     if (!currentReactionMessageId) return;
 
+    const isDM = !!currentReactionDmId;
+    const url = isDM
+        ? `/api/dm/${currentReactionDmId}/messages/${currentReactionMessageId}/reactions`
+        : `/api/reactions/messages/${currentReactionMessageId}/reactions`;
+
     try {
-        const response = await fetch(`/api/reactions/messages/${currentReactionMessageId}/reactions`, {
+        const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
@@ -620,8 +727,8 @@ async function selectEmojiFromModal(emoji) {
 
         if (!response.ok) {
             if (data.error === 'You already reacted with this emoji') {
-                // If already reacted, remove it instead
-                await fetch(`/api/reactions/messages/${currentReactionMessageId}/reactions`, {
+                // Toggle off: remove it
+                await fetch(url, {
                     method: 'DELETE',
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'include',
@@ -633,10 +740,12 @@ async function selectEmojiFromModal(emoji) {
         }
 
         currentReactionMessageId = null;
+        currentReactionDmId = null;
         closeModal();
     } catch (error) {
         console.error('Error adding reaction:', error);
         currentReactionMessageId = null;
+        currentReactionDmId = null;
         closeModal();
     }
 }

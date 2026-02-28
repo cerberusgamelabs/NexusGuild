@@ -52,7 +52,7 @@
             <div class="user-profile" id="userAvatar">NG</div>
             <div class="user-info">
                 <span class="username" id="currentUsername">Username</span>
-                <span class="status" id="currentStatus">Online</span>
+                <span class="status" id="currentStatus" onclick="openCustomStatusModal()" title="Click to set a custom status" style="cursor:pointer;">Online</span>
             </div>
             <button class="toggle-button" id="micToggle" onclick="toggleMic()">
                 <img src="img/mute-off.png" alt="Mic State">
@@ -100,6 +100,9 @@
                     <button class="mobile-back-btn" onclick="mobileShowChannels()">&#8592;</button>
                     <div class="channel-header" id="channelHeader">
                         <span id="currentChannelName"># general</span>
+                        <button id="pinsBtn" class="header-icon-btn" title="Pinned Messages"
+                                onclick="state.currentChannel && showPinsPanel(state.currentChannel.id)"
+                                style="display:none;">📌</button>
                     </div>
                     <button class="mobile-members-btn" onclick="mobileToggleMembers()" title="Members">&#128101;</button>
                 </div>

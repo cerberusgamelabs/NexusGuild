@@ -11,6 +11,9 @@ import { uploadMultiple, handleUploadError } from "../middleware/upload.js";
 // Get channel messages
 router.get('/channels/:channelId/messages', requireAuth, MessageController.getChannelMessages);
 
+// Get pinned messages for a channel
+router.get('/channels/:channelId/pins', requireAuth, MessageController.getPinnedMessages);
+
 // Send message (with optional file attachments)
 router.post('/channels/:channelId/messages',
     requireAuth,
@@ -25,5 +28,9 @@ router.patch('/:messageId', requireAuth, validateMessage, MessageController.upda
 
 // Delete message
 router.delete('/:messageId', requireAuth, MessageController.deleteMessage);
+
+// Pin / unpin message
+router.put('/:messageId/pin', requireAuth, MessageController.pinMessage);
+router.delete('/:messageId/pin', requireAuth, MessageController.unpinMessage);
 
 export default router;

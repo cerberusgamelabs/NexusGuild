@@ -33,6 +33,7 @@ import userRoutes from "./routes/users.js";
 import importRoutes from "./routes/import.js";
 import forumRoutes from "./routes/forum.js";
 import voiceRoutes from "./routes/voice.js";
+import embedRoutes from "./routes/embed.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -78,6 +79,7 @@ const startServer = async () => {
         app.use('/api/import', importRoutes);
         app.use('/api/forum', forumRoutes);
         app.use('/api/voice', voiceRoutes);
+        app.use('/api/embed', embedRoutes);
 
         app.get('/api/health', (req, res) => {
             res.json({ status: 'ok', timestamp: new Date(), uptime: process.uptime() * 1000, memory: process.memoryUsage() });

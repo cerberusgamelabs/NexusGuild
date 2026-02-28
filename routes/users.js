@@ -8,5 +8,6 @@ import { requireAuth } from "../middleware/auth.js";
 import { uploadSingle, handleUploadError } from "../middleware/upload.js";
 
 router.post('/me/avatar', requireAuth, uploadSingle, handleUploadError, UserController.uploadAvatar);
+router.patch('/me/status', requireAuth, UserController.setCustomStatus);
 
 export default router;
