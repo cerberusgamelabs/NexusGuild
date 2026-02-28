@@ -742,7 +742,7 @@ function selectEmojiShortcode(name, event) {
 
 // Message handling
 function handleMessageInput(event) {
-    if (event.key === 'Escape') { hideAllAutocomplete(); return; }
+    if (event.key === 'Escape') { hideAllAutocomplete(); if (typeof closeInputEmojiPicker === 'function') closeInputEmojiPicker(); return; }
 
     // Emoji dropdown keyboard nav
     const edd = document.getElementById('emojiDropdown');

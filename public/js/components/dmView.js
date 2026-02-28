@@ -276,8 +276,9 @@ function renderDMMessages(prepending = false) {
             prev.sender_id !== msg.sender_id ||
             (new Date(msg.created_at) - new Date(prev.created_at)) > 300000;
 
-        const rawContent = escapeHtmlDM(msg.content);
-        const content = typeof linkifyUrls === 'function' ? linkifyUrls(rawContent) : rawContent;
+        let content = escapeHtmlDM(msg.content);
+        if (typeof parseEmojiShortcodes === 'function') content = parseEmojiShortcodes(content);
+        if (typeof linkifyUrls === 'function') content = linkifyUrls(content);
         const editedTag = msg.edited_at ? ' <span class="edited-tag">(edited)</span>' : '';
         const ts = (typeof formatTimestamp === 'function')
             ? formatTimestamp(msg.created_at)
@@ -371,7 +372,7 @@ function attachDMMessageContextMenu(el, msg) {
         items.push('divider');
         items.push({ label: 'Copy Text', action: 'copyDM' });
 
-        ctxMenu._handlers.addDMReaction = () => showReactionModal(msg.id, dmId);
+        ctxMenu._handlers.addDMReaction = () => showReactionModal(msg.id, dmId, e.clientX, e.clientY);
         ctxMenu._handlers.editDM   = () => activateDMInlineEdit(msg);
         ctxMenu._handlers.deleteDM = () => deleteDMMessage(msg);
         ctxMenu._handlers.copyDM   = () => navigator.clipboard.writeText(msg.content);

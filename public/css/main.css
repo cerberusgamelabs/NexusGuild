@@ -2002,6 +2002,32 @@ textarea.modal-input {
 .inline-emoji { width:20px; height:20px; object-fit:contain; vertical-align:middle; }
 .emoji-char { font-size:1.1em; line-height:1; vertical-align:middle; }
 
+/* ── Input Emoji Picker Panel ─────────────────────────────────────────────── */
+.emoji-picker-btn { background:none; border:none; font-size:18px; cursor:pointer; padding:4px 6px; border-radius:4px; color:#b5bac1; transition:color .15s; flex-shrink:0; }
+.emoji-picker-btn:hover { color:#dbdee1; }
+
+.input-emoji-picker { position:absolute; bottom:calc(100% + 8px); right:0; width:380px; max-height:420px; background:#2b2d31; border:1px solid #1e1f22; border-radius:8px; box-shadow:0 -4px 24px rgba(0,0,0,.5); z-index:300; display:flex; flex-direction:column; overflow:hidden; }
+
+.iep-search { padding:8px; border-bottom:1px solid #1e1f22; flex-shrink:0; }
+.iep-search input { width:100%; background:#1e1f22; border:none; border-radius:4px; padding:6px 10px; color:#dbdee1; font-size:13px; outline:none; box-sizing:border-box; }
+.iep-search input::placeholder { color:#72767d; }
+
+.iep-body { display:flex; flex-direction:row; flex:1; overflow:hidden; }
+
+.iep-tabs { display:flex; flex-direction:column; gap:1px; padding:4px 3px; border-right:1px solid #1e1f22; overflow-y:auto; flex-shrink:0; width:76px; scrollbar-width:none; }
+.iep-tabs::-webkit-scrollbar { display:none; }
+.iep-tab { background:none; border:none; font-size:18px; padding:4px; border-radius:4px; cursor:pointer; opacity:.45; transition:opacity .1s; flex-shrink:0; line-height:1; }
+.iep-tab:hover { opacity:.85; }
+.iep-tab.active { opacity:1; }
+
+.iep-grid-wrap { overflow-y:auto; overflow-x:hidden; flex:1; min-width:0; padding:6px; scrollbar-width:thin; scrollbar-color:#4f545c transparent; }
+.iep-grid-wrap::-webkit-scrollbar { width:4px; }
+.iep-grid-wrap::-webkit-scrollbar-thumb { background:#4f545c; border-radius:2px; }
+.iep-section-label { font-size:11px; font-weight:700; color:#949ba4; text-transform:uppercase; padding:4px 2px 4px; letter-spacing:.5px; }
+.iep-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:1px; }
+.input-emoji-picker .iep-btn { background:none; border:none; font-size:22px; padding:3px; border-radius:4px; cursor:pointer; line-height:1.2; text-align:center; color:inherit; }
+.iep-btn img { width:22px; height:22px; object-fit:contain; vertical-align:middle; }
+
 /* ── Avatar / Icon Images ─────────────────────────────────────────────────── */
 .server-icon-img { width:100%; height:100%; border-radius:inherit; object-fit:cover; }
 .member-av-img   { width:32px; height:32px; border-radius:50%; object-fit:cover; }

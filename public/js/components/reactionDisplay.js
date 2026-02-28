@@ -127,10 +127,10 @@ function updateMessageReactions(messageId, reactions) {
         // Update existing container
         reactionsContainer.outerHTML = reactionsHTML;
     } else {
-        // Add new container after message content
-        const messageContent = messageElement.querySelector('.message-content');
-        if (messageContent) {
-            messageContent.insertAdjacentHTML('afterend', reactionsHTML);
+        // Add new container after attachments/embeds (so it appears below images)
+        const anchor = messageElement.querySelector('.msg-embeds') || messageElement.querySelector('.message-content');
+        if (anchor) {
+            anchor.insertAdjacentHTML('afterend', reactionsHTML);
         }
     }
 }

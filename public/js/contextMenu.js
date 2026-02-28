@@ -219,7 +219,7 @@ function attachMessageContextMenu(el, message) {
         items.push('divider');
         items.push({ label: 'Copy Text', action: 'copyText' });
 
-        ctxMenu._handlers.addReaction = () => showReactionModal(message.id);
+        ctxMenu._handlers.addReaction = () => showReactionModal(message.id, null, e.clientX, e.clientY);
         ctxMenu._handlers.pinMsg = () => pinMessage(message);
         ctxMenu._handlers.unpinMsg = () => unpinMessage(message);
         ctxMenu._handlers.editMsg = () => startEditMessage(message);
@@ -642,112 +642,8 @@ let currentEditingMessage = null;
 let currentReactionMessageId = null;
 let currentReactionDmId = null;  // set when reacting to a DM message; null for channel messages
 
-async function showReactionModal(messageId, dmId = null) {
-    currentReactionMessageId = messageId;
-    currentReactionDmId = dmId;
-
-    // Load custom emojis if not already loaded
-    let serverEmojis = { global: [], server: [] };
-    if (state.currentServer) {
-        try {
-            const response = await fetch(`/api/reactions/servers/${state.currentServer.id}/emojis`, {
-                credentials: 'include'
-            });
-            if (response.ok) {
-                serverEmojis = await response.json();
-            }
-        } catch (error) {
-            console.error('Error loading server emojis:', error);
-        }
-    }
-
-    // Build emoji grid HTML
-    const globalEmojis = ['😀', '😂', '😍', '😢', '😠', '👍', '👎', '❤️', '🎉', '🔥',
-                          '✨', '⭐', '💯', '🙏', '👏', '💪', '🤔', '😎', '🤗', '😴',
-                          '🥳', '🤩', '😱', '🤯', '💀', '👀', '🙌', '✅', '❌', '⚠️',
-                          '💬', '💭', '🎵', '🎮', '⚡', '🌟', '🔴', '🟢', '🔵', '⚪'];
-
-    let emojiHTML = '<div style="max-height: 300px; overflow-y: auto;">';
-
-    // Global emojis section
-    emojiHTML += '<div style="margin-bottom: 15px;"><strong style="color: #b9bbbe; font-size: 12px; text-transform: uppercase;">Global Emojis</strong></div>';
-    emojiHTML += '<div style="display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px; margin-bottom: 20px;">';
-    globalEmojis.forEach(emoji => {
-        emojiHTML += `<button class="emoji-modal-btn" onclick="selectEmojiFromModal('${emoji}')" style="font-size: 24px; padding: 8px; background: transparent; border: none; cursor: pointer; border-radius: 4px; transition: background 0.1s;" onmouseover="this.style.background='#40444b'" onmouseout="this.style.background='transparent'">${emoji}</button>`;
-    });
-    emojiHTML += '</div>';
-
-    // Server emojis section (if any)
-    if (serverEmojis.server && serverEmojis.server.length > 0) {
-        emojiHTML += '<div style="margin-bottom: 15px;"><strong style="color: #b9bbbe; font-size: 12px; text-transform: uppercase;">Server Emojis</strong></div>';
-        emojiHTML += '<div style="display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px;">';
-        serverEmojis.server.forEach(emoji => {
-            emojiHTML += `<button class="emoji-modal-btn" onclick="selectEmojiFromModal('custom:${state.currentServer.id}:${emoji.name}')" style="padding: 8px; background: transparent; border: none; cursor: pointer; border-radius: 4px; transition: background 0.1s;" onmouseover="this.style.background='#40444b'" onmouseout="this.style.background='transparent'">
-                <img src="/img/emoji/${emoji.server_id}/${emoji.filename}" alt="${emoji.name}" title=":${emoji.name}:" style="width: 24px; height: 24px;" />
-            </button>`;
-        });
-        emojiHTML += '</div>';
-    }
-
-    emojiHTML += '</div>';
-
-    showModal({
-        title: 'Add Reaction',
-        customHTML: emojiHTML,
-        buttons: [
-            {
-                text: 'Cancel',
-                style: 'secondary',
-                action: () => {
-                    currentReactionMessageId = null;
-                    closeModal();
-                }
-            }
-        ]
-    });
-}
-
-async function selectEmojiFromModal(emoji) {
-    if (!currentReactionMessageId) return;
-
-    const isDM = !!currentReactionDmId;
-    const url = isDM
-        ? `/api/dm/${currentReactionDmId}/messages/${currentReactionMessageId}/reactions`
-        : `/api/reactions/messages/${currentReactionMessageId}/reactions`;
-
-    try {
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ emoji })
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-            if (data.error === 'You already reacted with this emoji') {
-                // Toggle off: remove it
-                await fetch(url, {
-                    method: 'DELETE',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'include',
-                    body: JSON.stringify({ emoji })
-                });
-            } else {
-                console.error('Failed to add reaction:', data.error);
-            }
-        }
-
-        currentReactionMessageId = null;
-        currentReactionDmId = null;
-        closeModal();
-    } catch (error) {
-        console.error('Error adding reaction:', error);
-        currentReactionMessageId = null;
-        currentReactionDmId = null;
-        closeModal();
-    }
+async function showReactionModal(messageId, dmId = null, x = 0, y = 0) {
+    showEmojiPickerAt(messageId, x, y, dmId);
 }
 
 

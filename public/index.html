@@ -117,9 +117,11 @@
                             📎
                         </button>
                         <textarea id="messageInput" placeholder="Message..." rows="1" onkeydown="handleMessageInput(event)" oninput="updateAutocomplete(this)" onblur="setTimeout(hideAllAutocomplete,150)"></textarea>
+                        <button class="emoji-picker-btn" id="inputEmojiBtn" onclick="toggleInputEmojiPicker()" title="Emoji">😊</button>
                         <button onclick="sendMessage()">Send</button>
                         <div id="mentionDropdown" class="mention-dropdown" style="display:none;"></div>
                         <div id="emojiDropdown" class="emoji-dropdown" style="display:none;"></div>
+                        <div id="inputEmojiPicker" class="input-emoji-picker" style="display:none;"></div>
                     </div>
                 </div>
             </div>
@@ -244,20 +246,7 @@
         </div>
     </div>
 
-    <div id="emojiPickerModal" style="display:none;">
-        <div class="emoji-picker-tabs">
-            <button id="emojiTabGlobal" class="emoji-tab-btn active" onclick="switchEmojiTab('global')">
-                Global
-            </button>
-            <button id="emojiTabServer" class="emoji-tab-btn" onclick="switchEmojiTab('server')">
-                Server
-            </button>
-        </div>
-        <div class="emoji-picker-content">
-            <div id="emojiPickerGlobal" class="emoji-picker-grid"></div>
-            <div id="emojiPickerServer" class="emoji-picker-grid" style="display:none;"></div>
-        </div>
-    </div>
+    <div id="emojiPickerModal" style="display:none;"></div>
 
     <!-- ── Channel Permissions Overlay ──────────────────────────────────────── -->
     <div id="channelPermsOverlay" style="display:none;"></div>
