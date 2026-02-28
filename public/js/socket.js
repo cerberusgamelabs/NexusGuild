@@ -15,22 +15,16 @@ function initializeSocket() {
         const msgChannelId = message.channel_id ?? message.channelId;
         if (state.currentChannel && msgChannelId === state.currentChannel.id) {
             state.messages.push(message);
-            renderMessages();
-            scrollToBottom();
+            appendMessage(message);
         }
     });
 
     state.socket.on('message_updated', (message) => {
-        const index = state.messages.findIndex(m => m.id === message.id);
-        if (index !== -1) {
-            state.messages[index] = message;
-            renderMessages();
-        }
+        patchMessageDOM(message);
     });
 
     state.socket.on('message_deleted', (data) => {
-        state.messages = state.messages.filter(m => m.id !== data.messageId);
-        renderMessages();
+        removeMessageEl(data.messageId);
     });
 
     // -- Channel notifications (unread tracking) ---------------------------
@@ -147,13 +141,11 @@ function initializeSocket() {
     });
 
     state.socket.on('message_pinned', (data) => {
-        const msg = state.messages.find(m => m.id === data.messageId);
-        if (msg) { msg.is_pinned = true; renderMessages(); }
+        patchMessagePin(data.messageId, true);
     });
 
     state.socket.on('message_unpinned', (data) => {
-        const msg = state.messages.find(m => m.id === data.messageId);
-        if (msg) { msg.is_pinned = false; renderMessages(); }
+        patchMessagePin(data.messageId, false);
     });
 
     state.socket.on('custom_status_update', (data) => {

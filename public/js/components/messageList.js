@@ -1,9 +1,97 @@
 // Message list rendering
+
+// ── Shared helpers ────────────────────────────────────────────────────────────
+
+function buildMemberLookups() {
+    const roleColorMap = {}, nicknameMap = {}, avatarMap = {};
+    (state.members || []).forEach(m => {
+        if (m.role_color) roleColorMap[m.id] = m.role_color;
+        if (m.nickname)   nicknameMap[m.id]  = m.nickname;
+        if (m.avatar)     avatarMap[m.id]    = m.avatar;
+    });
+    return { roleColorMap, nicknameMap, avatarMap };
+}
+
+function buildMessageHTML(message, prevMessage, { roleColorMap = {}, nicknameMap = {}, avatarMap = {} } = {}) {
+    const showHeader = !prevMessage ||
+        prevMessage.user_id !== message.user_id ||
+        (new Date(message.created_at) - new Date(prevMessage.created_at)) > 300000;
+
+    let attachmentsHtml = '';
+    if (message.attachments) {
+        const attachments = typeof message.attachments === 'string'
+            ? JSON.parse(message.attachments)
+            : message.attachments;
+
+        attachmentsHtml = attachments.map(att => {
+            const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(att.filename);
+            if (isImage) {
+                return `
+                    <div class="message-attachment">
+                        <a href="${att.url}" target="_blank">
+                            <img src="${att.url}" alt="${att.originalName}" class="attachment-image" />
+                        </a>
+                    </div>`;
+            } else {
+                const fileSize = (att.size / 1024).toFixed(1) + ' KB';
+                return `
+                    <div class="message-attachment file-attachment">
+                        <a href="${att.url}" target="_blank" download="${att.originalName}">
+                            <div class="file-icon">&#128196;</div>
+                            <div class="file-info">
+                                <div class="file-name">${att.originalName}</div>
+                                <div class="file-size">${fileSize}</div>
+                            </div>
+                        </a>
+                    </div>`;
+            }
+        }).join('');
+    }
+
+    const messageContent = message.content ? linkifyUrls(highlightMentions(escapeHtml(message.content))) : '';
+    const editedTag = message.edited_at ? ' <span class="edited-tag">(edited)</span>' : '';
+    const pinIcon = message.is_pinned ? ' <span class="pin-indicator" title="Pinned message">📌</span>' : '';
+    const isMentioned = parseMentions(message.content);
+    const reactionsHTML = message.reactions ? renderReactions(message.reactions, message.id) : '';
+
+    const authorColor = roleColorMap[message.user_id] ? ` style="color:${roleColorMap[message.user_id]}"` : '';
+    const authorName = nicknameMap[message.user_id] || message.username;
+    const authorAvatar = avatarMap[message.user_id]
+        ? `<img src="${avatarMap[message.user_id]}" alt="${authorName}" class="message-av-img">`
+        : `<div class="message-avatar">${getInitials(authorName)}</div>`;
+
+    if (showHeader) {
+        return `
+        <div class="message${isMentioned ? ' mention-highlight' : ''}${message.is_pinned ? ' pinned-message' : ''}" data-message-id="${message.id}">
+          <div class="message-header">
+            ${authorAvatar}
+            <span class="message-author"${authorColor}>${authorName}</span>
+            <span class="message-timestamp">${formatTimestamp(message.created_at)}${pinIcon}</span>
+          </div>
+          <div class="message-content" data-content-id="${message.id}">${messageContent}${editedTag}</div>
+          <div class="message-edit-area" data-edit-id="${message.id}" style="display:none;"></div>
+          ${attachmentsHtml}
+          <div class="msg-embeds" data-embed-id="${message.id}"></div>
+          ${reactionsHTML}
+        </div>`;
+    } else {
+        return `
+        <div class="message compact${isMentioned ? ' mention-highlight' : ''}${message.is_pinned ? ' pinned-message' : ''}" data-message-id="${message.id}">
+          <div class="message-content" data-content-id="${message.id}" style="margin-left:48px;">${messageContent}${editedTag}</div>
+          <div class="message-edit-area" data-edit-id="${message.id}" style="display:none; margin-left:48px;"></div>
+          ${attachmentsHtml ? `<div style="margin-left:48px;">${attachmentsHtml}</div>` : ''}
+          <div class="msg-embeds" data-embed-id="${message.id}" style="margin-left:48px;"></div>
+          ${reactionsHTML ? `<div style="margin-left:48px;">${reactionsHTML}</div>` : ''}
+        </div>`;
+    }
+}
+
+// ── Full list render (initial load + load-more) ───────────────────────────────
+
 function renderMessages() {
     const container = document.getElementById('messagesContainer');
     if (!container) return;
 
-    // Attach scroll listener once
     if (!container.dataset.scrollBound) {
         container.dataset.scrollBound = 'true';
         container.addEventListener('scroll', handleMessageScroll);
@@ -14,98 +102,17 @@ function renderMessages() {
         return;
     }
 
-    // Build userId → role_color, nickname, and avatar lookups from loaded member list
-    const roleColorMap = {};
-    const nicknameMap = {};
-    const avatarMap = {};
-    (state.members || []).forEach(m => {
-        if (m.role_color) roleColorMap[m.id] = m.role_color;
-        if (m.nickname)   nicknameMap[m.id]  = m.nickname;
-        if (m.avatar)     avatarMap[m.id]    = m.avatar;
-    });
-
+    const lookups = buildMemberLookups();
     const prevHeight = container.scrollHeight;
     const prevTop = container.scrollTop;
 
     container.innerHTML =
-        (state.hasMoreMessages ? '<div class="load-more-spinner" id="loadMoreSpinner">Loading earlier messages...</div>' : '<div class="load-more-end" id="loadMoreEnd">Beginning of channel history</div>') +
+        (state.hasMoreMessages
+            ? '<div class="load-more-spinner" id="loadMoreSpinner">Loading earlier messages...</div>'
+            : '<div class="load-more-end" id="loadMoreEnd">Beginning of channel history</div>') +
         state.messages.map((message, index) => {
             const prevMessage = index > 0 ? state.messages[index - 1] : null;
-            const showHeader = !prevMessage ||
-                prevMessage.user_id !== message.user_id ||
-                (new Date(message.created_at) - new Date(prevMessage.created_at)) > 300000;
-
-            let attachmentsHtml = '';
-            if (message.attachments) {
-                const attachments = typeof message.attachments === 'string'
-                    ? JSON.parse(message.attachments)
-                    : message.attachments;
-
-                attachmentsHtml = attachments.map(att => {
-                    const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(att.filename);
-                    if (isImage) {
-                        return `
-                            <div class="message-attachment">
-                                <a href="${att.url}" target="_blank">
-                                    <img src="${att.url}" alt="${att.originalName}" class="attachment-image" />
-                                </a>
-                            </div>`;
-                    } else {
-                        const fileSize = (att.size / 1024).toFixed(1) + ' KB';
-                        return `
-                            <div class="message-attachment file-attachment">
-                                <a href="${att.url}" target="_blank" download="${att.originalName}">
-                                    <div class="file-icon">&#128196;</div>
-                                    <div class="file-info">
-                                        <div class="file-name">${att.originalName}</div>
-                                        <div class="file-size">${fileSize}</div>
-                                    </div>
-                                </a>
-                            </div>`;
-                    }
-                }).join('');
-            }
-
-            const messageContent = message.content ? linkifyUrls(highlightMentions(escapeHtml(message.content))) : '';
-            const editedTag = message.edited_at ? ' <span class="edited-tag">(edited)</span>' : '';
-            const pinIcon = message.is_pinned ? ' <span class="pin-indicator" title="Pinned message">📌</span>' : '';
-            const isOwn = message.user_id === state.currentUser.id;
-            const isMentioned = parseMentions(message.content);
-
-            // Render reactions if they exist
-            const reactionsHTML = message.reactions ? renderReactions(message.reactions, message.id) : '';
-
-            const authorColor = roleColorMap[message.user_id] ? ` style="color:${roleColorMap[message.user_id]}"` : '';
-            const authorName = nicknameMap[message.user_id] || message.username;
-
-            const authorAvatar = avatarMap[message.user_id]
-                ? `<img src="${avatarMap[message.user_id]}" alt="${authorName}" class="message-av-img">`
-                : `<div class="message-avatar">${getInitials(authorName)}</div>`;
-
-            if (showHeader) {
-                return `
-            <div class="message${isMentioned ? ' mention-highlight' : ''}${message.is_pinned ? ' pinned-message' : ''}" data-message-id="${message.id}">
-              <div class="message-header">
-                ${authorAvatar}
-                <span class="message-author"${authorColor}>${authorName}</span>
-                <span class="message-timestamp">${formatTimestamp(message.created_at)}${pinIcon}</span>
-              </div>
-              <div class="message-content" data-content-id="${message.id}">${messageContent}${editedTag}</div>
-              <div class="message-edit-area" data-edit-id="${message.id}" style="display:none;"></div>
-              ${attachmentsHtml}
-              <div class="msg-embeds" data-embed-id="${message.id}"></div>
-              ${reactionsHTML}
-            </div>`;
-            } else {
-                return `
-            <div class="message compact${isMentioned ? ' mention-highlight' : ''}${message.is_pinned ? ' pinned-message' : ''}" data-message-id="${message.id}">
-              <div class="message-content" data-content-id="${message.id}" style="margin-left:48px;">${messageContent}${editedTag}</div>
-              <div class="message-edit-area" data-edit-id="${message.id}" style="display:none; margin-left:48px;"></div>
-              ${attachmentsHtml ? `<div style="margin-left:48px;">${attachmentsHtml}</div>` : ''}
-              <div class="msg-embeds" data-embed-id="${message.id}" style="margin-left:48px;"></div>
-              ${reactionsHTML ? `<div style="margin-left:48px;">${reactionsHTML}</div>` : ''}
-            </div>`;
-            }
+            return buildMessageHTML(message, prevMessage, lookups);
         }).join('');
 
     // Restore scroll position after prepending older messages
@@ -118,7 +125,6 @@ function renderMessages() {
         if (el) attachMessageContextMenu(el, message);
     });
 
-    // Inject link previews only if the user has EMBED_LINKS permission
     if (clientHasPermission('EMBED_LINKS')) {
         state.messages.forEach(message => {
             if (!message.content) return;
@@ -126,6 +132,127 @@ function renderMessages() {
             if (!embedSlot || embedSlot.dataset.embedLoaded) return;
             injectEmbed(message, embedSlot);
         });
+    }
+}
+
+// ── Targeted DOM operations (avoid full rebuild) ──────────────────────────────
+
+// Append a single new message without rebuilding the whole list
+function appendMessage(message) {
+    const container = document.getElementById('messagesContainer');
+    if (!container) return;
+
+    if (!container.dataset.scrollBound) {
+        container.dataset.scrollBound = 'true';
+        container.addEventListener('scroll', handleMessageScroll);
+    }
+
+    // First message ever: full render to clear empty-state placeholder
+    if (state.messages.length <= 1) {
+        renderMessages();
+        scrollToBottom();
+        return;
+    }
+
+    const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 80;
+
+    const lookups = buildMemberLookups();
+    const prevMessage = state.messages[state.messages.length - 2];
+    const temp = document.createElement('div');
+    temp.innerHTML = buildMessageHTML(message, prevMessage, lookups).trim();
+    const el = temp.firstElementChild;
+    container.appendChild(el);
+
+    attachMessageContextMenu(el, message);
+
+    if (clientHasPermission('EMBED_LINKS') && message.content) {
+        const embedSlot = el.querySelector(`[data-embed-id="${message.id}"]`);
+        if (embedSlot) injectEmbed(message, embedSlot);
+    }
+
+    if (atBottom) scrollToBottom();
+}
+
+// Replace a single message element in place (edit, reaction update, etc.)
+function patchMessageDOM(message) {
+    const container = document.getElementById('messagesContainer');
+    const el = container?.querySelector(`[data-message-id="${message.id}"]`);
+
+    const idx = state.messages.findIndex(m => m.id === message.id);
+    if (idx !== -1) state.messages[idx] = message;
+    if (!el) return;
+
+    const prevMessage = idx > 0 ? state.messages[idx - 1] : null;
+    const lookups = buildMemberLookups();
+    const temp = document.createElement('div');
+    temp.innerHTML = buildMessageHTML(message, prevMessage, lookups).trim();
+    const newEl = temp.firstElementChild;
+
+    // Carry over any already-loaded embed so iframes don't reload
+    const oldEmbed = el.querySelector('[data-embed-id]');
+    const newEmbed = newEl.querySelector('[data-embed-id]');
+    if (oldEmbed?.dataset.embedLoaded && newEmbed) {
+        newEmbed.innerHTML = oldEmbed.innerHTML;
+        newEmbed.dataset.embedLoaded = 'true';
+    }
+
+    el.replaceWith(newEl);
+    attachMessageContextMenu(newEl, message);
+}
+
+// Toggle pin indicator without touching anything else
+function patchMessagePin(messageId, isPinned) {
+    const msg = state.messages.find(m => m.id === messageId);
+    if (msg) msg.is_pinned = isPinned;
+
+    const el = document.querySelector(`[data-message-id="${messageId}"]`);
+    if (!el) return;
+
+    el.classList.toggle('pinned-message', isPinned);
+    const tsEl = el.querySelector('.message-timestamp');
+    if (tsEl) {
+        const existing = tsEl.querySelector('.pin-indicator');
+        if (existing) existing.remove();
+        if (isPinned) tsEl.insertAdjacentHTML('beforeend', ' <span class="pin-indicator" title="Pinned message">📌</span>');
+    }
+}
+
+// Remove a single message element; promotes next compact message to header if needed
+function removeMessageEl(messageId) {
+    const container = document.getElementById('messagesContainer');
+    const el = container?.querySelector(`[data-message-id="${messageId}"]`);
+
+    state.messages = state.messages.filter(m => m.id !== messageId);
+
+    if (!el) return;
+
+    const wasHeader = !el.classList.contains('compact');
+    const nextEl = el.nextElementSibling;
+    el.remove();
+
+    // If a header message was removed and the next sibling was compact, check whether
+    // it still qualifies as compact against its new predecessor.
+    if (wasHeader && nextEl?.dataset?.messageId) {
+        const nextMsg = state.messages.find(m => m.id === nextEl.dataset.messageId);
+        if (nextMsg && nextEl.classList.contains('compact')) {
+            const newIdx = state.messages.findIndex(m => m.id === nextMsg.id);
+            const prevMsg = newIdx > 0 ? state.messages[newIdx - 1] : null;
+            const stillCompact = prevMsg &&
+                prevMsg.user_id === nextMsg.user_id &&
+                (new Date(nextMsg.created_at) - new Date(prevMsg.created_at)) < 300000;
+            if (!stillCompact) {
+                const lookups = buildMemberLookups();
+                const temp = document.createElement('div');
+                temp.innerHTML = buildMessageHTML(nextMsg, null, lookups).trim();
+                const newNode = temp.firstElementChild;
+                nextEl.replaceWith(newNode);
+                attachMessageContextMenu(newNode, nextMsg);
+            }
+        }
+    }
+
+    if (state.messages.length === 0 && container) {
+        container.innerHTML = '<div class="loading">No messages yet. Start the conversation!</div>';
     }
 }
 
@@ -464,12 +591,8 @@ async function submitInlineEdit(messageId) {
 
         if (res.ok) {
             const data = await res.json();
-            const idx = state.messages.findIndex(m => m.id === messageId);
-            if (idx !== -1) {
-                state.messages[idx] = { ...state.messages[idx], ...data.data };
-            }
             cancelInlineEdit();
-            renderMessages();
+            patchMessageDOM({ ...original, ...data.data });
         } else {
             const data = await res.json();
             textarea.disabled = false;
