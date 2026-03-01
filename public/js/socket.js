@@ -7,6 +7,9 @@ function initializeSocket() {
         // arrive regardless of which server is currently selected.
         state.servers.forEach(s => state.socket.emit('join_server', s.id));
         if (state.currentChannel) state.socket.emit('join_channel', state.currentChannel.id);
+
+        // Re-announce voice presence and re-sync mute state after reconnects
+        if (typeof onSocketReconnect === 'function') onSocketReconnect();
     });
 
     // -- Messages --------------------------------------------------
@@ -48,6 +51,16 @@ function initializeSocket() {
 
     state.socket.on('dm_stop_typing', (data) => {
         onDMStopTyping(data);
+    });
+
+    state.socket.on('dm_reaction_added', (data) => {
+        if (dmState.currentDM?.id === data.dmId)
+            updateDMMessageReactions(data.messageId, data.reactions, data.dmId);
+    });
+
+    state.socket.on('dm_reaction_removed', (data) => {
+        if (dmState.currentDM?.id === data.dmId)
+            updateDMMessageReactions(data.messageId, data.reactions, data.dmId);
     });
 
     // -- Presence --------------------------------------------------

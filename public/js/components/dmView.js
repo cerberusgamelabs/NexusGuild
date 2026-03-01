@@ -49,14 +49,6 @@ async function showDMHome() {
         state.socket._dmEditListenersSetup = true;
         state.socket.on('dm_message_updated', onDMMessageUpdated);
         state.socket.on('dm_message_deleted', onDMMessageDeleted);
-        state.socket.on('dm_reaction_added', (data) => {
-            if (dmState.currentDM?.id === data.dmId)
-                updateDMMessageReactions(data.messageId, data.reactions, data.dmId);
-        });
-        state.socket.on('dm_reaction_removed', (data) => {
-            if (dmState.currentDM?.id === data.dmId)
-                updateDMMessageReactions(data.messageId, data.reactions, data.dmId);
-        });
         state.socket.on('dm_voice_state_update', (data) => {
             // Ignore own state changes
             if (data.userId === state.currentUser?.id) return;
@@ -88,6 +80,8 @@ async function showDMHome() {
 // ─── Restore server panel ─────────────────────────────────────────────────────
 function teardownDMView() {
     if (!isInDMMode()) return;
+
+    if (typeof hideDMVoiceBar === 'function') hideDMVoiceBar();
 
     if (dmState.currentDM && state.socket) state.socket.emit('leave_dm', dmState.currentDM.id);
 
@@ -189,6 +183,7 @@ function renderDMHomeScreen() {
     const container = document.getElementById('messagesContainer');
     const header = document.getElementById('channelHeader');
     const inputArea = document.querySelector('.input-area');
+    if (typeof hideDMVoiceBar === 'function') hideDMVoiceBar();
 
     if (header) header.innerHTML = `<span style="font-weight:700;font-size:16px;">Home</span>`;
     if (inputArea) inputArea.style.display = 'none';
@@ -248,6 +243,15 @@ async function selectDMConversation(dmId) {
 
     mobileShowMessages();
     await loadDMMessages(dmId);
+
+    // Show DM voice bar if in a call for this conversation; hide otherwise
+    if (typeof isInDMVoice === 'function' && typeof getVoiceDmId === 'function') {
+        if (isInDMVoice() && getVoiceDmId() === dmId) {
+            if (typeof showDMVoiceBar === 'function') showDMVoiceBar();
+        } else {
+            if (typeof hideDMVoiceBar === 'function') hideDMVoiceBar();
+        }
+    }
 }
 
 // ─── Load messages ────────────────────────────────────────────────────────────

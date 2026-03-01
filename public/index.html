@@ -106,6 +106,13 @@
                     </div>
                     <button class="mobile-members-btn" onclick="mobileToggleMembers()" title="Members">&#128101;</button>
                 </div>
+                <div id="dmVoiceBar" class="dm-voice-bar" style="display:none;">
+                    <div class="dm-voice-bar-header">
+                        📞 DM Call
+                        <button class="dm-voice-bar-leave" onclick="leaveVoice()">Leave Call</button>
+                    </div>
+                    <div class="dm-voice-bar-grid" id="dmVoiceGrid"></div>
+                </div>
                 <div class="mobile-members-backdrop" id="mobileBackdrop" onclick="closeMobileMembers()"></div>
                 <div class="messages-container" id="messagesContainer"></div>
                 <div class="input-area">
@@ -268,6 +275,26 @@
             </div>
             <div class="settings-content" id="settingsContent"></div>
             <button class="settings-close" onclick="closeServerSettings()">✕</button>
+        </div>
+    </div>
+
+    <!-- ── Voice Mini Panel (persistent bottom-right overlay) ────────────── -->
+    <div id="voiceMiniPanel" class="voice-mini-panel" style="display:none;">
+        <div class="vmp-header">
+            <span class="vmp-icon" id="vmpIcon">🔊</span>
+            <span class="vmp-label" id="vmpLabel">Voice Connected</span>
+            <button class="vmp-return-btn" onclick="returnToVoice()" title="Return to voice">⬆</button>
+            <button class="vmp-leave-btn" onclick="leaveVoice()" title="Leave">🔴</button>
+        </div>
+        <div class="vmp-participants" id="vmpParticipants"></div>
+        <div class="vmp-last-speaker" id="vmpLastSpeaker" style="display:none;"></div>
+        <div class="vmp-controls">
+            <button class="toggle-button" id="vmpMuteBtn" onclick="toggleMic()">
+                <img src="img/mute-off.png" alt="Mic State">
+            </button>
+            <button class="toggle-button" id="vmpDeafBtn" onclick="toggleDeafen()">
+                <img src="img/deafen-off.png" alt="Deafen State">
+            </button>
         </div>
     </div>
 

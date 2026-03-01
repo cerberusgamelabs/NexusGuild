@@ -307,9 +307,6 @@ async function loadUserServers() {
 }
 
 function selectServer(serverId) {
-    // Leave voice before switching servers
-    if (typeof leaveVoice === 'function') leaveVoice();
-
     // Guard for DM view teardown (may not be implemented yet)
     if (typeof teardownDMView === 'function') {
         teardownDMView();
@@ -926,12 +923,28 @@ async function sendMessage() {
 let micMuted = false;
 let deafened = false;
 
+function _syncMuteBtn(muted) {
+    for (const id of ['micToggle', 'vmpMuteBtn']) {
+        const btn = document.getElementById(id);
+        if (!btn) continue;
+        btn.classList.toggle('active', muted);
+        btn.querySelector('img').src = `img/mute-${muted ? 'on' : 'off'}.png`;
+    }
+}
+
+function _syncDeafenBtn(deaf) {
+    for (const id of ['deafenToggle', 'vmpDeafBtn']) {
+        const btn = document.getElementById(id);
+        if (!btn) continue;
+        btn.classList.toggle('active', deaf);
+        btn.querySelector('img').src = `img/deafen-${deaf ? 'on' : 'off'}.png`;
+    }
+}
+
 function toggleMic() {
     if (!deafened) {
         micMuted = !micMuted;
-        const btn = document.getElementById('micToggle');
-        btn.classList.toggle('active', micMuted);
-        btn.querySelector('img').src = `img/mute-${micMuted ? 'on' : 'off'}.png`;
+        _syncMuteBtn(micMuted);
 
         if (state.socket) {
             state.socket.emit('voice_state_change', { muted: micMuted, deafened });
@@ -943,19 +956,10 @@ function toggleMic() {
 
 function toggleDeafen() {
     deafened = !deafened;
-    const btn = document.getElementById('deafenToggle');
-    btn.classList.toggle('active', deafened);
-    btn.querySelector('img').src = `img/deafen-${deafened ? 'on' : 'off'}.png`;
+    _syncDeafenBtn(deafened);
 
-    if (deafened) {
-        micMuted = true;
-        document.getElementById('micToggle').classList.add('active');
-        document.getElementById('micToggle').querySelector('img').src = `img/mute-${micMuted ? 'on' : 'off'}.png`;
-    } else {
-        micMuted = false;
-        document.getElementById('micToggle').classList.remove('active');
-        document.getElementById('micToggle').querySelector('img').src = `img/mute-${micMuted ? 'on' : 'off'}.png`;
-    }
+    micMuted = deafened;
+    _syncMuteBtn(micMuted);
 
     if (state.socket) {
         state.socket.emit('voice_state_change', { muted: micMuted, deafened });

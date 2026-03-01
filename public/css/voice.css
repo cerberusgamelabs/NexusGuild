@@ -300,3 +300,226 @@
     text-overflow: ellipsis;
     max-width: 140px;
 }
+
+/* ── Voice Mini Panel (fixed bottom-right persistent overlay) ── */
+
+.voice-mini-panel {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    z-index: 1000;
+    width: 220px;
+    background: #1a2a20;
+    border: 1px solid #3ba55d;
+    border-radius: 10px;
+    padding: 10px;
+    flex-direction: column;
+    gap: 8px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+}
+
+.vmp-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.vmp-icon {
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+.vmp-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #3ba55d;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.vmp-return-btn,
+.vmp-leave-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 2px 4px;
+    border-radius: 4px;
+    line-height: 1;
+    transition: background 0.15s;
+}
+
+.vmp-return-btn {
+    color: #dcddde;
+}
+
+.vmp-return-btn:hover {
+    background: rgba(255,255,255,0.1);
+}
+
+.vmp-leave-btn {
+    color: #ed4245;
+}
+
+.vmp-leave-btn:hover {
+    background: rgba(237,66,69,0.15);
+}
+
+.vmp-participants {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.vmp-participant {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    overflow: hidden;
+    flex-shrink: 0;
+    transition: box-shadow 0.15s;
+}
+
+.vmp-participant.vmp-speaking {
+    box-shadow: 0 0 0 2px #3ba55d;
+}
+
+.vmp-participant-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
+    display: block;
+}
+
+.vmp-participant-initials {
+    background: #5865f2;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+}
+
+.vmp-last-speaker {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: #96989d;
+    padding: 2px 0;
+}
+
+.vmp-ls-icon {
+    font-size: 12px;
+    flex-shrink: 0;
+}
+
+.vmp-ls-avatar {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+    display: block;
+}
+
+.vmp-ls-initials {
+    background: #5865f2;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 8px;
+    font-weight: 700;
+}
+
+.vmp-ls-name {
+    color: #dcddde;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.vmp-controls {
+    display: flex;
+    gap: 6px;
+    justify-content: center;
+}
+
+
+/* ── DM Voice Split Bar (sits above messagesContainer, fixed height) ── */
+
+.dm-voice-bar {
+    flex-shrink: 0;
+    height: 180px;
+    background: #1a2a20;
+    border-bottom: 2px solid #3ba55d;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.dm-voice-bar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #3ba55d;
+    flex-shrink: 0;
+    border-bottom: 1px solid #1e5c38;
+}
+
+.dm-voice-bar-leave {
+    background: #ed4245;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.dm-voice-bar-leave:hover {
+    background: #c03537;
+}
+
+.dm-voice-bar-grid {
+    flex: 1;
+    display: flex;
+    flex-direction: row;
+    gap: 12px;
+    padding: 8px 12px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    align-items: center;
+}
+
+/* Compact tile sizing inside the DM bar */
+.dm-voice-bar-grid .voice-tile {
+    width: 110px;
+    min-width: 110px;
+    padding: 12px 10px 10px;
+    flex-shrink: 0;
+}
+
+.dm-voice-bar-grid .voice-tile-av-wrap,
+.dm-voice-bar-grid .voice-tile-avatar,
+.dm-voice-bar-grid .voice-tile-initials {
+    width: 50px;
+    height: 50px;
+}
+
+.dm-voice-bar-grid .voice-tile-initials {
+    font-size: 18px;
+}

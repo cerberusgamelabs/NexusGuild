@@ -12,11 +12,13 @@
 
 // ── Module state ──────────────────────────────────────────────────────────────
 
-let _lkRoom          = null;
-let _voiceChannelId  = null;
-let _voiceServerId   = null;
-let _voiceDmId       = null;   // non-null when in a DM voice call
+let _lkRoom           = null;
+let _voiceChannelId   = null;
+let _voiceServerId    = null;
+let _voiceDmId        = null;   // non-null when in a DM voice call
 let _activeSpeakerIds = new Set();
+let _lastSpeakerId    = null;
+let _lastSpeakerName  = null;
 
 // ── Public: join/leave ────────────────────────────────────────────────────────
 
@@ -78,10 +80,15 @@ async function joinDMVoice(dmId) {
             await _lkRoom.localParticipant.setMicrophoneEnabled(true).catch(console.error);
         }
 
-        if (state.socket) state.socket.emit('join_dm_voice', { dmId });
+        if (state.socket) {
+            state.socket.emit('join_dm_voice', { dmId });
+            if (micMuted || deafened) {
+                state.socket.emit('voice_state_change', { muted: micMuted, deafened });
+            }
+        }
 
         _showVoicePanel('dm');
-        showDMVoiceView();
+        showDMVoiceBar();
     } catch (e) {
         console.error('[voice] Unhandled error in joinDMVoice:', e);
         showToast('Voice call failed.', 'error');
@@ -92,17 +99,12 @@ async function joinDMVoice(dmId) {
 }
 
 function showDMVoiceView() {
-    const container = document.getElementById('messagesContainer');
-    if (!container || !_lkRoom) return;
-    container.innerHTML = `
-        <div class="voice-full-view">
-            <div class="voice-full-header">📞 DM Call</div>
-            <div class="voice-full-grid" id="voiceFullGrid"></div>
-            <div class="voice-full-controls">
-                <button class="voice-full-leave-btn" onclick="leaveVoice()">Leave Call</button>
-            </div>
-        </div>`;
-    _renderFullGrid();
+    // Show the split bar and render messages below it
+    showDMVoiceBar();
+    if (typeof isInDMMode === 'function' && isInDMMode() &&
+        typeof renderDMMessages === 'function') {
+        renderDMMessages();
+    }
 }
 
 function isInDMVoice() {
@@ -195,6 +197,11 @@ async function _joinVoiceInternal(channelId, serverId) {
     // Notify Socket.io (drives channel list presence for all members)
     if (state.socket) {
         state.socket.emit('join_voice', { channelId, serverId });
+        // Sync current mute/deafen state immediately — server resets to false on join_voice
+        // so we must re-broadcast if the user was already muted/deafened.
+        if (micMuted || deafened) {
+            state.socket.emit('voice_state_change', { muted: micMuted, deafened });
+        }
     }
 
     _showVoicePanel(channelId);
@@ -235,6 +242,8 @@ async function leaveVoice() {
     _voiceServerId   = null;
     _voiceDmId       = null;
     _activeSpeakerIds.clear();
+    _lastSpeakerId   = null;
+    _lastSpeakerName = null;
 
     _hideVoicePanel();
 
@@ -303,6 +312,11 @@ function _onParticipantDisconnected(participant) {
 function _onActiveSpeakersChanged(speakers) {
     _activeSpeakerIds.clear();
     speakers.forEach(p => _activeSpeakerIds.add(p.identity));
+    if (speakers.length > 0) {
+        _lastSpeakerId  = speakers[0].identity;
+        _lastSpeakerName = speakers[0].name || speakers[0].identity;
+        _updateMiniPanelLastSpeaker();
+    }
     _updateSpeakingIndicators();
 }
 
@@ -338,6 +352,8 @@ function _onRoomDisconnected() {
     _voiceServerId   = null;
     _voiceDmId       = null;
     _activeSpeakerIds.clear();
+    _lastSpeakerId   = null;
+    _lastSpeakerName = null;
     _hideVoicePanel();
 
     if (wasDmId) {
@@ -369,24 +385,32 @@ function _showVoicePanel(channelId) {
     const nameEl = document.getElementById('voicePanelChannelName');
     if (!panel) return;
 
+    let label;
     if (channelId === 'dm') {
-        if (nameEl) nameEl.textContent = 'DM Call';
+        label = 'DM Call';
+        if (nameEl) nameEl.textContent = label;
     } else {
         const channel = state.channels.find(c => c.id === channelId);
-        if (nameEl) nameEl.textContent = channel ? channel.name : 'Voice Channel';
+        label = channel ? channel.name : 'Voice Channel';
+        if (nameEl) nameEl.textContent = label;
     }
 
     panel.style.display = 'flex';
+    showVoiceMiniPanel(label);
 }
 
 function _hideVoicePanel() {
     const panel = document.getElementById('voicePanel');
     if (panel) panel.style.display = 'none';
+    hideVoiceMiniPanel();
+    hideDMVoiceBar();
 }
 
 function _renderVoiceParticipants() {
     _renderThinBar();
     _renderFullGrid();
+    _renderDMBar();
+    _updateMiniPanelParticipants();
 }
 
 function _renderThinBar() {
@@ -404,7 +428,7 @@ function _renderThinBar() {
 
     _lkRoom.remoteParticipants.forEach(p => {
         const isSpeaking = _activeSpeakerIds.has(p.identity);
-        let remoteMuted  = true;
+        let remoteMuted  = false;
         p.trackPublications.forEach(pub => {
             if (pub.source === LivekitClient.Track.Source.Microphone) remoteMuted = pub.isMuted;
         });
@@ -427,7 +451,7 @@ function _renderFullGrid() {
 
     _lkRoom.remoteParticipants.forEach(p => {
         const isSpeaking = _activeSpeakerIds.has(p.identity);
-        let remoteMuted  = true;
+        let remoteMuted  = false;
         p.trackPublications.forEach(pub => {
             if (pub.source === LivekitClient.Track.Source.Microphone) remoteMuted = pub.isMuted;
         });
@@ -479,6 +503,25 @@ function _updateSpeakingIndicators() {
             const speaking = _activeSpeakerIds.has(el.dataset.userId);
             el.classList.toggle('speaking', speaking);
             el.querySelector('.voice-tile-av-wrap')?.classList.toggle('speaking', speaking);
+        });
+    }
+
+    // DM voice bar grid
+    const dmGrid = document.getElementById('dmVoiceGrid');
+    if (dmGrid) {
+        dmGrid.querySelectorAll('.voice-tile').forEach(el => {
+            const speaking = _activeSpeakerIds.has(el.dataset.userId);
+            el.classList.toggle('speaking', speaking);
+            el.querySelector('.voice-tile-av-wrap')?.classList.toggle('speaking', speaking);
+        });
+    }
+
+    // Mini panel participants
+    const vmpParticipants = document.getElementById('vmpParticipants');
+    if (vmpParticipants) {
+        vmpParticipants.querySelectorAll('.vmp-participant').forEach(el => {
+            const speaking = _activeSpeakerIds.has(el.dataset.userId);
+            el.classList.toggle('vmp-speaking', speaking);
         });
     }
 }
@@ -552,4 +595,159 @@ function onVoiceStateUpdate(data) {
 
 function onUserVoiceState() {
     _renderVoiceParticipants();
+}
+
+// Called by socket.js on every socket 'connect' event (initial + reconnect).
+// Re-announces voice presence and syncs mute/deafen state so the server's
+// in-memory voiceStates Map is never stale after a reconnect.
+function onSocketReconnect() {
+    if (!_lkRoom || _lkRoom.state === 'disconnected') return;
+    if (!state.socket) return;
+
+    if (_voiceDmId) {
+        state.socket.emit('join_dm_voice', { dmId: _voiceDmId });
+    } else if (_voiceChannelId && _voiceServerId) {
+        state.socket.emit('join_voice', { channelId: _voiceChannelId, serverId: _voiceServerId });
+    }
+
+    // join_voice/join_dm_voice resets muted to false on the server, so re-sync immediately
+    if (micMuted || deafened) {
+        state.socket.emit('voice_state_change', { muted: micMuted, deafened });
+    }
+}
+
+// ── Voice Mini Panel ──────────────────────────────────────────────────────────
+
+function getVoiceDmId() {
+    return _voiceDmId;
+}
+
+function showVoiceMiniPanel(label) {
+    const panel   = document.getElementById('voiceMiniPanel');
+    const labelEl = document.getElementById('vmpLabel');
+    const iconEl  = document.getElementById('vmpIcon');
+    if (!panel) return;
+    if (labelEl) labelEl.textContent = label || 'Voice Connected';
+    if (iconEl)  iconEl.textContent  = _voiceDmId ? '📞' : '🔊';
+    panel.style.display = 'flex';
+
+    // Sync mute/deafen button state to match the main toggle buttons
+    const muteBtn   = document.getElementById('vmpMuteBtn');
+    const deafBtn   = document.getElementById('vmpDeafBtn');
+    if (muteBtn) {
+        muteBtn.classList.toggle('active', !!micMuted);
+        muteBtn.querySelector('img').src = `img/mute-${micMuted ? 'on' : 'off'}.png`;
+    }
+    if (deafBtn) {
+        deafBtn.classList.toggle('active', !!deafened);
+        deafBtn.querySelector('img').src = `img/deafen-${deafened ? 'on' : 'off'}.png`;
+    }
+}
+
+function hideVoiceMiniPanel() {
+    const panel = document.getElementById('voiceMiniPanel');
+    if (panel) panel.style.display = 'none';
+}
+
+function returnToVoice() {
+    if (_voiceDmId) {
+        if (typeof selectDMConversation === 'function') selectDMConversation(_voiceDmId);
+    } else if (_voiceChannelId) {
+        if (typeof selectChannel === 'function') selectChannel(_voiceChannelId);
+    }
+}
+
+function _updateMiniPanelParticipants() {
+    const container = document.getElementById('vmpParticipants');
+    if (!container || !_lkRoom) return;
+    container.innerHTML = '';
+
+    const local = _lkRoom.localParticipant;
+    if (local) {
+        const isSpeaking = _activeSpeakerIds.has(local.identity);
+        container.appendChild(_makeMiniParticipant(local.identity, local.name || local.identity, isSpeaking));
+    }
+
+    _lkRoom.remoteParticipants.forEach(p => {
+        const isSpeaking = _activeSpeakerIds.has(p.identity);
+        container.appendChild(_makeMiniParticipant(p.identity, p.name || p.identity, isSpeaking));
+    });
+
+    _updateMiniPanelLastSpeaker();
+}
+
+function _makeMiniParticipant(userId, displayName, speaking) {
+    const member = state.members?.find(m => m.id === userId);
+    const avatar = member?.avatar;
+
+    const el = document.createElement('div');
+    el.className      = `vmp-participant${speaking ? ' vmp-speaking' : ''}`;
+    el.dataset.userId = userId;
+    el.title          = displayName;
+
+    if (avatar) {
+        el.innerHTML = `<img src="${avatar}" class="vmp-participant-avatar" alt="">`;
+    } else {
+        el.innerHTML = `<div class="vmp-participant-avatar vmp-participant-initials">${getInitials(displayName)}</div>`;
+    }
+    return el;
+}
+
+function _updateMiniPanelLastSpeaker() {
+    const el = document.getElementById('vmpLastSpeaker');
+    if (!el) return;
+    if (!_lastSpeakerId || !_lastSpeakerName) {
+        el.style.display = 'none';
+        return;
+    }
+    const member   = state.members?.find(m => m.id === _lastSpeakerId);
+    const avatar   = member?.avatar;
+    const isLocal  = _lkRoom?.localParticipant?.identity === _lastSpeakerId;
+    const label    = isLocal ? `${_lastSpeakerName} (you)` : _lastSpeakerName;
+    const avatarHtml = avatar
+        ? `<img src="${avatar}" class="vmp-ls-avatar" alt="">`
+        : `<div class="vmp-ls-avatar vmp-ls-initials">${getInitials(_lastSpeakerName)}</div>`;
+    el.style.display = 'flex';
+    el.innerHTML = `<span class="vmp-ls-icon">🗣</span>${avatarHtml}<span class="vmp-ls-name">${label}</span>`;
+}
+
+// ── DM Voice Split Bar ────────────────────────────────────────────────────────
+
+function showDMVoiceBar() {
+    const bar = document.getElementById('dmVoiceBar');
+    if (!bar || !_lkRoom) return;
+    bar.style.display = 'flex';
+    _renderDMBar();
+}
+
+function hideDMVoiceBar() {
+    const bar = document.getElementById('dmVoiceBar');
+    if (!bar) return;
+    bar.style.display = 'none';
+    const grid = document.getElementById('dmVoiceGrid');
+    if (grid) grid.innerHTML = '';
+}
+
+function _renderDMBar() {
+    const bar  = document.getElementById('dmVoiceBar');
+    const grid = document.getElementById('dmVoiceGrid');
+    if (!bar || bar.style.display === 'none' || !grid || !_lkRoom) return;
+
+    grid.innerHTML = '';
+
+    const local = _lkRoom.localParticipant;
+    if (local) {
+        const isSpeaking = _activeSpeakerIds.has(local.identity);
+        const isMuted    = !local.isMicrophoneEnabled;
+        grid.appendChild(_makeVoiceTile(local.identity, local.name || local.identity, isMuted, deafened, isSpeaking, true));
+    }
+
+    _lkRoom.remoteParticipants.forEach(p => {
+        const isSpeaking = _activeSpeakerIds.has(p.identity);
+        let remoteMuted  = false;
+        p.trackPublications.forEach(pub => {
+            if (pub.source === LivekitClient.Track.Source.Microphone) remoteMuted = pub.isMuted;
+        });
+        grid.appendChild(_makeVoiceTile(p.identity, p.name || p.identity, remoteMuted, false, isSpeaking, false));
+    });
 }
