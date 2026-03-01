@@ -76,6 +76,7 @@ class GroupDmController {
                 `SELECT
                     g.id,
                     g.name,
+                    g.avatar,
                     g.owner_id,
                     g.last_message_at,
                     g.created_at,
@@ -106,6 +107,7 @@ class GroupDmController {
                     id: row.id,
                     type: 'group',
                     name: row.name,
+                    avatar: row.avatar,
                     owner_id: row.owner_id,
                     last_message_at: row.last_message_at,
                     created_at: row.created_at,
@@ -459,6 +461,34 @@ class GroupDmController {
 
     // ── Internal helpers ──────────────────────────────────────────────────────
 
+    // PATCH /api/group-dm/:id/avatar  (multipart/form-data, field: 'file')
+    static async uploadGroupAvatar(req, res) {
+        try {
+            const { id } = req.params;
+            const userId = req.session.user.id;
+
+            const ownerCheck = await db.query(
+                `SELECT owner_id FROM group_dms WHERE id = $1`, [id]
+            );
+            if (ownerCheck.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+            if (ownerCheck.rows[0].owner_id !== userId) return res.status(403).json({ error: 'Only the owner can change the group picture' });
+
+            if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+            const avatarUrl = `/uploads/${req.file.filename}`;
+            await db.query(`UPDATE group_dms SET avatar = $1 WHERE id = $2`, [avatarUrl, id]);
+
+            const memberIds = await getGroupMembers(id);
+            const io = req.app.get('io');
+            if (io) emitToMembers(io, memberIds, 'group_dm_updated', { id, avatar: avatarUrl });
+
+            res.json({ avatar: avatarUrl });
+        } catch (error) {
+            log(tags.error, 'uploadGroupAvatar error:', error);
+            res.status(500).json({ error: 'Failed to upload group avatar' });
+        }
+    }
+
     static async _fetchGroupDm(groupDmId, userId) {
         const row = await db.query(`SELECT * FROM group_dms WHERE id = $1`, [groupDmId]);
         const members = await db.query(
@@ -472,6 +502,7 @@ class GroupDmController {
             id: r.id,
             type: 'group',
             name: r.name,
+            avatar: r.avatar,
             owner_id: r.owner_id,
             last_message_at: r.last_message_at,
             created_at: r.created_at,

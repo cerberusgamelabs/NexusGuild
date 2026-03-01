@@ -223,10 +223,16 @@ const initDB = async () => {
             CREATE TABLE IF NOT EXISTS group_dms (
                 id              VARCHAR(20) PRIMARY KEY,
                 name            VARCHAR(100),
+                avatar          VARCHAR(255),
                 owner_id        VARCHAR(20) REFERENCES users(id),
                 last_message_at TIMESTAMP DEFAULT NOW(),
                 created_at      TIMESTAMP DEFAULT NOW()
             )
+        `);
+
+        // Idempotent: add avatar column to existing group_dms rows
+        await client.query(`
+            ALTER TABLE group_dms ADD COLUMN IF NOT EXISTS avatar VARCHAR(255)
         `);
 
         await client.query(`

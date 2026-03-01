@@ -176,6 +176,8 @@ body {
     justify-content: center;
     font-weight: bold;
     font-size: 14px;
+    overflow: hidden;
+    flex-shrink: 0;
 }
 
 .user-info {

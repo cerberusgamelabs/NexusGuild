@@ -5,7 +5,7 @@ import express from 'express';
 const router = express.Router();
 import GroupDmController from '../controllers/groupDmController.js';
 import { requireAuth } from '../middleware/auth.js';
-import { uploadMultiple, handleUploadError } from '../middleware/upload.js';
+import { uploadMultiple, uploadSingle, handleUploadError } from '../middleware/upload.js';
 
 // Create a new group DM
 router.post('/', requireAuth, GroupDmController.createGroupDm);
@@ -21,6 +21,9 @@ router.post('/:id/messages', requireAuth, uploadMultiple, handleUploadError, Gro
 
 // Rename group DM
 router.patch('/:id', requireAuth, GroupDmController.updateGroupDm);
+
+// Upload group DM avatar (owner only)
+router.patch('/:id/avatar', requireAuth, uploadSingle, handleUploadError, GroupDmController.uploadGroupAvatar);
 
 // Add a member (owner only)
 router.post('/:id/members', requireAuth, GroupDmController.addGroupMember);

@@ -203,12 +203,15 @@ function renderDMConversationList() {
         if (conv.type === 'group') {
             const displayName = _getGroupDisplayName(conv);
             const memberCount = (conv.members || []).length;
+            const groupAvatarHtml = conv.avatar
+                ? `<img src="${conv.avatar}" alt="" style="width:32px;height:32px;border-radius:50%;object-fit:cover;">`
+                : `<span class="gdm-avatar-icon">👥</span>`;
             return `
                 <div class="dm-conversation-item ${isActive ? 'active' : ''}"
                      data-dm-id="${conv.id}"
                      onclick="selectDMConversation('${conv.id}')">
                     <div class="dm-conv-avatar-wrap">
-                        <div class="dm-conv-avatar gdm-avatar">👥</div>
+                        <div class="dm-conv-avatar gdm-avatar">${groupAvatarHtml}</div>
                     </div>
                     <div class="dm-conv-info">
                         <span class="dm-conv-name">${escapeHtmlDM(displayName)}<span class="gdm-member-count">${memberCount}</span></span>
@@ -278,11 +281,14 @@ async function selectDMConversation(dmId) {
         if (conv.type === 'group') {
             const displayName = _getGroupDisplayName(conv);
             const memberCount = (conv.members || []).length;
+            const headerAvatarHtml = conv.avatar
+                ? `<img src="${conv.avatar}" alt="" style="width:32px;height:32px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
+                : `<div style="width:32px;height:32px;background:#5865f2;border-radius:50%;display:flex;
+                              align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">👥</div>`;
             header.innerHTML = `
                 <div style="display:flex;align-items:center;justify-content:space-between;width:100%;">
                     <div style="display:flex;align-items:center;gap:10px;">
-                        <div style="width:32px;height:32px;background:#5865f2;border-radius:50%;display:flex;
-                                    align-items:center;justify-content:center;font-size:16px;">👥</div>
+                        ${headerAvatarHtml}
                         <span style="font-weight:700;font-size:16px;">${escapeHtmlDM(displayName)}</span>
                         <span style="font-size:13px;color:#96989d;">${memberCount} members</span>
                     </div>
@@ -425,11 +431,15 @@ function renderDMMessages(prepending = false) {
 
         const reactionsHTML = msg.reactions ? renderDMReactions(msg.reactions, msg.id) : '';
 
+        const msgAvatarHtml = msg.avatar
+            ? `<img src="${msg.avatar}" alt="" class="message-av-img">`
+            : `<div class="message-avatar">${getInitials(msg.username)}</div>`;
+
         if (showHeader) {
             return `
             <div class="message" data-message-id="${msg.id}">
               <div class="message-header">
-                <div class="message-avatar">${dmAvatarHtml(msg.avatar, msg.username)}</div>
+                ${msgAvatarHtml}
                 <span class="message-author">${escapeHtmlDM(msg.username)}</span>
                 <span class="message-timestamp">${ts}</span>
               </div>
@@ -642,17 +652,18 @@ function onDMMessageDeleted({ message_id, dm_id }) {
     renderDMMessages();
 }
 
-function onGroupDmUpdated({ id, name, members }) {
+function onGroupDmUpdated({ id, name, avatar, members }) {
     const g = dmState.groupConversations.find(g => g.id === id);
     if (!g) return;
     if (name !== undefined) g.name = name;
+    if (avatar !== undefined) g.avatar = avatar;
     if (members !== undefined) g.members = members;
     // Rebuild merged list
     const all = [...dmState.conversations, ...dmState.groupConversations].sort(
         (a, b) => new Date(b.last_message_at) - new Date(a.last_message_at)
     );
     dmState._allConversations = all;
-    // Update current header if viewing
+    // Refresh header if currently viewing this group
     if (dmState.currentDM?.id === id) {
         dmState.currentDM = g;
         selectDMConversation(id);
@@ -935,6 +946,29 @@ function openGroupMembersPanel(gdmId) {
         </div>`;
     }).join('');
 
+    const currentAvatar = group.avatar || '';
+    const avatarPreview = currentAvatar
+        ? `<img id="gdmAvatarPreview" src="${currentAvatar}" style="width:56px;height:56px;border-radius:50%;object-fit:cover;cursor:pointer;" onclick="document.getElementById('gdmAvatarInput').click()" title="Change picture">`
+        : `<div id="gdmAvatarPreview" style="width:56px;height:56px;border-radius:50%;background:#5865f2;display:flex;align-items:center;justify-content:center;font-size:26px;cursor:pointer;" onclick="document.getElementById('gdmAvatarInput').click()" title="Change picture">👥</div>`;
+
+    const ownerEditSection = isOwner ? `
+        <div style="display:flex;align-items:center;gap:12px;padding:10px 0 14px;border-bottom:1px solid #333;margin-bottom:10px;">
+            <div style="position:relative;flex-shrink:0;">
+                ${avatarPreview}
+                <div style="position:absolute;bottom:0;right:0;width:18px;height:18px;background:#5865f2;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;pointer-events:none;">✏️</div>
+            </div>
+            <div style="flex:1;min-width:0;">
+                <input type="text" id="gdmNameInput" class="modal-input"
+                       value="${escapeHtmlDM(group.name || '')}" placeholder="Group name (optional)"
+                       style="margin-bottom:0;">
+                <input type="file" id="gdmAvatarInput" accept="image/*" style="display:none;"
+                       onchange="uploadGroupDmAvatar('${gdmId}', this)">
+            </div>
+            <button onclick="renameGroupDm('${gdmId}')"
+                    style="background:#5865f2;border:none;color:#fff;border-radius:6px;padding:6px 12px;
+                           font-size:13px;cursor:pointer;font-weight:600;flex-shrink:0;">Save</button>
+        </div>` : '';
+
     const addMemberSection = isOwner ? `
         <div style="margin-top:12px;">
             <input type="text" id="addMemberSearch" class="modal-input" placeholder="Add member by username..."
@@ -951,9 +985,63 @@ function openGroupMembersPanel(gdmId) {
 
     showModal({
         title: `Group Members (${members.length})`,
-        customHTML: `<div style="max-height:300px;overflow-y:auto;">${memberRows}</div>${addMemberSection}${leaveBtn}`,
+        customHTML: `${ownerEditSection}<div style="max-height:260px;overflow-y:auto;">${memberRows}</div>${addMemberSection}${leaveBtn}`,
         buttons: [{ text: 'Close', style: 'secondary', action: closeModal }]
     });
+}
+
+async function renameGroupDm(gdmId) {
+    const input = document.getElementById('gdmNameInput');
+    if (!input) return;
+    const name = input.value.trim() || null;
+    try {
+        const res = await fetch(`/api/group-dm/${gdmId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ name })
+        });
+        if (res.ok) {
+            await loadDMConversations();
+            if (dmState.currentDM?.id === gdmId) await selectDMConversation(gdmId);
+        } else {
+            const data = await res.json();
+            alert(data.error || 'Failed to rename group');
+        }
+    } catch (err) {
+        console.error('renameGroupDm error:', err);
+    }
+}
+
+async function uploadGroupDmAvatar(gdmId, input) {
+    if (!input.files || !input.files[0]) return;
+    const preview = document.getElementById('gdmAvatarPreview');
+    if (preview) preview.style.opacity = '0.5';
+    try {
+        const formData = new FormData();
+        formData.append('file', input.files[0]);
+        const res = await fetch(`/api/group-dm/${gdmId}/avatar`, {
+            method: 'PATCH',
+            credentials: 'include',
+            body: formData
+        });
+        if (res.ok) {
+            const data = await res.json();
+            if (preview) {
+                preview.outerHTML = `<img id="gdmAvatarPreview" src="${data.avatar}" style="width:56px;height:56px;border-radius:50%;object-fit:cover;cursor:pointer;" onclick="document.getElementById('gdmAvatarInput').click()" title="Change picture">`;
+            }
+            await loadDMConversations();
+            if (dmState.currentDM?.id === gdmId) await selectDMConversation(gdmId);
+        } else {
+            const data = await res.json();
+            alert(data.error || 'Failed to upload avatar');
+            if (preview) preview.style.opacity = '1';
+        }
+    } catch (err) {
+        console.error('uploadGroupDmAvatar error:', err);
+        if (preview) preview.style.opacity = '1';
+    }
+    input.value = '';
 }
 
 async function searchAddGroupMember(q, gdmId) {

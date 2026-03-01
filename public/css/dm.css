@@ -183,6 +183,8 @@
     font-weight: 700;
     font-size: 12px;
     color: #fff;
+    overflow: hidden;
+    flex-shrink: 0;
 }
 
 .dm-conv-status {
