@@ -34,10 +34,11 @@ const CLIENT_PERMS = {
     ATTACH_FILES:         32768n,
     READ_MESSAGE_HISTORY: 65536n,
     MENTION_EVERYONE:     131072n,
-    MANAGE_ROLES:         268435456n,
-    MANAGE_NICKNAMES:     134217728n,
-    CONNECT:              1048576n,
-    SPEAK:                2097152n,
+    MANAGE_ROLES:             268435456n,
+    MANAGE_NICKNAMES:         134217728n,
+    CONNECT:                  1048576n,
+    SPEAK:                    2097152n,
+    MANAGE_GUILD_EXPRESSIONS: 1073741824n,
 };
 
 // Returns true if the current user has the given permission.
@@ -142,6 +143,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             state.isAuthenticated = true;
             showApp();
             await loadUserServers();
+            if (typeof loadAllServerEmojis === 'function') loadAllServerEmojis();
             initializeSocket();
         } else {
             showAuth();

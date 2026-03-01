@@ -58,6 +58,36 @@ export const uploadSingle = upload.single('file');
 // Middleware for multiple files (up to 5)
 export const uploadMultiple = upload.array('files', 5);
 
+// ── Emoji upload — images only, 256KB, dynamic per-server directory ────────────
+const emojiStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        const dir = path.join(__dirname, `../public/img/emoji/${req.params.serverId}`);
+        fs.mkdirSync(dir, { recursive: true });
+        cb(null, dir);
+    },
+    filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        const ext = path.extname(file.originalname);
+        const nameWithoutExt = path.basename(file.originalname, ext);
+        cb(null, `${nameWithoutExt}-${uniqueSuffix}${ext}`);
+    }
+});
+
+const emojiFilter = (req, file, cb) => {
+    const allowed = /jpeg|jpg|png|gif|webp/;
+    if (allowed.test(path.extname(file.originalname).toLowerCase()) && allowed.test(file.mimetype)) {
+        cb(null, true);
+    } else {
+        cb(new Error('Only image files are allowed for emoji (jpeg, jpg, png, gif, webp)'));
+    }
+};
+
+export const uploadEmoji = multer({
+    storage: emojiStorage,
+    limits: { fileSize: 256 * 1024, files: 1 },
+    fileFilter: emojiFilter
+}).single('emoji');
+
 // Error handler middleware
 export const handleUploadError = (err, req, res, next) => {
     if (err instanceof multer.MulterError) {

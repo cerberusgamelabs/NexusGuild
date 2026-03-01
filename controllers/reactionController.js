@@ -4,6 +4,12 @@
 import db from "../config/database.js";
 import { generateSnowflake } from "#utils/functions";
 import { log, tags } from "#utils/logging";
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 class ReactionController {
     /**
@@ -227,8 +233,9 @@ class ReactionController {
     }
 
     /**
-     * Upload a custom emoji (admin only)
+     * Upload a custom emoji
      * POST /api/servers/:serverId/emojis
+     * Requires MANAGE_GUILD_EXPRESSIONS (checked by middleware)
      */
     static async uploadCustomEmoji(req, res) {
         try {
@@ -244,20 +251,6 @@ class ReactionController {
                 return res.status(400).json({ error: 'Emoji image is required' });
             }
 
-            // Check if user is server owner (simplified - should check MANAGE_EMOJIS permission)
-            const serverCheck = await db.query(
-                'SELECT owner_id FROM servers WHERE id = $1',
-                [serverId]
-            );
-
-            if (serverCheck.rows.length === 0) {
-                return res.status(404).json({ error: 'Server not found' });
-            }
-
-            if (serverCheck.rows[0].owner_id !== userId) {
-                return res.status(403).json({ error: 'Only server owners can upload custom emojis' });
-            }
-
             const id = generateSnowflake();
 
             const result = await db.query(
@@ -266,6 +259,9 @@ class ReactionController {
                  RETURNING *`,
                 [id, serverId, name.trim(), req.file.filename, userId]
             );
+
+            const io = req.app.get('io');
+            if (io) io.to(`server:${serverId}`).emit('server_emojis_updated', { serverId });
 
             log(tags.success, `Custom emoji "${name}" uploaded to server ${serverId}`);
             res.status(201).json({
@@ -278,6 +274,45 @@ class ReactionController {
             }
             log(tags.error, 'Upload emoji error:', error);
             res.status(500).json({ error: 'Failed to upload emoji' });
+        }
+    }
+
+    /**
+     * Delete a custom emoji
+     * DELETE /api/servers/:serverId/emojis/:emojiId
+     * Requires MANAGE_GUILD_EXPRESSIONS (checked by middleware)
+     */
+    static async deleteCustomEmoji(req, res) {
+        try {
+            const { serverId, emojiId } = req.params;
+
+            const emojiCheck = await db.query(
+                'SELECT id, filename FROM custom_emojis WHERE id = $1 AND server_id = $2',
+                [emojiId, serverId]
+            );
+
+            if (emojiCheck.rows.length === 0) {
+                return res.status(404).json({ error: 'Emoji not found' });
+            }
+
+            const { filename } = emojiCheck.rows[0];
+
+            await db.query('DELETE FROM custom_emojis WHERE id = $1', [emojiId]);
+
+            // Delete file from disk (non-blocking, best-effort)
+            const filePath = path.join(__dirname, `../public/img/emoji/${serverId}/${filename}`);
+            fs.unlink(filePath, (err) => {
+                if (err) log(tags.warning, `Could not delete emoji file: ${filePath}`);
+            });
+
+            const io = req.app.get('io');
+            if (io) io.to(`server:${serverId}`).emit('server_emojis_updated', { serverId });
+
+            log(tags.success, `Custom emoji ${emojiId} deleted from server ${serverId}`);
+            res.status(204).send();
+        } catch (error) {
+            log(tags.error, 'Delete emoji error:', error);
+            res.status(500).json({ error: 'Failed to delete emoji' });
         }
     }
 }

@@ -126,6 +126,7 @@ function switchSettingsTab(tab) {
         case 'roles':    renderRolesTab(content);    break;
         case 'members':  renderMembersTab(content);  break;
         case 'invites':  renderInvitesTab(content);  break;
+        case 'emojis':   renderEmojisTab(content);   break;
         case 'danger':   renderDangerZoneTab(content); break;
     }
 }
@@ -903,6 +904,120 @@ function renderDangerZoneTab(container) {
             <button class="settings-btn danger" onclick="closeServerSettings(); leaveOrDeleteServer();">Delete Server</button>
         </div>`}
     `;
+}
+
+// ── Emoji Tab ─────────────────────────────────────────────────────────────────
+
+async function renderEmojisTab(container) {
+    container.innerHTML = '<p style="color:#949ba4">Loading emoji…</p>';
+    try {
+        const res = await fetch(`/api/reactions/servers/${_settingsServerId}/emojis`, { credentials: 'include' });
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        const emojis = data.server || [];
+
+        const canManage = clientHasPermission(CLIENT_PERMS.MANAGE_GUILD_EXPRESSIONS);
+
+        const uploadHtml = canManage ? `
+            <div class="settings-field">
+                <label class="settings-label">Upload Emoji</label>
+                <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+                    <div>
+                        <label class="settings-label" style="font-size:11px;margin-bottom:4px;display:block;">Name (a-z, 0-9, _)</label>
+                        <input class="settings-input" id="emojiNameInput" type="text" placeholder="my_emoji" maxlength="32" style="width:150px;">
+                    </div>
+                    <div>
+                        <label class="settings-label" style="font-size:11px;margin-bottom:4px;display:block;">Image (max 256 KB)</label>
+                        <input type="file" id="emojiFileInput" accept="image/jpeg,image/jpg,image/png,image/gif,image/webp" style="color:#dcddde;font-size:13px;">
+                    </div>
+                    <button class="settings-btn" onclick="uploadServerEmoji()">Upload</button>
+                </div>
+                <div id="emojiUploadError" style="color:#f23f43;font-size:13px;margin-top:8px;display:none;"></div>
+            </div>` : '';
+
+        const listHtml = emojis.length === 0
+            ? '<p style="color:#949ba4;margin-top:16px;">No custom emoji yet.</p>'
+            : `<div class="emoji-mgmt-list">
+                ${emojis.map(e => `
+                    <div class="emoji-mgmt-item">
+                        <img src="/img/emoji/${e.server_id}/${e.filename}" alt="${escHtml(e.name)}" class="emoji-mgmt-preview">
+                        <span class="emoji-mgmt-name">:${escHtml(e.name)}:</span>
+                        ${canManage ? `<button class="settings-btn danger" style="padding:4px 10px;font-size:12px;margin-left:auto;"
+                            onclick="deleteServerEmoji('${e.id}','${escAttr(e.name)}')">Delete</button>` : ''}
+                    </div>`).join('')}
+               </div>`;
+
+        container.innerHTML = `
+            <h2 class="settings-section-title">Emoji</h2>
+            <p style="font-size:13px;color:#949ba4;margin-bottom:20px;">Custom emoji for this server — ${emojis.length} uploaded.</p>
+            ${uploadHtml}
+            ${listHtml}
+        `;
+    } catch {
+        container.innerHTML = '<p style="color:#f23f43">Failed to load emoji.</p>';
+    }
+}
+
+async function uploadServerEmoji() {
+    const nameInput = document.getElementById('emojiNameInput');
+    const fileInput = document.getElementById('emojiFileInput');
+    const errorEl  = document.getElementById('emojiUploadError');
+    errorEl.style.display = 'none';
+
+    const name = nameInput?.value.trim();
+    const file = fileInput?.files[0];
+
+    if (!name) { errorEl.textContent = 'Name is required.'; errorEl.style.display = 'block'; return; }
+    if (!/^[a-zA-Z0-9_]{1,32}$/.test(name)) {
+        errorEl.textContent = 'Name must be 1–32 characters: letters, numbers, or underscores.';
+        errorEl.style.display = 'block';
+        return;
+    }
+    if (!file) { errorEl.textContent = 'Image file is required.'; errorEl.style.display = 'block'; return; }
+
+    const formData = new FormData();
+    formData.append('name', name);
+    formData.append('emoji', file);
+
+    try {
+        const res = await fetch(`/api/reactions/servers/${_settingsServerId}/emojis`, {
+            method: 'POST',
+            credentials: 'include',
+            body: formData
+        });
+        const data = await res.json();
+        if (!res.ok) { errorEl.textContent = data.error || 'Upload failed.'; errorEl.style.display = 'block'; return; }
+        showToast('Emoji uploaded!');
+        renderEmojisTab(document.getElementById('settingsContent'));
+    } catch {
+        errorEl.textContent = 'Request failed.';
+        errorEl.style.display = 'block';
+    }
+}
+
+async function deleteServerEmoji(emojiId, name) {
+    showModal({
+        title: 'Delete Emoji',
+        message: `Delete :${name}:? This cannot be undone.`,
+        buttons: [
+            { text: 'Cancel', style: 'secondary', action: closeModal },
+            {
+                text: 'Delete', style: 'danger', action: async () => {
+                    closeModal();
+                    const res = await fetch(`/api/reactions/servers/${_settingsServerId}/emojis/${emojiId}`, {
+                        method: 'DELETE',
+                        credentials: 'include'
+                    });
+                    if (res.ok || res.status === 204) {
+                        showToast('Emoji deleted.');
+                        renderEmojisTab(document.getElementById('settingsContent'));
+                    } else {
+                        showToast('Failed to delete emoji.');
+                    }
+                }
+            }
+        ]
+    });
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────────────

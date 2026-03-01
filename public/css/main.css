@@ -1695,6 +1695,34 @@ textarea.modal-input {
     padding: 32px 40px;
     overflow-y: auto;
 }
+/* ── Emoji management tab ────────────────────────────────────────────────── */
+.emoji-mgmt-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 16px;
+}
+.emoji-mgmt-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: #2b2d31;
+}
+.emoji-mgmt-item:hover { background: #32353b; }
+.emoji-mgmt-preview {
+    width: 32px;
+    height: 32px;
+    object-fit: contain;
+    border-radius: 4px;
+}
+.emoji-mgmt-name {
+    font-size: 13px;
+    color: #dcddde;
+    font-family: monospace;
+}
+
 .settings-close {
     position: absolute;
     top: 16px;

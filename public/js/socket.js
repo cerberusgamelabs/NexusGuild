@@ -148,6 +148,10 @@ function initializeSocket() {
         patchMessagePin(data.messageId, false);
     });
 
+    state.socket.on('server_emojis_updated', (data) => {
+        if (typeof loadServerEmojis === 'function') loadServerEmojis(data.serverId);
+    });
+
     state.socket.on('custom_status_update', (data) => {
         const member = state.members.find(m => m.id === data.userId);
         if (member) {

@@ -57,6 +57,25 @@ async function showDMHome() {
             if (dmState.currentDM?.id === data.dmId)
                 updateDMMessageReactions(data.messageId, data.reactions, data.dmId);
         });
+        state.socket.on('dm_voice_state_update', (data) => {
+            // Ignore own state changes
+            if (data.userId === state.currentUser?.id) return;
+            if (dmState.currentDM?.id !== data.dmId) return;
+            const container = document.getElementById('messagesContainer');
+            if (!container) return;
+            const existing = document.getElementById('dmCallBanner');
+            if (data.joined) {
+                if (!existing) {
+                    const banner = document.createElement('div');
+                    banner.id = 'dmCallBanner';
+                    banner.className = 'dm-call-banner';
+                    banner.innerHTML = `📞 ${escapeHtmlDM(data.username)} is in a call — <button onclick="typeof joinDMVoice==='function'&&joinDMVoice('${data.dmId}')">Join</button>`;
+                    container.insertBefore(banner, container.firstChild);
+                }
+            } else {
+                existing?.remove();
+            }
+        });
     }
 
     const searchInput = document.getElementById('dmSearchInput');
@@ -205,12 +224,20 @@ async function selectDMConversation(dmId) {
     const header = document.getElementById('channelHeader');
     if (header) {
         header.innerHTML = `
-            <div style="display:flex;align-items:center;gap:10px;">
-                <div style="width:32px;height:32px;background:#5865f2;border-radius:50%;display:flex;
-                            align-items:center;justify-content:center;font-weight:bold;font-size:13px;color:#fff;overflow:hidden;">
-                    ${dmAvatarHtml(conv.partner_avatar, conv.partner_username)}
+            <div style="display:flex;align-items:center;justify-content:space-between;width:100%;">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <div style="width:32px;height:32px;background:#5865f2;border-radius:50%;display:flex;
+                                align-items:center;justify-content:center;font-weight:bold;font-size:13px;color:#fff;overflow:hidden;">
+                        ${dmAvatarHtml(conv.partner_avatar, conv.partner_username)}
+                    </div>
+                    <span style="font-weight:700;font-size:16px;">${escapeHtmlDM(conv.partner_username)}</span>
                 </div>
-                <span style="font-weight:700;font-size:16px;">${escapeHtmlDM(conv.partner_username)}</span>
+                <button id="dmVoiceBtn" title="Voice Call"
+                        onclick="typeof joinDMVoice==='function'&&joinDMVoice('${conv.id}')"
+                        style="background:none;border:none;color:#949ba4;font-size:20px;cursor:pointer;
+                               padding:4px 8px;border-radius:4px;line-height:1;"
+                        onmouseover="this.style.color='#dcddde';this.style.background='#3d3f45'"
+                        onmouseout="this.style.color='#949ba4';this.style.background='none'">📞</button>
             </div>`;
     }
 

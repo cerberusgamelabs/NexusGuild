@@ -32,6 +32,7 @@ const initializeSocket = (server, sessionMiddleware) => {
 
     const onlineUsers = new Map();
     const voiceStates = new Map();
+    const dmVoiceStates = new Map(); // Map<dmId, Set<userId>>
 
     io.on('connection', (socket) => {
         log(tags.info, `User connected: ${socket.username} (${socket.userId})`);
@@ -148,6 +149,52 @@ const initializeSocket = (server, sessionMiddleware) => {
             }
         });
 
+        socket.on('join_dm_voice', async ({ dmId }) => {
+            try {
+                const result = await db.query(
+                    `SELECT user1_id, user2_id FROM direct_messages WHERE id = $1 AND (user1_id = $2 OR user2_id = $2)`,
+                    [dmId, socket.userId]
+                );
+                if (result.rows.length === 0) return;
+                const { user1_id, user2_id } = result.rows[0];
+                const otherId = user1_id === socket.userId ? user2_id : user1_id;
+
+                if (!dmVoiceStates.has(dmId)) dmVoiceStates.set(dmId, new Set());
+                dmVoiceStates.get(dmId).add(socket.userId);
+
+                const payload = { dmId, userId: socket.userId, username: socket.username, joined: true };
+                io.to(`user:${socket.userId}`).emit('dm_voice_state_update', payload);
+                io.to(`user:${otherId}`).emit('dm_voice_state_update', payload);
+                log(tags.info, `${socket.username} joined DM voice ${dmId}`);
+            } catch (err) {
+                log(tags.error, 'join_dm_voice error:', err);
+            }
+        });
+
+        socket.on('leave_dm_voice', async ({ dmId }) => {
+            try {
+                const result = await db.query(
+                    `SELECT user1_id, user2_id FROM direct_messages WHERE id = $1 AND (user1_id = $2 OR user2_id = $2)`,
+                    [dmId, socket.userId]
+                );
+                if (result.rows.length === 0) return;
+                const { user1_id, user2_id } = result.rows[0];
+                const otherId = user1_id === socket.userId ? user2_id : user1_id;
+
+                if (dmVoiceStates.has(dmId)) {
+                    dmVoiceStates.get(dmId).delete(socket.userId);
+                    if (dmVoiceStates.get(dmId).size === 0) dmVoiceStates.delete(dmId);
+                }
+
+                const payload = { dmId, userId: socket.userId, username: socket.username, joined: false };
+                io.to(`user:${socket.userId}`).emit('dm_voice_state_update', payload);
+                io.to(`user:${otherId}`).emit('dm_voice_state_update', payload);
+                log(tags.info, `${socket.username} left DM voice ${dmId}`);
+            } catch (err) {
+                log(tags.error, 'leave_dm_voice error:', err);
+            }
+        });
+
         socket.on('disconnect', async () => {
             log(tags.warning, `User disconnected: ${socket.username} (${socket.userId})`);
             onlineUsers.delete(socket.userId);
@@ -179,6 +226,24 @@ const initializeSocket = (server, sessionMiddleware) => {
                     joined: false
                 });
                 voiceStates.delete(socket.userId);
+            }
+
+            // Clean up DM voice state
+            for (const [dmId, users] of [...dmVoiceStates.entries()]) {
+                if (!users.has(socket.userId)) continue;
+                users.delete(socket.userId);
+                if (users.size === 0) dmVoiceStates.delete(dmId);
+                db.query(
+                    `SELECT user1_id, user2_id FROM direct_messages WHERE id = $1`,
+                    [dmId]
+                ).then(result => {
+                    if (!result.rows.length) return;
+                    const { user1_id, user2_id } = result.rows[0];
+                    const otherId = user1_id === socket.userId ? user2_id : user1_id;
+                    io.to(`user:${otherId}`).emit('dm_voice_state_update', {
+                        dmId, userId: socket.userId, username: socket.username, joined: false
+                    });
+                }).catch(err => log(tags.error, 'DM voice disconnect cleanup error:', err));
             }
 
             io.emit('presence_update', {

@@ -15,6 +15,7 @@
 let _lkRoom          = null;
 let _voiceChannelId  = null;
 let _voiceServerId   = null;
+let _voiceDmId       = null;   // non-null when in a DM voice call
 let _activeSpeakerIds = new Set();
 
 // ── Public: join/leave ────────────────────────────────────────────────────────
@@ -30,6 +31,82 @@ async function joinVoice(channelId, serverId) {
         _voiceServerId = null;
         _hideVoicePanel();
     }
+}
+
+// ── Public: DM voice call ─────────────────────────────────────────────────────
+
+async function joinDMVoice(dmId) {
+    try {
+        // Leave any current call first
+        if (_lkRoom && _lkRoom.state !== 'disconnected') {
+            await leaveVoice();
+        }
+
+        _voiceDmId = dmId;
+
+        const res = await fetch(`/api/voice/dm/${dmId}`, { credentials: 'include' });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.error || 'Failed to start voice call', 'error');
+            _voiceDmId = null;
+            return;
+        }
+        const tokenData = await res.json();
+
+        const { Room, RoomEvent } = LivekitClient;
+        _lkRoom = new Room({ adaptiveStream: true, dynacast: true });
+        _lkRoom
+            .on(RoomEvent.ParticipantConnected,    _onParticipantConnected)
+            .on(RoomEvent.ParticipantDisconnected, _onParticipantDisconnected)
+            .on(RoomEvent.ActiveSpeakersChanged,   _onActiveSpeakersChanged)
+            .on(RoomEvent.TrackSubscribed,         _onTrackSubscribed)
+            .on(RoomEvent.TrackUnsubscribed,       _onTrackUnsubscribed)
+            .on(RoomEvent.TrackMuted,              _onTrackMuted)
+            .on(RoomEvent.TrackUnmuted,            _onTrackUnmuted)
+            .on(RoomEvent.Disconnected,            _onRoomDisconnected);
+
+        try {
+            await _lkRoom.connect(tokenData.url, tokenData.token);
+        } catch (e) {
+            showToast('Failed to connect to voice server.', 'error');
+            _lkRoom = null;
+            _voiceDmId = null;
+            return;
+        }
+
+        if (!micMuted && !deafened) {
+            await _lkRoom.localParticipant.setMicrophoneEnabled(true).catch(console.error);
+        }
+
+        if (state.socket) state.socket.emit('join_dm_voice', { dmId });
+
+        _showVoicePanel('dm');
+        showDMVoiceView();
+    } catch (e) {
+        console.error('[voice] Unhandled error in joinDMVoice:', e);
+        showToast('Voice call failed.', 'error');
+        _lkRoom = null;
+        _voiceDmId = null;
+        _hideVoicePanel();
+    }
+}
+
+function showDMVoiceView() {
+    const container = document.getElementById('messagesContainer');
+    if (!container || !_lkRoom) return;
+    container.innerHTML = `
+        <div class="voice-full-view">
+            <div class="voice-full-header">📞 DM Call</div>
+            <div class="voice-full-grid" id="voiceFullGrid"></div>
+            <div class="voice-full-controls">
+                <button class="voice-full-leave-btn" onclick="leaveVoice()">Leave Call</button>
+            </div>
+        </div>`;
+    _renderFullGrid();
+}
+
+function isInDMVoice() {
+    return !!(_lkRoom && _lkRoom.state !== 'disconnected' && _voiceDmId);
 }
 
 async function _joinVoiceInternal(channelId, serverId) {
@@ -129,10 +206,15 @@ async function leaveVoice() {
 
     const channelId = _voiceChannelId;
     const serverId  = _voiceServerId;
+    const dmId      = _voiceDmId;
 
-    // Notify Socket.io before disconnect so serverId is still set
-    if (state.socket && channelId && serverId) {
-        state.socket.emit('leave_voice', { channelId, serverId });
+    // Notify Socket.io before disconnect
+    if (state.socket) {
+        if (dmId) {
+            state.socket.emit('leave_dm_voice', { dmId });
+        } else if (channelId && serverId) {
+            state.socket.emit('leave_voice', { channelId, serverId });
+        }
     }
 
     try {
@@ -144,18 +226,26 @@ async function leaveVoice() {
     // Remove all injected audio elements
     document.querySelectorAll('[id^="voice-audio-"]').forEach(el => el.remove());
 
-    const wasChannelId  = _voiceChannelId;
-    const wasServerId   = _voiceServerId;
+    const wasChannelId = _voiceChannelId;
+    const wasServerId  = _voiceServerId;
+    const wasDmId      = _voiceDmId;
 
     _lkRoom          = null;
     _voiceChannelId  = null;
     _voiceServerId   = null;
+    _voiceDmId       = null;
     _activeSpeakerIds.clear();
 
     _hideVoicePanel();
 
-    // If still viewing the voice channel, restore the join splash
-    if (state.currentChannel?.id === wasChannelId) {
+    if (wasDmId) {
+        // Restore DM message view
+        if (typeof isInDMMode === 'function' && isInDMMode() &&
+            typeof renderDMMessages === 'function') {
+            renderDMMessages();
+        }
+    } else if (state.currentChannel?.id === wasChannelId) {
+        // Restore voice channel join splash
         const channel   = state.channels.find(c => c.id === wasChannelId);
         const container = document.getElementById('messagesContainer');
         if (container && channel) {
@@ -227,23 +317,35 @@ function _onTrackUnmuted() {
 function _onRoomDisconnected() {
     const channelId = _voiceChannelId;
     const serverId  = _voiceServerId;
+    const dmId      = _voiceDmId;
 
-    if (state.socket && channelId && serverId) {
-        state.socket.emit('leave_voice', { channelId, serverId });
+    if (state.socket) {
+        if (dmId) {
+            state.socket.emit('leave_dm_voice', { dmId });
+        } else if (channelId && serverId) {
+            state.socket.emit('leave_voice', { channelId, serverId });
+        }
     }
 
     document.querySelectorAll('[id^="voice-audio-"]').forEach(el => el.remove());
 
     const wasChannelId = _voiceChannelId;
     const wasServerId  = _voiceServerId;
+    const wasDmId      = _voiceDmId;
 
     _lkRoom          = null;
     _voiceChannelId  = null;
     _voiceServerId   = null;
+    _voiceDmId       = null;
     _activeSpeakerIds.clear();
     _hideVoicePanel();
 
-    if (state.currentChannel?.id === wasChannelId) {
+    if (wasDmId) {
+        if (typeof isInDMMode === 'function' && isInDMMode() &&
+            typeof renderDMMessages === 'function') {
+            renderDMMessages();
+        }
+    } else if (state.currentChannel?.id === wasChannelId) {
         const channel   = state.channels.find(c => c.id === wasChannelId);
         const container = document.getElementById('messagesContainer');
         if (container && channel) {
@@ -267,8 +369,12 @@ function _showVoicePanel(channelId) {
     const nameEl = document.getElementById('voicePanelChannelName');
     if (!panel) return;
 
-    const channel = state.channels.find(c => c.id === channelId);
-    if (nameEl) nameEl.textContent = channel ? channel.name : 'Voice Channel';
+    if (channelId === 'dm') {
+        if (nameEl) nameEl.textContent = 'DM Call';
+    } else {
+        const channel = state.channels.find(c => c.id === channelId);
+        if (nameEl) nameEl.textContent = channel ? channel.name : 'Voice Channel';
+    }
 
     panel.style.display = 'flex';
 }

@@ -365,7 +365,7 @@ const EMOJI_DATA = [
     { char: '🔥', name: 'fire', aliases: ['flame', 'hot'] },
     { char: '💧', name: 'droplet' },
     { char: '💦', name: 'sweat_drops' },
-    { char: '🌊', name: 'ocean', aliases: ['wave'] },
+    { char: '🌊', name: 'ocean' },
     { char: '🫧', name: 'bubbles' },
     { char: '✨', name: 'sparkles' },
     { char: '🌍', name: 'earth_africa' },

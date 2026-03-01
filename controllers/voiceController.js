@@ -113,6 +113,48 @@ class VoiceController {
             return res.status(500).json({ error: 'Failed to generate voice token' });
         }
     }
+
+    /**
+     * Get a LiveKit token for a DM voice call (audio-only).
+     * GET /api/voice/dm/:dmId
+     */
+    static async getDMToken(req, res) {
+        try {
+            const userId   = req.session.user.id;
+            const username = req.session.user.username;
+            const { dmId } = req.params;
+
+            // Verify user is a participant in this DM conversation
+            const dmResult = await db.query(
+                `SELECT id FROM direct_messages WHERE id = $1 AND (user1_id = $2 OR user2_id = $2)`,
+                [dmId, userId]
+            );
+            if (dmResult.rows.length === 0) {
+                return res.status(403).json({ error: 'You are not in this conversation' });
+            }
+
+            const at = new AccessToken(
+                process.env.LIVEKIT_API_KEY,
+                process.env.LIVEKIT_API_SECRET,
+                { identity: userId, name: username, ttl: '4h' }
+            );
+
+            at.addGrant({
+                roomJoin:       true,
+                room:           `dm_${dmId}`,
+                canPublish:     true,
+                canSubscribe:   true,
+                canPublishData: false,
+            });
+
+            const token = await at.toJwt();
+            return res.json({ token, url: process.env.LIVEKIT_URL, dmId });
+
+        } catch (error) {
+            console.error('DM voice token error:', error);
+            return res.status(500).json({ error: 'Failed to generate voice token' });
+        }
+    }
 }
 
 export default VoiceController;

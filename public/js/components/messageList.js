@@ -4,11 +4,21 @@
 
 function parseEmojiShortcodes(html) {
     return html.replace(/:(\w+):/g, (match, name) => {
-        // Custom server emoji takes priority
+        // Current server emoji takes priority
         if (typeof serverEmojis !== 'undefined' && serverEmojis.server) {
             const custom = serverEmojis.server.find(e => e.name === name);
             if (custom) {
                 return `<img src="/img/emoji/${custom.server_id}/${custom.filename}" class="inline-emoji" alt=":${name}:" title=":${name}:">`;
+            }
+        }
+        // Cross-server emoji lookup across all joined servers.
+        // TODO (Ascendent): gate cross-server lookup behind subscription check before launch.
+        if (typeof _allServerEmojis !== 'undefined') {
+            for (const [sId, sData] of _allServerEmojis) {
+                const cross = (sData.emoji || []).find(e => e.name === name);
+                if (cross) {
+                    return `<img src="/img/emoji/${sId}/${cross.filename}" class="inline-emoji" alt=":${name}:" title=":${name}:">`;
+                }
             }
         }
         // Unicode shortcode lookup
@@ -145,7 +155,7 @@ function renderMessages() {
         if (el) attachMessageContextMenu(el, message);
     });
 
-    if (clientHasPermission('EMBED_LINKS')) {
+    if (clientHasPermission(CLIENT_PERMS.EMBED_LINKS)) {
         state.messages.forEach(message => {
             if (!message.content) return;
             const embedSlot = container.querySelector(`[data-embed-id="${message.id}"]`);
@@ -185,7 +195,7 @@ function appendMessage(message) {
 
     attachMessageContextMenu(el, message);
 
-    if (clientHasPermission('EMBED_LINKS') && message.content) {
+    if (clientHasPermission(CLIENT_PERMS.EMBED_LINKS) && message.content) {
         const embedSlot = el.querySelector(`[data-embed-id="${message.id}"]`);
         if (embedSlot) injectEmbed(message, embedSlot);
     }

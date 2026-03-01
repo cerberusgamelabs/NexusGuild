@@ -9,6 +9,15 @@ let currentEmojiPickerMessageId = null;
 let currentEmojiPickerDmId = null;
 let serverEmojis = { global: [], server: [] };
 
+// TODO (Ascendent): Cross-server emoji tabs below show emoji from all joined servers.
+// Before launch, gate _allServerEmojis loading and tab rendering behind a subscription
+// flag (e.g. state.currentUser.is_ascendent). Non-subscribers should only see the
+// current server's emoji tab.
+const _allServerEmojis = new Map(); // Map<serverId, { serverName, emoji[] }>
+
+// _iepServerTabs: populated in _buildPickerHTML(), maps negative catIdx → server data
+const _iepServerTabs = [];
+
 // 'input' = insert :shortcode: into textarea (stays open)
 // 'reaction' = add reaction to message (closes on pick)
 let _iepMode = 'input';
@@ -17,16 +26,29 @@ let _iepCatIdx = 0;
 // ── Shared HTML builder ───────────────────────────────────────────────────────
 
 function _buildPickerHTML() {
-    const hasServer = serverEmojis.server && serverEmojis.server.length > 0;
+    // Reset server tabs list
+    _iepServerTabs.length = 0;
     const tabs = [];
-    if (hasServer) {
-        tabs.push(`<button class="iep-tab${_iepCatIdx === -1 ? ' active' : ''}" title="Server Emoji" onmousedown="event.preventDefault();_switchEmojiCategory(-1)">⭐</button>`);
+
+    // One tab per server that has emoji — placed ABOVE base emoji categories.
+    // TODO (Ascendent): gate this block behind subscription check before launch.
+    let serverTabOffset = 0;
+    for (const [sId, sData] of _allServerEmojis) {
+        if (!sData.emoji || sData.emoji.length === 0) continue;
+        const catIdx = -(serverTabOffset + 1); // -1, -2, -3, ...
+        _iepServerTabs.push({ catIdx, serverId: sId, serverName: sData.serverName });
+        const firstEmoji = sData.emoji[0];
+        const safeServerName = sData.serverName.replace(/"/g, '&quot;').replace(/</g, '&lt;');
+        const iconHtml = `<img src="/img/emoji/${sId}/${firstEmoji.filename}" style="width:18px;height:18px;object-fit:contain;border-radius:2px;" alt="">`;
+        tabs.push(`<button class="iep-tab${_iepCatIdx === catIdx ? ' active' : ''}" data-tab-idx="${catIdx}" title="${safeServerName}" onmousedown="event.preventDefault();_switchEmojiCategory(${catIdx})">${iconHtml}</button>`);
+        serverTabOffset++;
     }
+
     if (typeof EMOJI_DATA !== 'undefined') {
         EMOJI_DATA.forEach((cat, i) => {
             const icon = cat.emoji[0] ? cat.emoji[0].char : '?';
             const active = (_iepCatIdx === i) ? ' active' : '';
-            tabs.push(`<button class="iep-tab${active}" title="${cat.name}" onmousedown="event.preventDefault();_switchEmojiCategory(${i})">${icon}</button>`);
+            tabs.push(`<button class="iep-tab${active}" data-tab-idx="${i}" title="${cat.name}" onmousedown="event.preventDefault();_switchEmojiCategory(${i})">${icon}</button>`);
         });
     }
     return `
@@ -42,11 +64,17 @@ function _renderIepGrid() {
     const wrap = document.getElementById('iepGridWrap');
     if (!wrap) return;
 
-    if (_iepCatIdx === -1) {
-        const btns = (serverEmojis.server || []).map(e =>
-            `<button class="iep-btn" title=":${e.name}:" onmousedown="insertEmojiFromPicker('${e.name}',event,'${e.server_id}')"><img src="/img/emoji/${e.server_id}/${e.filename}" alt="${e.name}"></button>`
+    if (_iepCatIdx < 0) {
+        // Server emoji tab
+        const tabData = _iepServerTabs.find(t => t.catIdx === _iepCatIdx);
+        if (!tabData) { wrap.innerHTML = ''; return; }
+        const sData = _allServerEmojis.get(tabData.serverId);
+        if (!sData) { wrap.innerHTML = ''; return; }
+        const btns = (sData.emoji || []).map(e =>
+            `<button class="iep-btn" title=":${e.name}:" onmousedown="insertEmojiFromPicker('${e.name}',event,'${tabData.serverId}')"><img src="/img/emoji/${tabData.serverId}/${e.filename}" alt="${e.name}"></button>`
         ).join('');
-        wrap.innerHTML = `<div class="iep-section-label">Server Emoji</div><div class="iep-grid">${btns}</div>`;
+        const label = (tabData.serverName || 'Server').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        wrap.innerHTML = `<div class="iep-section-label">${label}</div><div class="iep-grid">${btns || '<span style="color:#949ba4;padding:8px;">No emoji</span>'}</div>`;
     } else if (typeof EMOJI_DATA !== 'undefined' && EMOJI_DATA[_iepCatIdx]) {
         const cat = EMOJI_DATA[_iepCatIdx];
         const btns = cat.emoji.map(e =>
@@ -63,10 +91,8 @@ function _switchEmojiCategory(idx) {
     const picker = wrap.closest('#inputEmojiPicker, #emojiPickerModal');
     if (picker) {
         picker.querySelectorAll('.iep-tab').forEach(btn => btn.classList.remove('active'));
-        const tabs = picker.querySelectorAll('.iep-tab');
-        const hasServer = serverEmojis.server && serverEmojis.server.length > 0;
-        const tabIdx = hasServer ? (idx === -1 ? 0 : idx + 1) : idx;
-        if (tabs[tabIdx]) tabs[tabIdx].classList.add('active');
+        const target = picker.querySelector(`.iep-tab[data-tab-idx="${idx}"]`);
+        if (target) target.classList.add('active');
     }
     const searchEl = document.getElementById('iepSearch');
     if (searchEl) searchEl.value = '';
@@ -93,10 +119,11 @@ function _filterEmojiPicker(query) {
         }
     }
 
-    if (serverEmojis.server) {
-        for (const e of serverEmojis.server) {
+    // TODO (Ascendent): gate cross-server search behind subscription check before launch.
+    for (const [sId, sData] of _allServerEmojis) {
+        for (const e of (sData.emoji || [])) {
             if (e.name.includes(lower)) {
-                btns.push(`<button class="iep-btn" title=":${e.name}:" onmousedown="insertEmojiFromPicker('${e.name}',event,'${e.server_id}')"><img src="/img/emoji/${e.server_id}/${e.filename}" alt="${e.name}"></button>`);
+                btns.push(`<button class="iep-btn" title=":${e.name}:" onmousedown="insertEmojiFromPicker('${e.name}',event,'${sId}')"><img src="/img/emoji/${sId}/${e.filename}" alt="${e.name}"></button>`);
             }
         }
     }
@@ -142,7 +169,7 @@ async function showEmojiPickerAt(messageId, x, y, dmId = null) {
     _iepMode = 'reaction';
     _iepCatIdx = 0;
 
-    if (state.currentServer && serverEmojis.server.length === 0) {
+    if (state.currentServer && !_allServerEmojis.has(state.currentServer.id)) {
         await loadServerEmojis(state.currentServer.id);
     }
 
@@ -156,7 +183,12 @@ async function showEmojiPickerAt(messageId, x, y, dmId = null) {
     const top = (y + pickerH > window.innerHeight) ? Math.max(0, y - pickerH) : y;
     picker.style.left = `${left}px`;
     picker.style.top = `${top}px`;
-    picker.style.display = 'flex';
+
+    // Defer display to next macrotask so the click event that opened the picker
+    // has fully propagated (including the click-outside close handler) before
+    // we make it visible. Without this, the picker opens and is immediately
+    // closed by the document-level click handler on the same event.
+    setTimeout(() => { picker.style.display = 'flex'; }, 0);
 }
 
 async function selectEmoji(emoji) {
@@ -215,16 +247,31 @@ async function loadServerEmojis(serverId) {
             credentials: 'include'
         });
         if (response.ok) {
-            serverEmojis = await response.json();
+            const data = await response.json();
+            // Keep backward-compat alias for the current server
+            if (serverId === state.currentServer?.id) {
+                serverEmojis = data;
+            }
+            // Always update the all-server map for cross-server tabs and shortcodes
+            const serverName = state.servers?.find(s => s.id === serverId)?.name || serverId;
+            _allServerEmojis.set(serverId, { serverName, emoji: data.server || [] });
         }
     } catch (error) {
         console.error('Error loading server emojis:', error);
     }
 }
 
+// Load emoji for all joined servers (called after loadUserServers).
+// TODO (Ascendent): Before launch, gate this behind a subscription flag so
+// non-subscribers only load/see emoji for their current server.
+async function loadAllServerEmojis() {
+    if (!state.servers?.length) return;
+    await Promise.all(state.servers.map(s => loadServerEmojis(s.id)));
+}
+
 function closeEmojiPicker() {
     const picker = document.getElementById('emojiPickerModal');
-    picker.style.display = 'none';
+    if (picker) { picker.style.display = 'none'; picker.innerHTML = ''; }
     currentEmojiPickerMessageId = null;
     currentEmojiPickerDmId = null;
     _iepMode = 'input';
@@ -246,7 +293,7 @@ function toggleInputEmojiPicker() {
 
 function closeInputEmojiPicker() {
     const iep = document.getElementById('inputEmojiPicker');
-    if (iep) iep.style.display = 'none';
+    if (iep) { iep.style.display = 'none'; iep.innerHTML = ''; }
     _iepCatIdx = 0;
 }
 
