@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="/css/reactions.css">
     <link rel="stylesheet" href="/css/dm.css">
     <link rel="stylesheet" href="/css/voice.css">
+    <link rel="stylesheet" href="/css/profile.css">
 </head>
 <body>
 
@@ -60,7 +61,7 @@
             <button class="toggle-button" id="deafenToggle" onclick="toggleDeafen()">
                 <img src="img/deafen-off.png" alt="Deafen State">
             </button>
-            <button class="toggle-button" onclick="logout()">
+            <button class="toggle-button" onclick="openSettingsPanel()">
                 <img src="img/settings.png" alt="Settings">
             </button>
         </div>
@@ -306,6 +307,7 @@
     <script src="/js/components/serverSettings.js"></script>
     <script src="/js/components/channelPerms.js"></script>
     <script src="/js/components/forumView.js"></script>
+    <script src="/js/components/profileView.js"></script>
 
     <!-- New Conversation Modal (1:1 DM or Group DM) -->
     <div id="newConvModal" class="modal-overlay" style="display:none;" onclick="closeNewConvModal(event)">
@@ -324,6 +326,22 @@
                 <div id="newConvError" class="modal-error" style="display:none;margin-top:6px;"></div>
                 <button class="btn-primary" onclick="submitNewConversation()" style="margin-top:10px;width:100%;">Start</button>
             </div>
+        </div>
+    </div>
+    <!-- ── User Settings Overlay ─────────────────────────────────────────────── -->
+    <div id="userSettingsOverlay" class="settings-overlay" style="display:none;">
+        <div class="settings-layout">
+            <div class="settings-sidebar">
+                <div class="settings-sidebar-header" id="userSettingsSidebarName">User Settings</div>
+                <nav class="settings-nav">
+                    <button class="settings-nav-item active" data-tab="profile" onclick="switchUserSettingsTab('profile')">My Profile</button>
+                    <button class="settings-nav-item" data-tab="account" onclick="switchUserSettingsTab('account')">Account</button>
+                    <div class="settings-nav-divider"></div>
+                    <button class="settings-nav-item danger" onclick="logout()">Log Out</button>
+                </nav>
+            </div>
+            <div class="settings-content" id="userSettingsContent"></div>
+            <button class="settings-close" onclick="closeUserSettings()">✕</button>
         </div>
     </div>
 </body>

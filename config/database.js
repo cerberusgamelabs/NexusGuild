@@ -209,6 +209,10 @@ const initDB = async () => {
             )
         `);
 
+        // Idempotent: profile columns
+        await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_layout TEXT`);
+        await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_banner VARCHAR(255)`);
+
         await client.query(`
             CREATE TABLE IF NOT EXISTS pinned_messages (
                 channel_id  VARCHAR(20) REFERENCES channels(id) ON DELETE CASCADE,

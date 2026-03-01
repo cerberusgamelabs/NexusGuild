@@ -1,0 +1,69 @@
+/* Profile modal sizing */
+.modal-profile { width: 560px; max-width: 92vw; }
+
+/* Modal title hidden for profile (banner is the header) */
+.modal-profile .modal-header { display: none; }
+
+/* Banner + avatar */
+.profile-modal-wrap { margin: -16px -16px 0; }
+.profile-banner { height: 120px; background: #5865f2; background-size: cover;
+                  background-position: center; position: relative;
+                  border-radius: 8px 8px 0 0; }
+.profile-av-wrap { position: absolute; bottom: -32px; left: 16px; }
+.profile-modal-av { width: 72px; height: 72px; border-radius: 50%;
+                    border: 4px solid #2b2b2b; object-fit: cover; background: #5865f2;
+                    display: block; }
+.profile-modal-av-init { width: 72px; height: 72px; border-radius: 50%;
+                         border: 4px solid #2b2b2b; background: #5865f2;
+                         display: flex; align-items: center; justify-content: center;
+                         font-size: 24px; font-weight: 700; color: #fff; box-sizing: border-box; }
+
+/* Header row below banner */
+.profile-modal-header { padding: 40px 16px 8px; display: flex;
+                         align-items: flex-start; justify-content: space-between; }
+.profile-modal-username { font-size: 20px; font-weight: 700; color: #fff; display: block; }
+.profile-modal-status   { font-size: 13px; color: #96989d; margin-top: 2px; display: block; }
+.profile-edit-btn { background: #5865f2; border: none; color: #fff; border-radius: 6px;
+                    padding: 6px 14px; font-size: 13px; cursor: pointer; font-weight: 600; flex-shrink: 0; }
+.profile-edit-btn:hover { background: #4752c4; }
+
+/* Layout area */
+.profile-layout-area { height: 260px; overflow: hidden; display: flex;
+                        flex-direction: column; padding: 8px 16px 16px;
+                        border-top: 1px solid #333; margin-top: 8px; }
+.profile-row { display: flex; flex-direction: row; overflow: hidden; }
+.profile-col { overflow: auto; padding: 6px 8px; box-sizing: border-box;
+               font-size: 14px; color: #dcddde; line-height: 1.5; }
+.profile-col h1 { font-size: 18px; margin: 4px 0 6px; color: #fff; }
+.profile-col h2 { font-size: 15px; margin: 3px 0 5px; color: #fff; }
+.profile-col h3 { font-size: 13px; margin: 2px 0 4px; color: #dcddde; font-weight: 700; }
+.profile-col ul  { margin: 4px 0; padding-left: 18px; }
+.profile-col a   { color: #00aff4; text-decoration: none; }
+.profile-col a:hover { text-decoration: underline; }
+.profile-col img { max-width: 100%; border-radius: 4px; }
+.profile-token-avatar { width: 80px; height: 80px; border-radius: 50%;
+                         object-fit: cover; display: block; }
+.profile-token-avatar-init { width: 80px; height: 80px; border-radius: 50%;
+                              background: #5865f2; display: flex; align-items: center;
+                              justify-content: center; font-size: 28px; font-weight: 700;
+                              color: #fff; box-sizing: border-box; }
+.profile-token-username { font-weight: 700; color: #fff; }
+
+/* Preview inner — overrides layout-area sizing/border for the editor preview box */
+.profile-editor-preview-inner { height: auto !important; flex: 1 !important;
+                                  border-top: none !important; margin-top: 0 !important;
+                                  padding: 8px !important; }
+
+/* Profile editor (lives inside user settings overlay) */
+.profile-editor-banner-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.profile-editor-hint   { font-size: 12px; color: #888; }
+.profile-editor-cols   { display: flex; gap: 12px; margin-bottom: 12px; }
+.profile-editor-left,
+.profile-editor-right  { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+.profile-editor-textarea { height: 320px; resize: vertical;
+                            font-family: monospace; font-size: 13px; }
+.profile-editor-preview  { height: 320px; border: 1px solid #444;
+                            border-radius: 6px; background: #1e1e1e;
+                            overflow: hidden; display: flex; flex-direction: column; }
+.profile-editor-actions  { display: flex; gap: 8px; justify-content: flex-end;
+                            align-items: center; margin-top: 4px; }

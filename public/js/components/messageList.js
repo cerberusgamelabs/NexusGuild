@@ -87,15 +87,15 @@ function buildMessageHTML(message, prevMessage, { roleColorMap = {}, nicknameMap
     const authorColor = roleColorMap[message.user_id] ? ` style="color:${roleColorMap[message.user_id]}"` : '';
     const authorName = nicknameMap[message.user_id] || message.username;
     const authorAvatar = avatarMap[message.user_id]
-        ? `<img src="${avatarMap[message.user_id]}" alt="${authorName}" class="message-av-img">`
-        : `<div class="message-avatar">${getInitials(authorName)}</div>`;
+        ? `<img src="${avatarMap[message.user_id]}" alt="${authorName}" class="message-av-img" onclick="openProfileModal('${message.user_id}')" style="cursor:pointer">`
+        : `<div class="message-avatar" onclick="openProfileModal('${message.user_id}')" style="cursor:pointer">${getInitials(authorName)}</div>`;
 
     if (showHeader) {
         return `
         <div class="message${isMentioned ? ' mention-highlight' : ''}${message.is_pinned ? ' pinned-message' : ''}" data-message-id="${message.id}">
           <div class="message-header">
             ${authorAvatar}
-            <span class="message-author"${authorColor}>${authorName}</span>
+            <span class="message-author"${authorColor} onclick="openProfileModal('${message.user_id}')" style="cursor:pointer">${authorName}</span>
             <span class="message-timestamp">${formatTimestamp(message.created_at)}${pinIcon}</span>
           </div>
           <div class="message-content" data-content-id="${message.id}">${messageContent}${editedTag}</div>

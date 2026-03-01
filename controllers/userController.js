@@ -18,6 +18,48 @@ class UserController {
         }
     }
 
+    static async getProfile(req, res) {
+        try {
+            const { userId } = req.params;
+            const result = await db.query(
+                `SELECT id, username, avatar, status, custom_status, profile_layout, profile_banner, created_at
+                 FROM users WHERE id = $1`,
+                [userId]
+            );
+            if (!result.rows.length) return res.status(404).json({ error: 'User not found' });
+            res.json(result.rows[0]);
+        } catch (error) {
+            log(tags.error, 'Get profile error:', error);
+            res.status(500).json({ error: 'Failed to get profile' });
+        }
+    }
+
+    static async updateProfileLayout(req, res) {
+        try {
+            const userId = req.session.user.id;
+            let { layout } = req.body;
+            if (typeof layout !== 'string') layout = '';
+            if (layout.length > 10000) return res.status(400).json({ error: 'Layout too long (max 10 000 chars)' });
+            await db.query(`UPDATE users SET profile_layout = $1 WHERE id = $2`, [layout || null, userId]);
+            res.json({ ok: true });
+        } catch (error) {
+            log(tags.error, 'Update profile layout error:', error);
+            res.status(500).json({ error: 'Failed to update profile layout' });
+        }
+    }
+
+    static async updateProfileBanner(req, res) {
+        try {
+            if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+            const bannerUrl = `/uploads/${req.file.filename}`;
+            await db.query(`UPDATE users SET profile_banner = $1 WHERE id = $2`, [bannerUrl, req.session.user.id]);
+            res.json({ banner: bannerUrl });
+        } catch (error) {
+            log(tags.error, 'Update profile banner error:', error);
+            res.status(500).json({ error: 'Failed to upload banner' });
+        }
+    }
+
     static async setCustomStatus(req, res) {
         try {
             const userId = req.session.user.id;

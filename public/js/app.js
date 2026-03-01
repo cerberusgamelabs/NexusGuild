@@ -228,6 +228,7 @@ function showApp() {
         }
         renderUserStatus();
     }
+    if (typeof initProfileView === 'function') initProfileView();
 }
 
 function renderUserStatus() {

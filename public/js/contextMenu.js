@@ -22,6 +22,8 @@ let modalData = null;
  */
 function showModal(config) {
     const modal = document.getElementById('universalModal');
+    // Clear any profile-specific class left from a previous modal open
+    modal.querySelector('.modal')?.classList.remove('modal-profile');
     const title = document.getElementById('modalTitle');
     const message = document.getElementById('modalMessage');
     const input = document.getElementById('modalInput');
@@ -202,6 +204,8 @@ function attachMessageContextMenu(el, message) {
         const canManageMessages = clientHasPermission(CLIENT_PERMS.MANAGE_MESSAGES);
         const items = [];
 
+        items.push({ label: 'View Profile', action: 'viewProfile' });
+        items.push('divider');
         items.push({ label: 'Add Reaction', action: 'addReaction' });
         if (canManageMessages) {
             items.push('divider');
@@ -219,6 +223,7 @@ function attachMessageContextMenu(el, message) {
         items.push('divider');
         items.push({ label: 'Copy Text', action: 'copyText' });
 
+        ctxMenu._handlers.viewProfile = () => openProfileModal(message.user_id);
         ctxMenu._handlers.addReaction = () => showReactionModal(message.id, null, e.clientX, e.clientY);
         ctxMenu._handlers.pinMsg = () => pinMessage(message);
         ctxMenu._handlers.unpinMsg = () => unpinMessage(message);
@@ -351,6 +356,10 @@ function attachMemberContextMenu(el, member) {
         const isTargetOwner = state.currentServer && member.id === state.currentServer.owner_id;
         const items = [];
 
+        items.push({ label: 'View Profile', action: 'viewProfile' });
+        if (isSelf) items.push({ label: 'Edit Profile', action: 'editProfile' });
+        items.push('divider');
+
         if (!isSelf) {
             items.push({ label: 'Message', action: 'dmUser' });
             items.push({ label: '@Mention', action: 'mentionUser' });
@@ -383,6 +392,8 @@ function attachMemberContextMenu(el, member) {
             }
         }
 
+        ctxMenu._handlers.viewProfile   = () => openProfileModal(member.id);
+        ctxMenu._handlers.editProfile   = () => openUserSettings('profile');
         ctxMenu._handlers.dmUser        = () => startDMWithUser(member.id, member.username);
         ctxMenu._handlers.mentionUser    = () => ctxMentionUser(member.nickname || member.username);
         ctxMenu._handlers.changeNickname = () => openChangeNicknameModal();

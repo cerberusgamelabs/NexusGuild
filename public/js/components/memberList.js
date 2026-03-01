@@ -64,7 +64,7 @@ function renderMember(member) {
         : '';
 
     return `
-    <div class="member" data-user-id="${member.id}">
+    <div class="member" data-user-id="${member.id}" onclick="openProfileModal('${member.id}')" style="cursor:pointer">
       <div class="member-av-wrap">
         ${avatarHtml}
         <div class="member-status ${statusClass}"></div>
