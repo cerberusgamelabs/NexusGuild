@@ -49,21 +49,12 @@
                               color: #fff; box-sizing: border-box; }
 .profile-token-username { font-weight: 700; color: #fff; }
 
-/* Preview inner — overrides layout-area sizing/border for the editor preview box */
-.profile-editor-preview-inner { height: auto !important; flex: 1 !important;
-                                  border-top: none !important; margin-top: 0 !important;
-                                  padding: 8px !important; }
-
 /* Profile editor (lives inside user settings overlay) */
-.profile-editor-banner-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.profile-editor-banner-row { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
 .profile-editor-hint   { font-size: 12px; color: #888; }
-.profile-editor-cols   { display: flex; gap: 12px; margin-bottom: 12px; }
-.profile-editor-left,
-.profile-editor-right  { flex: 1; display: flex; flex-direction: column; gap: 6px; }
-.profile-editor-textarea { height: 320px; resize: vertical;
-                            font-family: monospace; font-size: 13px; }
-.profile-editor-preview  { height: 320px; border: 1px solid #444;
-                            border-radius: 6px; background: #1e1e1e;
-                            overflow: hidden; display: flex; flex-direction: column; }
+.profile-editor-textarea { width: 100%; height: 280px; resize: vertical;
+                            font-family: monospace; font-size: 13px; box-sizing: border-box; }
+.profile-editor-preview  { border: 1px solid #3d3f45; border-radius: 6px;
+                            background: #1e1e1e; overflow: hidden; margin-top: 12px; }
 .profile-editor-actions  { display: flex; gap: 8px; justify-content: flex-end;
-                            align-items: center; margin-top: 4px; }
+                            align-items: center; margin-top: 10px; }

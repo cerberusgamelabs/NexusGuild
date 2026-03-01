@@ -210,26 +210,23 @@ function renderUserProfileTab(content) {
                 <div class="profile-editor-banner-row">
                     <button class="btn-secondary" onclick="document.getElementById('profileBannerInput').click()">Change Banner</button>
                     <input type="file" id="profileBannerInput" accept="image/*" style="display:none;" onchange="uploadProfileBanner(this)">
-                    <span class="profile-editor-hint">[ ] = row &nbsp;·&nbsp; inner [ ] = column &nbsp;·&nbsp; (N%) = size</span>
                 </div>
-                <div class="profile-editor-cols">
-                    <div class="profile-editor-left">
-                        <label class="settings-label">Layout Code</label>
-                        <textarea id="profileLayoutInput" class="modal-input profile-editor-textarea"
-                                  oninput="debounceProfilePreview()"
-                                  placeholder="[(50%)[(50%)**Hello!**][*World*]]">${escapeHtml(user.profile_layout || '')}</textarea>
-                    </div>
-                    <div class="profile-editor-right">
-                        <label class="settings-label">Preview</label>
-                        <div id="profileLayoutPreview" class="profile-editor-preview"></div>
-                    </div>
+                <div class="settings-field">
+                    <label class="settings-label">Layout Code</label>
+                    <div class="profile-editor-hint" style="margin-bottom:6px;">[ ] = row &nbsp;·&nbsp; inner [ ] = column &nbsp;·&nbsp; (N%) = size &nbsp;·&nbsp; supports **bold**, *italic*, # headings, - lists, {avatar}, {username}</div>
+                    <textarea id="profileLayoutInput" class="modal-input profile-editor-textarea"
+                              placeholder="[(50%)[(50%)**Hello!**][*World*]]"></textarea>
                 </div>
                 <div class="profile-editor-actions">
                     <div id="profileEditorError" class="modal-error" style="display:none;"></div>
-                    <button class="btn-primary" onclick="saveProfileLayout()">Save Layout</button>
+                    <button class="btn-secondary" onclick="toggleProfilePreview()">Preview</button>
+                    <button class="btn-primary" onclick="saveProfileLayout()">Save</button>
                 </div>
+                <div id="profileLayoutPreview" class="profile-editor-preview" style="display:none;"></div>
             `;
-            updateProfilePreview();
+            // Set via .value to avoid HTML parsing; also normalise any stored <br> → newline
+            const ta = content.querySelector('#profileLayoutInput');
+            if (ta) ta.value = (user.profile_layout || '').replace(/<br\s*\/?>/gi, '\n');
         });
 }
 
@@ -257,10 +254,15 @@ function openProfileEditor() { closeModal(); openUserSettings('profile'); }
 
 // ── Profile editor helpers ────────────────────────────────────────────────────
 
-let _profilePreviewTimer = null;
-function debounceProfilePreview() {
-    clearTimeout(_profilePreviewTimer);
-    _profilePreviewTimer = setTimeout(updateProfilePreview, 300);
+function toggleProfilePreview() {
+    const preview = document.getElementById('profileLayoutPreview');
+    if (!preview) return;
+    if (preview.style.display === 'none') {
+        updateProfilePreview();
+        preview.style.display = 'block';
+    } else {
+        preview.style.display = 'none';
+    }
 }
 
 function updateProfilePreview() {
@@ -270,9 +272,7 @@ function updateProfilePreview() {
     try {
         const rows = parseProfileLayout(text);
         if (rows.length) {
-            const html = renderProfileLayout(rows, state.currentUser)
-                .replace('class="profile-layout-area"', 'class="profile-layout-area profile-editor-preview-inner"');
-            preview.innerHTML = html;
+            preview.innerHTML = renderProfileLayout(rows, state.currentUser);
         } else {
             preview.innerHTML = '<div style="color:#555;font-size:13px;padding:12px;">Nothing to preview yet.</div>';
         }
@@ -282,7 +282,7 @@ function updateProfilePreview() {
 }
 
 async function saveProfileLayout() {
-    const layout = document.getElementById('profileLayoutInput')?.value || '';
+    const layout = (document.getElementById('profileLayoutInput')?.value || '').replace(/<br\s*\/?>/gi, '\n');
     const errEl = document.getElementById('profileEditorError');
     if (layout.length > 10000) {
         if (errEl) { errEl.textContent = 'Layout too long (max 10 000 chars)'; errEl.style.display = 'block'; }
