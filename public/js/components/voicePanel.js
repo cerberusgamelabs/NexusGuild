@@ -381,59 +381,25 @@ function _onRoomDisconnected() {
 // ── Panel UI ──────────────────────────────────────────────────────────────────
 
 function _showVoicePanel(channelId) {
-    const panel  = document.getElementById('voicePanel');
-    const nameEl = document.getElementById('voicePanelChannelName');
-    if (!panel) return;
-
     let label;
     if (channelId === 'dm') {
         label = 'DM Call';
-        if (nameEl) nameEl.textContent = label;
     } else {
         const channel = state.channels.find(c => c.id === channelId);
         label = channel ? channel.name : 'Voice Channel';
-        if (nameEl) nameEl.textContent = label;
     }
-
-    panel.style.display = 'flex';
     showVoiceMiniPanel(label);
 }
 
 function _hideVoicePanel() {
-    const panel = document.getElementById('voicePanel');
-    if (panel) panel.style.display = 'none';
     hideVoiceMiniPanel();
     hideDMVoiceBar();
 }
 
 function _renderVoiceParticipants() {
-    _renderThinBar();
     _renderFullGrid();
     _renderDMBar();
     _updateMiniPanelParticipants();
-}
-
-function _renderThinBar() {
-    const list = document.getElementById('voiceParticipantList');
-    if (!list || !_lkRoom) return;
-
-    list.innerHTML = '';
-
-    const local = _lkRoom.localParticipant;
-    if (local) {
-        const isSpeaking = _activeSpeakerIds.has(local.identity);
-        const isMuted    = !local.isMicrophoneEnabled;
-        list.appendChild(_makeParticipantEl(local.identity, local.name || local.identity, isMuted, deafened, isSpeaking, true));
-    }
-
-    _lkRoom.remoteParticipants.forEach(p => {
-        const isSpeaking = _activeSpeakerIds.has(p.identity);
-        let remoteMuted  = false;
-        p.trackPublications.forEach(pub => {
-            if (pub.source === LivekitClient.Track.Source.Microphone) remoteMuted = pub.isMuted;
-        });
-        list.appendChild(_makeParticipantEl(p.identity, p.name || p.identity, remoteMuted, false, isSpeaking, false));
-    });
 }
 
 function _renderFullGrid() {
@@ -459,43 +425,8 @@ function _renderFullGrid() {
     });
 }
 
-function _makeParticipantEl(userId, displayName, muted, isDeafened, speaking, isLocal) {
-    const member    = state.members?.find(m => m.id === userId);
-    const avatar    = member?.avatar;
-    const roleColor = member?.role_color;
-
-    const avatarHtml = avatar
-        ? `<img src="${avatar}" class="voice-participant-avatar" alt="">`
-        : `<div class="voice-participant-avatar voice-participant-initials">${getInitials(displayName)}</div>`;
-
-    const nameStyle    = roleColor ? ` style="color:${roleColor}"` : '';
-    const speakingClass = speaking ? ' speaking' : '';
-    const label        = isLocal ? `${displayName} (you)` : displayName;
-
-    const el = document.createElement('div');
-    el.className    = `voice-participant${speakingClass}`;
-    el.dataset.userId = userId;
-    el.innerHTML = `
-        <div class="voice-participant-av-wrap${speakingClass}">${avatarHtml}</div>
-        <span class="voice-participant-name"${nameStyle}>${label}</span>
-        <div class="voice-participant-icons">
-            ${muted      ? '<span class="voice-icon" title="Muted">&#128263;</span>'     : ''}
-            ${isDeafened ? '<span class="voice-icon" title="Deafened">&#128264;</span>' : ''}
-        </div>`;
-    return el;
-}
 
 function _updateSpeakingIndicators() {
-    // Thin bar
-    const list = document.getElementById('voiceParticipantList');
-    if (list) {
-        list.querySelectorAll('.voice-participant').forEach(el => {
-            const speaking = _activeSpeakerIds.has(el.dataset.userId);
-            el.classList.toggle('speaking', speaking);
-            el.querySelector('.voice-participant-av-wrap')?.classList.toggle('speaking', speaking);
-        });
-    }
-
     // Full grid
     const grid = document.getElementById('voiceFullGrid');
     if (grid) {

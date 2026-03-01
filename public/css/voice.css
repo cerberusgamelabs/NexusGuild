@@ -1,122 +1,4 @@
-/* ── Voice Panel (connected bar, shown between user-status and main-container) ── */
-
-.voice-panel {
-    flex-shrink: 0;
-    background: #1a3a2a;
-    border-bottom: 1px solid #1e5c38;
-    padding: 6px 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    z-index: 10;
-}
-
-.voice-panel-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    width: 100%;
-}
-
-.voice-panel-channel-info {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.voice-panel-icon {
-    font-size: 14px;
-}
-
-.voice-panel-channel-name {
-    font-size: 13px;
-    font-weight: 600;
-    color: #3ba55d;
-}
-
-.voice-leave-btn {
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-size: 16px;
-    padding: 2px 6px;
-    border-radius: 4px;
-    color: #ed4245;
-    line-height: 1;
-    transition: background 0.15s;
-}
-
-.voice-leave-btn:hover {
-    background: rgba(237, 66, 69, 0.15);
-}
-
-/* ── Participant list inside the panel ── */
-
-.voice-participant-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    width: 100%;
-}
-
-.voice-participant {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 8px;
-    border-radius: 4px;
-    background: #1e3326;
-    min-width: 100px;
-    transition: background 0.15s;
-}
-
-.voice-participant.speaking {
-    background: #1a4a2e;
-}
-
-.voice-participant-av-wrap {
-    border-radius: 50%;
-    flex-shrink: 0;
-    transition: box-shadow 0.15s;
-}
-
-.voice-participant-av-wrap.speaking {
-    box-shadow: 0 0 0 2px #3ba55d;
-}
-
-.voice-participant-avatar {
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    object-fit: cover;
-    display: block;
-}
-
-.voice-participant-initials {
-    background: #5865f2;
-    color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 11px;
-    font-weight: 700;
-}
-
-.voice-participant-name {
-    font-size: 13px;
-    color: #dcddde;
-    flex: 1;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 110px;
-}
-
-.voice-participant-icons {
-    display: flex;
-    gap: 2px;
-    flex-shrink: 0;
-}
+/* ── Voice icon shared ── */
 
 .voice-icon {
     font-size: 12px;
@@ -301,13 +183,19 @@
     max-width: 140px;
 }
 
-/* ── Voice Mini Panel (fixed bottom-right persistent overlay) ── */
+/* ── Messages panel needs relative positioning for the floating voice panel ── */
+
+.messages-panel {
+    position: relative;
+}
+
+/* ── Voice Mini Panel (floating box anchored just above the input bar) ── */
 
 .voice-mini-panel {
-    position: fixed;
-    bottom: 16px;
-    right: 16px;
-    z-index: 1000;
+    position: absolute;
+    bottom: 72px;
+    right: 12px;
+    z-index: 100;
     width: 220px;
     background: #1a2a20;
     border: 1px solid #3ba55d;
@@ -339,6 +227,12 @@
     white-space: nowrap;
 }
 
+.vmp-participants {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
 .vmp-return-btn,
 .vmp-leave-btn {
     background: none;
@@ -365,12 +259,6 @@
 
 .vmp-leave-btn:hover {
     background: rgba(237,66,69,0.15);
-}
-
-.vmp-participants {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
 }
 
 .vmp-participant {
