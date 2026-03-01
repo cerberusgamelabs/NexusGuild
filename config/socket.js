@@ -34,6 +34,16 @@ const initializeSocket = (server, sessionMiddleware) => {
     const voiceStates = new Map();
     const dmVoiceStates = new Map(); // Map<dmId, Set<userId>>
 
+    // Returns all member IDs for a 1:1 DM or group DM
+    async function getDmMemberIds(dmId) {
+        const r1 = await db.query(
+            `SELECT user1_id, user2_id FROM direct_messages WHERE id = $1`, [dmId]);
+        if (r1.rows.length) return [r1.rows[0].user1_id, r1.rows[0].user2_id];
+        const r2 = await db.query(
+            `SELECT user_id FROM group_dm_members WHERE group_dm_id = $1`, [dmId]);
+        return r2.rows.map(r => r.user_id);
+    }
+
     io.on('connection', (socket) => {
         log(tags.info, `User connected: ${socket.username} (${socket.userId})`);
 
@@ -151,20 +161,14 @@ const initializeSocket = (server, sessionMiddleware) => {
 
         socket.on('join_dm_voice', async ({ dmId }) => {
             try {
-                const result = await db.query(
-                    `SELECT user1_id, user2_id FROM direct_messages WHERE id = $1 AND (user1_id = $2 OR user2_id = $2)`,
-                    [dmId, socket.userId]
-                );
-                if (result.rows.length === 0) return;
-                const { user1_id, user2_id } = result.rows[0];
-                const otherId = user1_id === socket.userId ? user2_id : user1_id;
+                const memberIds = await getDmMemberIds(dmId);
+                if (!memberIds.includes(socket.userId)) return;
 
                 if (!dmVoiceStates.has(dmId)) dmVoiceStates.set(dmId, new Set());
                 dmVoiceStates.get(dmId).add(socket.userId);
 
                 const payload = { dmId, userId: socket.userId, username: socket.username, joined: true };
-                io.to(`user:${socket.userId}`).emit('dm_voice_state_update', payload);
-                io.to(`user:${otherId}`).emit('dm_voice_state_update', payload);
+                for (const uid of memberIds) io.to(`user:${uid}`).emit('dm_voice_state_update', payload);
                 log(tags.info, `${socket.username} joined DM voice ${dmId}`);
             } catch (err) {
                 log(tags.error, 'join_dm_voice error:', err);
@@ -173,13 +177,8 @@ const initializeSocket = (server, sessionMiddleware) => {
 
         socket.on('leave_dm_voice', async ({ dmId }) => {
             try {
-                const result = await db.query(
-                    `SELECT user1_id, user2_id FROM direct_messages WHERE id = $1 AND (user1_id = $2 OR user2_id = $2)`,
-                    [dmId, socket.userId]
-                );
-                if (result.rows.length === 0) return;
-                const { user1_id, user2_id } = result.rows[0];
-                const otherId = user1_id === socket.userId ? user2_id : user1_id;
+                const memberIds = await getDmMemberIds(dmId);
+                if (!memberIds.includes(socket.userId)) return;
 
                 if (dmVoiceStates.has(dmId)) {
                     dmVoiceStates.get(dmId).delete(socket.userId);
@@ -187,8 +186,7 @@ const initializeSocket = (server, sessionMiddleware) => {
                 }
 
                 const payload = { dmId, userId: socket.userId, username: socket.username, joined: false };
-                io.to(`user:${socket.userId}`).emit('dm_voice_state_update', payload);
-                io.to(`user:${otherId}`).emit('dm_voice_state_update', payload);
+                for (const uid of memberIds) io.to(`user:${uid}`).emit('dm_voice_state_update', payload);
                 log(tags.info, `${socket.username} left DM voice ${dmId}`);
             } catch (err) {
                 log(tags.error, 'leave_dm_voice error:', err);
@@ -233,16 +231,9 @@ const initializeSocket = (server, sessionMiddleware) => {
                 if (!users.has(socket.userId)) continue;
                 users.delete(socket.userId);
                 if (users.size === 0) dmVoiceStates.delete(dmId);
-                db.query(
-                    `SELECT user1_id, user2_id FROM direct_messages WHERE id = $1`,
-                    [dmId]
-                ).then(result => {
-                    if (!result.rows.length) return;
-                    const { user1_id, user2_id } = result.rows[0];
-                    const otherId = user1_id === socket.userId ? user2_id : user1_id;
-                    io.to(`user:${otherId}`).emit('dm_voice_state_update', {
-                        dmId, userId: socket.userId, username: socket.username, joined: false
-                    });
+                getDmMemberIds(dmId).then(memberIds => {
+                    const payload = { dmId, userId: socket.userId, username: socket.username, joined: false };
+                    for (const uid of memberIds) io.to(`user:${uid}`).emit('dm_voice_state_update', payload);
                 }).catch(err => log(tags.error, 'DM voice disconnect cleanup error:', err));
             }
 

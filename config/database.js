@@ -220,6 +220,47 @@ const initDB = async () => {
         `);
 
         await client.query(`
+            CREATE TABLE IF NOT EXISTS group_dms (
+                id              VARCHAR(20) PRIMARY KEY,
+                name            VARCHAR(100),
+                owner_id        VARCHAR(20) REFERENCES users(id),
+                last_message_at TIMESTAMP DEFAULT NOW(),
+                created_at      TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS group_dm_members (
+                group_dm_id VARCHAR(20) REFERENCES group_dms(id) ON DELETE CASCADE,
+                user_id     VARCHAR(20) REFERENCES users(id)     ON DELETE CASCADE,
+                joined_at   TIMESTAMP DEFAULT NOW(),
+                PRIMARY KEY (group_dm_id, user_id)
+            )
+        `);
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS group_dm_messages (
+                id          VARCHAR(20) PRIMARY KEY,
+                group_dm_id VARCHAR(20) REFERENCES group_dms(id) ON DELETE CASCADE,
+                sender_id   VARCHAR(20) REFERENCES users(id),
+                content     TEXT NOT NULL DEFAULT '',
+                attachments JSONB,
+                edited_at   TIMESTAMP,
+                created_at  TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS group_dm_reactions (
+                id         VARCHAR(20) PRIMARY KEY,
+                message_id VARCHAR(20) REFERENCES group_dm_messages(id) ON DELETE CASCADE,
+                user_id    VARCHAR(20) REFERENCES users(id),
+                emoji      VARCHAR(100) NOT NULL,
+                UNIQUE(message_id, user_id, emoji)
+            )
+        `);
+
+        await client.query(`
             CREATE TABLE IF NOT EXISTS uptime_log (
                 id SERIAL PRIMARY KEY,
                 subsystem VARCHAR(50) NOT NULL,

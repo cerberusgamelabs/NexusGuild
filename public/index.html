@@ -306,5 +306,25 @@
     <script src="/js/components/serverSettings.js"></script>
     <script src="/js/components/channelPerms.js"></script>
     <script src="/js/components/forumView.js"></script>
+
+    <!-- New Conversation Modal (1:1 DM or Group DM) -->
+    <div id="newConvModal" class="modal-overlay" style="display:none;" onclick="closeNewConvModal(event)">
+        <div class="modal modal-sm">
+            <div class="modal-header">
+                <h2>New Conversation</h2>
+                <button class="modal-close" onclick="document.getElementById('newConvModal').style.display='none'">✕</button>
+            </div>
+            <div class="modal-body">
+                <input type="text" id="newConvSearch" class="modal-input" placeholder="Search users..."
+                       oninput="searchNewConvUsers(this.value)" autocomplete="off">
+                <div id="newConvPills" class="conv-pills"></div>
+                <div id="newConvResults" class="conv-user-results"></div>
+                <input type="text" id="newConvGroupName" class="modal-input"
+                       placeholder="Group name (optional)" style="display:none;margin-top:8px;">
+                <div id="newConvError" class="modal-error" style="display:none;margin-top:6px;"></div>
+                <button class="btn-primary" onclick="submitNewConversation()" style="margin-top:10px;width:100%;">Start</button>
+            </div>
+        </div>
+    </div>
 </body>
 </html>

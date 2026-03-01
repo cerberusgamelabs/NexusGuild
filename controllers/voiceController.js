@@ -124,13 +124,18 @@ class VoiceController {
             const username = req.session.user.username;
             const { dmId } = req.params;
 
-            // Verify user is a participant in this DM conversation
+            // Verify user is a participant in this DM (1:1 or group)
             const dmResult = await db.query(
                 `SELECT id FROM direct_messages WHERE id = $1 AND (user1_id = $2 OR user2_id = $2)`,
                 [dmId, userId]
             );
             if (dmResult.rows.length === 0) {
-                return res.status(403).json({ error: 'You are not in this conversation' });
+                // Group DM fallback
+                const gm = await db.query(
+                    `SELECT 1 FROM group_dm_members WHERE group_dm_id = $1 AND user_id = $2`,
+                    [dmId, userId]
+                );
+                if (!gm.rows.length) return res.status(403).json({ error: 'You are not in this conversation' });
             }
 
             const at = new AccessToken(

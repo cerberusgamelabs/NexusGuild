@@ -29,6 +29,7 @@ import channelRoutes from "./routes/channels.js";
 import messageRoutes from "./routes/messages.js";
 import reactionRoutes from './routes/reactions.js';
 import dmRoutes from "./routes/dm.js";
+import groupDmRoutes from "./routes/groupDm.js";
 import userRoutes from "./routes/users.js";
 import importRoutes from "./routes/import.js";
 import forumRoutes from "./routes/forum.js";
@@ -75,6 +76,7 @@ const startServer = async () => {
         app.use('/api/messages', messageRoutes);
         app.use('/api/reactions', reactionRoutes);
         app.use('/api/dm', dmRoutes);
+        app.use('/api/group-dm', groupDmRoutes);
         app.use('/api/users', userRoutes);
         app.use('/api/import', importRoutes);
         app.use('/api/forum', forumRoutes);
