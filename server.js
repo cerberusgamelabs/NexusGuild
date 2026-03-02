@@ -35,6 +35,8 @@ import importRoutes from "./routes/import.js";
 import forumRoutes from "./routes/forum.js";
 import voiceRoutes from "./routes/voice.js";
 import embedRoutes from "./routes/embed.js";
+import ascensionRoutes from "./routes/ascension.js";
+import { runExpirationJob } from "./controllers/ascensionController.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -82,6 +84,7 @@ const startServer = async () => {
         app.use('/api/forum', forumRoutes);
         app.use('/api/voice', voiceRoutes);
         app.use('/api/embed', embedRoutes);
+        app.use('/api/ascension', ascensionRoutes);
 
         app.get('/api/health', (req, res) => {
             res.json({ status: 'ok', timestamp: new Date(), uptime: process.uptime() * 1000, memory: process.memoryUsage() });
@@ -155,6 +158,9 @@ const startServer = async () => {
 
         const io = initializeSocket(server, sessionMiddleware);
         app.set('io', io);
+
+        // Run ascension expiration job every hour
+        setInterval(runExpirationJob, 3_600_000);
 
         server.listen(PORT, "0.0.0.0", () => {
             log(`

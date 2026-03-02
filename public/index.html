@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="/css/dm.css">
     <link rel="stylesheet" href="/css/voice.css">
     <link rel="stylesheet" href="/css/profile.css">
+    <link rel="stylesheet" href="/css/ascension.css">
 </head>
 <body>
 
@@ -276,7 +277,8 @@
                     <button class="settings-nav-item" data-tab="roles" onclick="switchSettingsTab('roles')">Roles</button>
                     <button class="settings-nav-item" data-tab="members" onclick="switchSettingsTab('members')">Members</button>
                     <button class="settings-nav-item" data-tab="invites" onclick="switchSettingsTab('invites')">Invites</button>
-                    <button class="settings-nav-item" data-tab="emojis" onclick="switchSettingsTab('emojis')">Emoji</button>
+                    <button class="settings-nav-item" data-tab="emojis"     onclick="switchSettingsTab('emojis')">Emoji</button>
+                    <button class="settings-nav-item" data-tab="ascension" onclick="switchSettingsTab('ascension')">Ascension</button>
                     <div class="settings-nav-divider"></div>
                     <button class="settings-nav-item danger" data-tab="danger" onclick="switchSettingsTab('danger')">Danger Zone</button>
                 </nav>
@@ -308,6 +310,7 @@
     <script src="/js/components/channelPerms.js"></script>
     <script src="/js/components/forumView.js"></script>
     <script src="/js/components/profileView.js"></script>
+    <script src="/js/components/ascensionView.js"></script>
 
     <!-- New Conversation Modal (1:1 DM or Group DM) -->
     <div id="newConvModal" class="modal-overlay" style="display:none;" onclick="closeNewConvModal(event)">
@@ -334,8 +337,13 @@
             <div class="settings-sidebar">
                 <div class="settings-sidebar-header" id="userSettingsSidebarName">User Settings</div>
                 <nav class="settings-nav">
-                    <button class="settings-nav-item active" data-tab="profile" onclick="switchUserSettingsTab('profile')">My Profile</button>
-                    <button class="settings-nav-item" data-tab="account" onclick="switchUserSettingsTab('account')">Account</button>
+                    <div class="settings-nav-category">User Settings</div>
+                    <button class="settings-nav-item active" data-tab="account"    onclick="switchUserSettingsTab('account')">My Account</button>
+                    <button class="settings-nav-item"        data-tab="profile"    onclick="switchUserSettingsTab('profile')">My Profile</button>
+                    <button class="settings-nav-item"        data-tab="status"     onclick="switchUserSettingsTab('status')">My Status</button>
+                    <div class="settings-nav-category">Ascendant Settings</div>
+                    <button class="settings-nav-item"        data-tab="asc-points" onclick="switchUserSettingsTab('asc-points')">Ascension Points</button>
+                    <button class="settings-nav-item"        data-tab="asc-tree"   onclick="switchUserSettingsTab('asc-tree')">Ascension Skill Tree</button>
                     <div class="settings-nav-divider"></div>
                     <button class="settings-nav-item danger" onclick="logout()">Log Out</button>
                 </nav>

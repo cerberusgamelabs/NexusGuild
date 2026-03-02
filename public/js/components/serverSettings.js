@@ -126,8 +126,9 @@ function switchSettingsTab(tab) {
         case 'roles':    renderRolesTab(content);    break;
         case 'members':  renderMembersTab(content);  break;
         case 'invites':  renderInvitesTab(content);  break;
-        case 'emojis':   renderEmojisTab(content);   break;
-        case 'danger':   renderDangerZoneTab(content); break;
+        case 'emojis':     renderEmojisTab(content);      break;
+        case 'ascension':  renderAscensionTab(content);   break;
+        case 'danger':     renderDangerZoneTab(content);  break;
     }
 }
 
@@ -1034,4 +1035,57 @@ function escHtml(str) {
 
 function escAttr(str) {
     return escHtml(str);
+}
+
+// ── Ascension Tab ─────────────────────────────────────────────────────────────
+
+function renderAscensionTab(container) {
+    const serverId = _settingsServerId;
+    container.innerHTML = `<h2 class="settings-section-title">Server Ascension</h2><div class="asc-loading">Loading…</div>`;
+
+    fetch(`/api/ascension/servers/${serverId}/balance`, { credentials: 'include' })
+        .then(r => r.json())
+        .then(data => {
+            const balance = data.balance ?? 0;
+            const spent   = data.spent   ?? 0;
+            container.innerHTML = `
+                <h2 class="settings-section-title">Server Ascension</h2>
+                <div class="asc-balance-bar">
+                    <strong>${balance}</strong> points donated &nbsp;·&nbsp;
+                    <strong>${spent}</strong> committed
+                </div>
+                <div class="settings-field">
+                    <label class="settings-label">Donate Points to Server</label>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <input class="settings-input" id="ascDonateAmount" type="number" min="1" placeholder="Amount" style="width:120px;">
+                        <button class="settings-btn" onclick="_ascDonateTo('${escHtml(serverId)}')">Donate</button>
+                    </div>
+                </div>
+                <div id="ascServerTreeContainer"></div>
+            `;
+            if (typeof renderServerSkillTree === 'function') {
+                renderServerSkillTree(document.getElementById('ascServerTreeContainer'), serverId);
+            }
+        })
+        .catch(() => {
+            container.innerHTML = `<h2 class="settings-section-title">Server Ascension</h2><p style="color:#f23f43;">Failed to load.</p>`;
+        });
+}
+
+async function _ascDonateTo(serverId) {
+    const amount = parseInt(document.getElementById('ascDonateAmount')?.value, 10);
+    if (!amount || amount <= 0) { showToast('Enter a valid amount', true); return; }
+    const res = await fetch(`/api/ascension/servers/${serverId}/donate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ amount })
+    });
+    if (res.ok) {
+        showToast(`Donated ${amount} points!`);
+        renderAscensionTab(document.getElementById('settingsContent'));
+    } else {
+        const data = await res.json().catch(() => ({}));
+        showToast(data.error || 'Donation failed', true);
+    }
 }

@@ -289,6 +289,139 @@ const initDB = async () => {
             )
         `);
 
+        // ── Ascension System ─────────────────────────────────────────────────
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS skill_tree_nodes (
+                id          VARCHAR(20) PRIMARY KEY,
+                type        VARCHAR(10) NOT NULL CHECK (type IN ('user','server')),
+                parent_id   VARCHAR(20) REFERENCES skill_tree_nodes(id) ON DELETE SET NULL,
+                tier        INTEGER NOT NULL DEFAULT 1,
+                name        VARCHAR(100) NOT NULL,
+                description TEXT,
+                icon        VARCHAR(255),
+                cost        INTEGER NOT NULL DEFAULT 0,
+                is_active   BOOLEAN DEFAULT true,
+                sort_order  INTEGER DEFAULT 0,
+                created_at  TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS ascension_purchases (
+                id              VARCHAR(20) PRIMARY KEY,
+                user_id         VARCHAR(20) REFERENCES users(id) ON DELETE CASCADE,
+                amount          INTEGER NOT NULL,
+                remaining       INTEGER NOT NULL,
+                source          VARCHAR(20) DEFAULT 'on_demand',
+                subscription_id VARCHAR(20) NULL,
+                expires_at      TIMESTAMP NOT NULL,
+                created_at      TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS ascension_donations (
+                id          VARCHAR(20) PRIMARY KEY,
+                purchase_id VARCHAR(20) REFERENCES ascension_purchases(id) ON DELETE CASCADE,
+                user_id     VARCHAR(20) REFERENCES users(id) ON DELETE CASCADE,
+                server_id   VARCHAR(20) REFERENCES servers(id) ON DELETE CASCADE,
+                amount      INTEGER NOT NULL,
+                expires_at  TIMESTAMP NOT NULL,
+                created_at  TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS user_skill_unlocks (
+                user_id     VARCHAR(20) REFERENCES users(id) ON DELETE CASCADE,
+                node_id     VARCHAR(20) REFERENCES skill_tree_nodes(id) ON DELETE CASCADE,
+                unlocked_at TIMESTAMP DEFAULT NOW(),
+                is_active   BOOLEAN DEFAULT true,
+                PRIMARY KEY (user_id, node_id)
+            )
+        `);
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS server_skill_unlocks (
+                server_id   VARCHAR(20) REFERENCES servers(id) ON DELETE CASCADE,
+                node_id     VARCHAR(20) REFERENCES skill_tree_nodes(id) ON DELETE CASCADE,
+                unlocked_by VARCHAR(20) REFERENCES users(id) ON DELETE SET NULL,
+                unlocked_at TIMESTAMP DEFAULT NOW(),
+                is_active   BOOLEAN DEFAULT true,
+                PRIMARY KEY (server_id, node_id)
+            )
+        `);
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS ascension_ledger (
+                id         VARCHAR(20) PRIMARY KEY,
+                user_id    VARCHAR(20) REFERENCES users(id) ON DELETE CASCADE,
+                delta      INTEGER NOT NULL,
+                reason     VARCHAR(255),
+                ref_id     VARCHAR(20),
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS ascension_subscriptions (
+                id               VARCHAR(20) PRIMARY KEY,
+                user_id          VARCHAR(20) REFERENCES users(id) ON DELETE CASCADE,
+                points_per_month INTEGER NOT NULL,
+                price_usd        DECIMAL(8,2),
+                auto_renew       BOOLEAN DEFAULT true,
+                next_renewal_at  TIMESTAMP,
+                cancelled_at     TIMESTAMP NULL,
+                created_at       TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
+        // ── Staff Portal ──────────────────────────────────────────────────────
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS staff_members (
+                id         VARCHAR(20) PRIMARY KEY,
+                user_id    VARCHAR(20) REFERENCES users(id) ON DELETE CASCADE,
+                role       VARCHAR(20) NOT NULL DEFAULT 'viewer'
+                              CHECK (role IN ('owner','superadmin','moderator','viewer')),
+                granted_by VARCHAR(20) REFERENCES users(id) ON DELETE SET NULL,
+                granted_at TIMESTAMP DEFAULT NOW(),
+                is_active  BOOLEAN DEFAULT true,
+                UNIQUE(user_id)
+            )
+        `);
+
+        await client.query(`
+            INSERT INTO staff_members (id, user_id, role, granted_by)
+            VALUES ('sstaff_owner_001', '2251086793225015296', 'owner', '2251086793225015296')
+            ON CONFLICT (user_id) DO NOTHING
+        `);
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS global_bans (
+                id        VARCHAR(20) PRIMARY KEY,
+                user_id   VARCHAR(20) REFERENCES users(id) ON DELETE CASCADE UNIQUE,
+                banned_by VARCHAR(20) REFERENCES staff_members(id) ON DELETE SET NULL,
+                reason    TEXT,
+                banned_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
+        // Seed skill tree nodes (ON CONFLICT DO NOTHING — safe to re-run)
+        await client.query(`
+            INSERT INTO skill_tree_nodes (id, type, parent_id, tier, name, description, icon, cost, sort_order)
+            VALUES
+                ('stn_u_flair',   'user', NULL,          1, 'Profile Flair',      'Unlock custom profile decorations',         '✨', 100, 0),
+                ('stn_u_status',  'user', NULL,          1, 'Extended Status',    'Use longer and richer status messages',     '💬', 150, 1),
+                ('stn_u_anim_av', 'user', 'stn_u_flair', 2, 'Animated Avatar',   'Use an animated GIF as your avatar',        '🎞️', 300, 0),
+                ('stn_u_stat_em', 'user', 'stn_u_status',2, 'Status Emoji',      'Add a custom emoji to your status',         '🎨', 200, 1),
+                ('stn_s_emoji',   'server', NULL,        1, 'Extra Emoji Slots',  'Add more custom emoji slots to the server', '😄', 500, 0),
+                ('stn_s_upload',  'server', NULL,        1, 'Higher Upload Limit','Raise the file upload size limit',          '📦', 400, 1),
+                ('stn_s_anim_ic', 'server', 'stn_s_emoji',2,'Animated Server Icon','Use an animated GIF as the server icon',  '🖼️', 800, 0)
+            ON CONFLICT (id) DO NOTHING
+        `);
+
         await client.query('COMMIT');
 
         // Indexes must run outside a transaction
@@ -303,6 +436,14 @@ const initDB = async () => {
         await pool.query('CREATE INDEX IF NOT EXISTS idx_bans_server ON bans(server_id)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_uptime_log_subsystem ON uptime_log(subsystem)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_uptime_log_checked_at ON uptime_log(checked_at DESC)');
+
+        // Ascension indexes
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_asc_purchases_user   ON ascension_purchases(user_id)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_asc_purchases_expiry ON ascension_purchases(expires_at)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_asc_donations_server ON ascension_donations(server_id)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_asc_ledger_user      ON ascension_ledger(user_id, created_at DESC)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_skill_nodes_type     ON skill_tree_nodes(type, tier, sort_order)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_staff_members_user   ON staff_members(user_id)');
 
         log(tags.success, 'Database schema initialized successfully');
     } catch (e) {

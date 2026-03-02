@@ -177,7 +177,7 @@ async function openProfileModal(userId) {
 // ── User Settings Overlay ─────────────────────────────────────────────────────
 
 function openUserSettings(initialTab) {
-    initialTab = initialTab || 'profile';
+    initialTab = initialTab || 'account';
     const overlay = document.getElementById('userSettingsOverlay');
     if (!overlay) return;
     const nameEl = document.getElementById('userSettingsSidebarName');
@@ -199,6 +199,9 @@ function switchUserSettingsTab(tab) {
     if (!content) return;
     if (tab === 'profile') renderUserProfileTab(content);
     else if (tab === 'account') renderUserAccountTab(content);
+    else if (tab === 'status') renderUserStatusTab(content);
+    else if (tab === 'asc-points') renderAscensionPointsTab(content);
+    else if (tab === 'asc-tree') renderAscensionSkillTreeTab(content);
 }
 
 function renderUserProfileTab(content) {
@@ -314,6 +317,128 @@ async function uploadProfileBanner(input) {
         showToast('Failed to upload banner');
     }
     input.value = '';
+}
+
+// ── Ascension / Status tabs ───────────────────────────────────────────────────
+
+function renderUserStatusTab(content) {
+    const current = state.currentUser?.custom_status || '';
+    content.innerHTML = `
+        <h2 class="settings-section-title">My Status</h2>
+        <div class="settings-field">
+            <label class="settings-label">Custom Status</label>
+            <input class="settings-input" id="statusInput" type="text" maxlength="128"
+                   placeholder="What's on your mind?" value="${escapeHtml(current)}">
+        </div>
+        <div id="statusSaveError" style="color:#f23f43;font-size:13px;margin-bottom:8px;display:none;"></div>
+        <button class="btn-primary" onclick="saveCustomStatusFromSettings()">Save</button>
+    `;
+}
+
+async function saveCustomStatusFromSettings() {
+    const val = document.getElementById('statusInput')?.value || '';
+    const errEl = document.getElementById('statusSaveError');
+    const res = await fetch('/api/users/me/status', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ status: val })
+    });
+    if (res.ok) {
+        if (state.currentUser) state.currentUser.custom_status = val;
+        if (errEl) errEl.style.display = 'none';
+        showToast('Status updated!');
+        if (typeof renderUserStatus === 'function') renderUserStatus();
+    } else {
+        const data = await res.json().catch(() => ({}));
+        if (errEl) { errEl.textContent = data.error || 'Failed to save'; errEl.style.display = 'block'; }
+    }
+}
+
+function renderAscensionPointsTab(content) {
+    content.innerHTML = `<h2 class="settings-section-title">Ascension Points</h2><div class="asc-loading">Loading…</div>`;
+
+    Promise.all([
+        fetch('/api/ascension/balance', { credentials: 'include' }).then(r => r.json()),
+        fetch('/api/ascension/ledger',  { credentials: 'include' }).then(r => r.json())
+    ]).then(([balData, ledgerData]) => {
+        const balance = balData.balance ?? 0;
+        const entries = ledgerData.entries || [];
+
+        const ledgerRows = entries.map(e => {
+            const d = new Date(e.created_at).toLocaleDateString();
+            const cls = e.delta >= 0 ? 'delta-pos' : 'delta-neg';
+            const sign = e.delta >= 0 ? '+' : '';
+            return `<tr>
+                <td>${escapeHtml(d)}</td>
+                <td>${escapeHtml(e.reason || '')}</td>
+                <td class="${cls}">${sign}${e.delta}</td>
+            </tr>`;
+        }).join('');
+
+        content.innerHTML = `
+            <h2 class="settings-section-title">Ascension Points</h2>
+            <div class="asc-balance-bar"><strong>${balance}</strong> points available</div>
+            <div style="margin-bottom:20px;">
+                <button class="btn-secondary" onclick="ascGrantTestPoints()">Grant 500 Test Points</button>
+            </div>
+            <h3 class="settings-label" style="margin-bottom:8px;">Transaction History</h3>
+            ${entries.length ? `
+            <table class="asc-ledger">
+                <thead><tr><th>Date</th><th>Reason</th><th>Amount</th></tr></thead>
+                <tbody>${ledgerRows}</tbody>
+            </table>` : '<p style="color:#72767d;font-size:13px;">No transactions yet.</p>'}
+            <div style="margin-top:28px;padding-top:20px;border-top:1px solid #3d3f45;">
+                <h3 class="settings-label" style="margin-bottom:8px;">
+                    Buy Points <span class="asc-coming-soon">Coming Soon</span>
+                </h3>
+                <p style="color:#72767d;font-size:13px;">Point packages will be available when billing is enabled.</p>
+            </div>
+            <div style="margin-top:20px;">
+                <h3 class="settings-label" style="margin-bottom:8px;">
+                    Manage Subscription <span class="asc-coming-soon">Coming Soon</span>
+                </h3>
+                <p style="color:#72767d;font-size:13px;">Monthly point subscriptions are coming soon.</p>
+            </div>
+        `;
+    }).catch(() => {
+        content.innerHTML = `<h2 class="settings-section-title">Ascension Points</h2><p style="color:#f23f43;">Failed to load.</p>`;
+    });
+}
+
+async function ascGrantTestPoints() {
+    const res = await fetch('/api/ascension/grant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ amount: 500 })
+    });
+    if (res.ok) {
+        showToast('500 test points granted!');
+        renderAscensionPointsTab(document.getElementById('userSettingsContent'));
+    } else {
+        showToast('Failed to grant points', true);
+    }
+}
+
+function renderAscensionSkillTreeTab(content) {
+    content.innerHTML = `<h2 class="settings-section-title">Ascension Skill Tree</h2><div class="asc-loading">Loading…</div>`;
+    fetch('/api/ascension/balance', { credentials: 'include' })
+        .then(r => r.json())
+        .then(balData => {
+            const balance = balData.balance ?? 0;
+            content.innerHTML = `
+                <h2 class="settings-section-title">Ascension Skill Tree</h2>
+                <div class="asc-balance-bar"><strong>${balance}</strong> points available</div>
+                <div id="ascUserTreeContainer"></div>
+            `;
+            if (typeof renderUserSkillTree === 'function') {
+                renderUserSkillTree(document.getElementById('ascUserTreeContainer'));
+            }
+        })
+        .catch(() => {
+            content.innerHTML = `<h2 class="settings-section-title">Ascension Skill Tree</h2><p style="color:#f23f43;">Failed to load.</p>`;
+        });
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────

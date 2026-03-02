@@ -1,0 +1,202 @@
+/* Ascension system styles */
+
+/* ── Settings nav categories ────────────────────────────────────────────────── */
+.settings-nav-category {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #949ba4;
+    letter-spacing: .04em;
+    padding: 16px 10px 4px;
+}
+
+/* ── Balance bar ────────────────────────────────────────────────────────────── */
+.asc-balance-bar {
+    font-size: 15px;
+    color: #b5bac1;
+    padding: 0 0 16px;
+    border-bottom: 1px solid #3d3f45;
+    margin-bottom: 20px;
+}
+
+.asc-balance-bar strong {
+    color: #fff;
+    font-size: 22px;
+}
+
+.asc-loading {
+    color: #72767d;
+    font-size: 13px;
+    padding: 16px 0;
+}
+
+/* ── Skill tree layout ──────────────────────────────────────────────────────── */
+.skill-tree-wrap {
+    position: relative;
+    overflow-x: auto;
+    min-height: 300px;
+}
+
+.skill-tree-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    overflow: visible;
+}
+
+.skill-tree-tiers {
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+    padding: 16px 0;
+    position: relative;
+}
+
+.skill-tree-tier {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+}
+
+/* ── Skill tree nodes ───────────────────────────────────────────────────────── */
+.skill-tree-node {
+    width: 100px;
+    min-height: 110px;
+    background: #1e1f22;
+    border: 2px solid #3d3f45;
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 12px 8px;
+    cursor: default;
+    transition: border-color .2s, box-shadow .2s;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.skill-tree-node .stn-icon {
+    font-size: 28px;
+}
+
+.skill-tree-node .stn-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: #dbdee1;
+    line-height: 1.3;
+}
+
+.skill-tree-node .stn-cost {
+    font-size: 11px;
+    color: #949ba4;
+}
+
+.skill-tree-node.unlocked {
+    border-color: #23a55a;
+    box-shadow: 0 0 10px rgba(35, 165, 90, .25);
+}
+
+.skill-tree-node.unlocked .stn-cost {
+    color: #23a55a;
+}
+
+.skill-tree-node.unlockable {
+    border-color: #5865f2;
+    cursor: pointer;
+}
+
+.skill-tree-node.unlockable:hover {
+    border-color: #7289da;
+    box-shadow: 0 0 12px rgba(88, 101, 242, .35);
+}
+
+.skill-tree-node.locked-prereq,
+.skill-tree-node.locked-points {
+    opacity: .45;
+    filter: grayscale(.6);
+}
+
+.skill-tree-node.suspended {
+    border-color: #f0b232;
+    box-shadow: 0 0 8px rgba(240, 178, 50, .2);
+}
+
+.skill-tree-node.suspended .stn-cost {
+    color: #f0b232;
+}
+
+/* ── SVG connector lines ────────────────────────────────────────────────────── */
+.skill-tree-svg line {
+    stroke: #3d3f45;
+    stroke-width: 2;
+}
+
+.skill-tree-svg line.active {
+    stroke: #23a55a;
+}
+
+.skill-tree-svg line.suspended-link {
+    stroke: #f0b232;
+    stroke-dasharray: 5 4;
+}
+
+/* ── Ledger table ───────────────────────────────────────────────────────────── */
+.asc-ledger {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 8px;
+}
+
+.asc-ledger th {
+    font-size: 11px;
+    text-transform: uppercase;
+    color: #949ba4;
+    padding: 4px 8px 8px;
+    text-align: left;
+}
+
+.asc-ledger td {
+    padding: 8px;
+    border-bottom: 1px solid #2e3035;
+    font-size: 13px;
+    color: #dbdee1;
+}
+
+.asc-ledger .delta-pos {
+    color: #23a55a;
+    font-weight: 700;
+}
+
+.asc-ledger .delta-neg {
+    color: #f23f43;
+    font-weight: 700;
+}
+
+/* ── Coming soon badge ──────────────────────────────────────────────────────── */
+.asc-coming-soon {
+    display: inline-block;
+    background: #4e5058;
+    color: #949ba4;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    border-radius: 3px;
+    padding: 2px 6px;
+    margin-left: 8px;
+}
+
+/* ── Re-enable button (suspended server node) ───────────────────────────────── */
+.stn-reenable-btn {
+    font-size: 10px;
+    padding: 2px 6px;
+    background: #f0b232;
+    color: #000;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    margin-top: 2px;
+}
