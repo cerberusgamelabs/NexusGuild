@@ -399,6 +399,17 @@ const initDB = async () => {
         `);
 
         await client.query(`
+            CREATE TABLE IF NOT EXISTS cors_origins (
+                id          VARCHAR(20) PRIMARY KEY,
+                origin      VARCHAR(500) UNIQUE NOT NULL,
+                description VARCHAR(255),
+                is_default  BOOLEAN DEFAULT false,
+                added_by    VARCHAR(20) REFERENCES staff_members(id) ON DELETE SET NULL,
+                added_at    TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
+        await client.query(`
             CREATE TABLE IF NOT EXISTS global_bans (
                 id        VARCHAR(20) PRIMARY KEY,
                 user_id   VARCHAR(20) REFERENCES users(id) ON DELETE CASCADE UNIQUE,
@@ -444,6 +455,7 @@ const initDB = async () => {
         await pool.query('CREATE INDEX IF NOT EXISTS idx_asc_ledger_user      ON ascension_ledger(user_id, created_at DESC)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_skill_nodes_type     ON skill_tree_nodes(type, tier, sort_order)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_staff_members_user   ON staff_members(user_id)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_cors_origins_origin  ON cors_origins(origin)');
 
         log(tags.success, 'Database schema initialized successfully');
     } catch (e) {

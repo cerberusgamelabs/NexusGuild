@@ -15,6 +15,7 @@ import fs from "fs";
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { log, tags } from "#utils/logging";
+import { generateSnowflake } from "./utils/functions.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -43,9 +44,37 @@ const server = http.createServer(app);
 
 const PORT = process.env.PORT || 3000;
 
+// ── CORS origin registry ──────────────────────────────────────────────────────
+// Loaded from DB at startup; refreshed every 60 s so staff portal changes take effect.
+
+const allowedOrigins = new Set();
+
+async function loadAllowedOrigins() {
+    try {
+        const result = await db.query(`SELECT origin FROM cors_origins`);
+        allowedOrigins.clear();
+        for (const row of result.rows) allowedOrigins.add(row.origin);
+        log(tags.info, `CORS: ${allowedOrigins.size} allowed origin(s) loaded`);
+    } catch (err) {
+        log(tags.error, 'Failed to load CORS origins:', err);
+    }
+}
+
 const startServer = async () => {
     try {
         await db.initDB();
+
+        // Seed the default origin (untouchable in staff portal)
+        const defaultOrigin = process.env.CLIENT_URL || 'https://www.nexusguild.gg';
+        await db.query(
+            `INSERT INTO cors_origins (id, origin, description, is_default)
+             VALUES ($1, $2, 'Main NexusGuild client (default)', true)
+             ON CONFLICT (origin) DO NOTHING`,
+            [generateSnowflake(), defaultOrigin]
+        );
+
+        await loadAllowedOrigins();
+        setInterval(loadAllowedOrigins, 60_000);
 
         const sessionMiddleware = session({
             store: new pgSession({
@@ -63,7 +92,11 @@ const startServer = async () => {
         });
 
         app.use(cors({
-            origin: process.env.CLIENT_URL || 'http://localhost:3000',
+            origin: (origin, callback) => {
+                // Allow server-to-server / same-origin requests (no Origin header)
+                if (!origin || allowedOrigins.has(origin)) return callback(null, true);
+                callback(new Error(`Origin '${origin}' not allowed by CORS`));
+            },
             credentials: true
         }));
         app.use(express.json());

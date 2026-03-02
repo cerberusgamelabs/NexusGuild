@@ -175,7 +175,10 @@ function showDashboard() {
     document.getElementById('topbarRole').textContent   = state.staffRole;
     document.getElementById('topbarUsername').textContent = state.user.username;
 
-    // Show staff roster link only to owner
+    // Show role-gated nav items
+    if (roleAtLeast('superadmin')) {
+        document.querySelectorAll('.nav-superadmin-only').forEach(el => el.style.display = 'flex');
+    }
     if (state.staffRole === 'owner') {
         document.querySelectorAll('.nav-owner-only').forEach(el => el.style.display = 'flex');
     }
@@ -198,6 +201,7 @@ const TAB_RENDERERS = {
     servers:   () => renderServers(1, ''),
     ascension: () => renderAscension(),
     audit:     () => renderAudit(1),
+    cors:      () => renderCors(),
     staff:     () => renderStaff()
 };
 
@@ -772,6 +776,68 @@ async function reactivateStaff(id, username) {
     if (!res?.ok) { toast(res?.data?.error || 'Failed.', true); return; }
     toast(`${username} reactivated.`);
     renderStaff();
+}
+
+/* ─── API Origins (CORS) ─────────────────────────────────────────────────── */
+
+async function renderCors() {
+    const res = await api('GET', '/cors');
+    if (!res?.ok) { setContent('<div class="loading">Failed to load CORS origins.</div>'); return; }
+    const { origins } = res.data;
+
+    const rows = origins.map(o => `
+        <tr>
+            <td><code>${escHtml(o.origin)}</code>${o.is_default ? ' <span class="inline-badge" style="background:rgba(240,178,50,0.15);color:#f0b232">default</span>' : ''}</td>
+            <td class="cell-muted">${escHtml(o.description || '—')}</td>
+            <td class="cell-muted">${escHtml(o.added_by_username || '—')}</td>
+            <td class="cell-muted">${fmtDate(o.added_at)}</td>
+            <td>
+                ${!o.is_default
+                    ? `<button class="btn btn-danger btn-sm" onclick="removeCorsOrigin('${escHtml(o.id)}', '${escHtml(o.origin)}')">Remove</button>`
+                    : ''}
+            </td>
+        </tr>
+    `).join('');
+
+    setContent(`
+        <div class="section-header">
+            <h2>API Origins</h2>
+            <button class="btn btn-primary btn-sm" onclick="addCorsOrigin()">+ Add Origin</button>
+        </div>
+        <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px;">
+            Origins allowed to make cross-origin requests to the NexusGuild API.
+            The default origin cannot be removed. Changes take effect within 60 seconds.
+        </p>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Origin</th><th>Description</th><th>Added By</th><th>Added At</th><th></th></tr></thead>
+                <tbody>${rows || '<tr><td colspan="5" class="empty-state">No origins configured.</td></tr>'}</tbody>
+            </table>
+        </div>
+    `);
+}
+
+function addCorsOrigin() {
+    showFormModal('Add Allowed Origin', [
+        { name: 'origin',      label: 'Origin URL',  type: 'text', placeholder: 'https://example.com' },
+        { name: 'description', label: 'Description', type: 'text', placeholder: 'Third-party client app…' }
+    ], async (vals) => {
+        if (!vals.origin) { toast('Origin URL required.', true); return; }
+        const res = await api('POST', '/cors', { origin: vals.origin, description: vals.description });
+        if (!res?.ok) { toast(res?.data?.error || 'Failed to add origin.', true); return; }
+        toast('Origin added. Takes effect within 60 seconds.');
+        closeModal();
+        renderCors();
+    });
+}
+
+function removeCorsOrigin(id, origin) {
+    showConfirm(`Remove "${origin}" from allowed origins?`, async () => {
+        const res = await api('DELETE', `/cors/${id}`);
+        if (!res?.ok) { toast(res?.data?.error || 'Failed to remove origin.', true); return; }
+        toast('Origin removed. Takes effect within 60 seconds.');
+        renderCors();
+    });
 }
 
 /* ─── Role check ────────────────────────────────────────────────────────── */

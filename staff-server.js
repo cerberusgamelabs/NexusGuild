@@ -646,6 +646,67 @@ app.post('/api/staff/members/:id/reactivate', requireStaff('owner'), async (req,
     }
 });
 
+// ── CORS origin management ────────────────────────────────────────────────────
+
+// GET /api/staff/cors
+app.get('/api/staff/cors', requireStaff('superadmin'), async (req, res) => {
+    try {
+        const result = await db.query(
+            `SELECT co.id, co.origin, co.description, co.is_default, co.added_at,
+                    u.username AS added_by_username
+             FROM cors_origins co
+             LEFT JOIN staff_members sm ON sm.id = co.added_by
+             LEFT JOIN users u ON u.id = sm.user_id
+             ORDER BY co.is_default DESC, co.added_at ASC`
+        );
+        res.json({ origins: result.rows });
+    } catch (err) {
+        console.error('[staff] cors list error:', err);
+        res.status(500).json({ error: 'Failed to get CORS origins' });
+    }
+});
+
+// POST /api/staff/cors
+app.post('/api/staff/cors', requireStaff('superadmin'), async (req, res) => {
+    try {
+        const { origin, description } = req.body;
+        if (!origin) return res.status(400).json({ error: 'origin required' });
+
+        // Basic format validation
+        try { new URL(origin); } catch {
+            return res.status(400).json({ error: 'Invalid URL format' });
+        }
+
+        const id = generateSnowflake();
+        await db.query(
+            `INSERT INTO cors_origins (id, origin, description, is_default, added_by)
+             VALUES ($1, $2, $3, false, $4)`,
+            [id, origin, description || null, req.staffId]
+        );
+        res.json({ ok: true, id });
+    } catch (err) {
+        if (err.code === '23505') return res.status(409).json({ error: 'Origin already exists' });
+        console.error('[staff] cors add error:', err);
+        res.status(500).json({ error: 'Failed to add CORS origin' });
+    }
+});
+
+// DELETE /api/staff/cors/:id
+app.delete('/api/staff/cors/:id', requireStaff('superadmin'), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const check = await db.query(`SELECT is_default FROM cors_origins WHERE id = $1`, [id]);
+        if (!check.rows.length) return res.status(404).json({ error: 'Not found' });
+        if (check.rows[0].is_default) return res.status(403).json({ error: 'Cannot remove the default origin' });
+
+        await db.query(`DELETE FROM cors_origins WHERE id = $1`, [id]);
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('[staff] cors delete error:', err);
+        res.status(500).json({ error: 'Failed to remove CORS origin' });
+    }
+});
+
 // ── SPA fallback ──────────────────────────────────────────────────────────────
 
 app.get('*', (req, res) => {
