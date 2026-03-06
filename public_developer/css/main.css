@@ -119,6 +119,12 @@ body {
 .sidebar-footer span { font-size: 13px; font-weight: 600; flex: 1; }
 .back-link { font-size: 12px; color: #5865f2; text-decoration: none; width: 100%; }
 .back-link:hover { text-decoration: underline; }
+.docs-link {
+    display: block; padding: 8px 10px; border-radius: 6px;
+    font-size: 13px; font-weight: 500; color: #b5bac1; text-decoration: none;
+    transition: background .1s, color .1s;
+}
+.docs-link:hover { background: #35373c; color: #dbdee1; }
 
 /* ── Main content ────────────────────────────────────────────────────────── */
 .main-content {

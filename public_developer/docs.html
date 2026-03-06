@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Docs — NexusGuild Developer Portal</title>
+    <link rel="icon" href="https://www.nexusguild.gg/img/favicon.ico">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #1e1f22; color: #dbdee1;
+            display: flex; min-height: 100vh;
+        }
+        a { color: #5865f2; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+
+        /* Sidebar */
+        .sidebar {
+            width: 240px; min-width: 240px;
+            background: #2b2d31; border-right: 1px solid #1e1f22;
+            position: sticky; top: 0; height: 100vh; overflow-y: auto;
+            display: flex; flex-direction: column;
+        }
+        .sidebar-header {
+            padding: 16px; border-bottom: 1px solid #1e1f22;
+            display: flex; align-items: center; gap: 10px;
+        }
+        .sidebar-header img { width: 28px; height: 28px; }
+        .sidebar-header span { font-size: 16px; font-weight: 700; color: #fff; }
+        .nav-section { padding: 16px 12px 8px; }
+        .nav-label {
+            font-size: 11px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: .06em; color: #949ba4; padding: 0 8px 8px;
+        }
+        .nav-item {
+            display: block; padding: 6px 10px; border-radius: 4px;
+            font-size: 13px; color: #b5bac1; text-decoration: none;
+            transition: background .1s, color .1s;
+        }
+        .nav-item:hover { background: #35373c; color: #dbdee1; text-decoration: none; }
+        .nav-item.active { color: #fff; background: #404249; }
+        .back-link {
+            display: block; padding: 12px 16px; font-size: 12px;
+            color: #5865f2; border-top: 1px solid #1e1f22; margin-top: auto;
+        }
+
+        /* Main */
+        .main { flex: 1; padding: 40px 48px; max-width: 900px; }
+        h1 { font-size: 28px; color: #fff; margin-bottom: 8px; }
+        h2 { font-size: 20px; color: #fff; margin: 40px 0 12px; padding-top: 40px; border-top: 1px solid #1e1f22; }
+        h2:first-of-type { border-top: none; padding-top: 0; }
+        h3 { font-size: 15px; color: #fff; margin: 24px 0 8px; }
+        p { color: #b5bac1; font-size: 14px; line-height: 1.7; margin-bottom: 12px; }
+        ul { color: #b5bac1; font-size: 14px; line-height: 1.7; margin: 0 0 12px 20px; }
+        li { margin-bottom: 4px; }
+
+        .lead { font-size: 15px; color: #949ba4; margin-bottom: 32px; }
+
+        /* Method + path */
+        .endpoint {
+            display: flex; align-items: center; gap: 10px;
+            background: #2b2d31; border: 1px solid #1e1f22;
+            border-radius: 6px; padding: 12px 16px; margin-bottom: 12px;
+            font-family: 'Consolas', monospace;
+        }
+        .method {
+            font-size: 12px; font-weight: 700; padding: 3px 8px;
+            border-radius: 4px; flex-shrink: 0;
+        }
+        .method.get    { background: #1a6b3a; color: #3ba55d; }
+        .method.post   { background: #1e3a6b; color: #5865f2; }
+        .method.patch  { background: #5c4000; color: #faa61a; }
+        .method.delete { background: #5c1a1a; color: #da373c; }
+        .method.put    { background: #2e4a1e; color: #3ba55d; }
+        .endpoint-path { font-size: 14px; color: #dbdee1; }
+
+        /* Code */
+        pre {
+            background: #111214; border-radius: 6px; padding: 16px;
+            font-family: 'Consolas', monospace; font-size: 13px;
+            color: #b5bac1; line-height: 1.6; overflow-x: auto;
+            margin-bottom: 16px;
+        }
+        code {
+            background: #111214; border-radius: 3px;
+            padding: 2px 6px; font-family: 'Consolas', monospace;
+            font-size: 13px; color: #b5bac1;
+        }
+
+        /* Param table */
+        table { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 13px; }
+        th { text-align: left; padding: 8px 12px; color: #949ba4; font-size: 11px;
+             text-transform: uppercase; letter-spacing: .04em;
+             border-bottom: 1px solid #1e1f22; }
+        td { padding: 10px 12px; border-bottom: 1px solid #1e1f22; color: #b5bac1; vertical-align: top; }
+        td:first-child { color: #dbdee1; font-family: 'Consolas', monospace; font-size: 12px; }
+        td.opt { color: #949ba4; }
+
+        /* Note box */
+        .note {
+            background: #1e2d47; border-left: 3px solid #5865f2;
+            border-radius: 0 6px 6px 0; padding: 12px 16px;
+            font-size: 13px; color: #949ba4; margin-bottom: 16px; line-height: 1.6;
+        }
+        .note strong { color: #dbdee1; }
+
+        /* Event badge */
+        .event-name {
+            display: inline-block; background: #2b2d31; border: 1px solid #404249;
+            border-radius: 4px; padding: 2px 8px; font-family: monospace;
+            font-size: 13px; color: #dbdee1; margin-right: 4px;
+        }
+    </style>
+</head>
+<body>
+
+<nav class="sidebar">
+    <div class="sidebar-header">
+        <img src="https://www.nexusguild.gg/img/favicon.ico" alt="">
+        <span>Dev Portal</span>
+    </div>
+    <div class="nav-section">
+        <div class="nav-label">Docs</div>
+        <a class="nav-item" href="#overview">Overview</a>
+        <a class="nav-item" href="#auth">Authentication</a>
+        <a class="nav-item" href="#gateway">Gateway</a>
+        <a class="nav-item" href="#events">Gateway Events</a>
+        <a class="nav-item" href="#rest">REST API</a>
+        <a class="nav-item" href="#users">— Users</a>
+        <a class="nav-item" href="#channels">— Channels</a>
+        <a class="nav-item" href="#guilds">— Guilds</a>
+        <a class="nav-item" href="#interactions">— Interactions</a>
+        <a class="nav-item" href="#quickstart">Quickstart</a>
+    </div>
+    <a class="back-link" href="index.html">← Back to Portal</a>
+</nav>
+
+<main class="main">
+    <h1>NexusGuild Bot API</h1>
+    <p class="lead">Build bots that interact with NexusGuild servers in real time. The API is designed to be familiar if you've worked with the Discord API — many concepts and endpoint paths are intentionally similar.</p>
+
+    <!-- ── Overview ──────────────────────────────────────────────────────── -->
+    <h2 id="overview">Overview</h2>
+    <p>Bots communicate with NexusGuild in two ways:</p>
+    <ul>
+        <li><strong>Gateway</strong> — a persistent Socket.io connection that delivers real-time events (messages, interactions, member updates).</li>
+        <li><strong>REST API</strong> — HTTP endpoints for reading and writing data (send messages, fetch members, manage reactions, etc.).</li>
+    </ul>
+    <p>The base URL for all REST calls is:</p>
+    <pre>https://www.nexusguild.gg/api/v1</pre>
+
+    <!-- ── Auth ──────────────────────────────────────────────────────────── -->
+    <h2 id="auth">Authentication</h2>
+    <p>All REST requests must include your bot token in the <code>Authorization</code> header:</p>
+    <pre>Authorization: Bot YOUR_BOT_TOKEN</pre>
+    <p>Your token is available on the <strong>Token</strong> tab of your bot in the developer portal. Treat it like a password — never expose it in client-side code or public repositories.</p>
+
+    <div class="note"><strong>Note:</strong> NexusGuild bot tokens are plain hex strings, not the three-part JWT format used by Discord. The <code>Bot </code> prefix is still required.</div>
+
+    <!-- ── Gateway ───────────────────────────────────────────────────────── -->
+    <h2 id="gateway">Gateway</h2>
+    <p>The gateway uses <a href="https://socket.io" target="_blank">Socket.io</a> (not a raw WebSocket). Connect to the <code>/bot-gateway</code> namespace and pass your token in the <code>auth</code> object.</p>
+
+    <h3>Connecting</h3>
+    <pre>import { io } from 'socket.io-client';
+
+const gateway = io('https://www.nexusguild.gg/bot-gateway', {
+  auth: { token: 'YOUR_BOT_TOKEN' }
+});</pre>
+
+    <p>On successful authentication the gateway emits a <span class="event-name">READY</span> event:</p>
+    <pre>gateway.on('READY', ({ bot }) => {
+  console.log('Connected as', bot.name, '/', bot.id);
+});</pre>
+
+    <h3>Heartbeat</h3>
+    <p>The gateway may send a <span class="event-name">HEARTBEAT</span> ping. Respond immediately:</p>
+    <pre>gateway.on('HEARTBEAT', () => gateway.emit('HEARTBEAT_ACK'));</pre>
+
+    <div class="note"><strong>Difference from Discord:</strong> Discord uses a raw WebSocket with numbered opcodes. NexusGuild uses Socket.io named events. If you're porting a Discord bot, replace <code>ws</code> / opcode logic with the Socket.io equivalent above.</div>
+
+    <!-- ── Events ─────────────────────────────────────────────────────────── -->
+    <h2 id="events">Gateway Events</h2>
+    <p>Your bot receives these events after connecting. The bot is automatically subscribed to all servers it has been added to.</p>
+
+    <table>
+        <tr><th>Event</th><th>When it fires</th><th>Key fields</th></tr>
+        <tr>
+            <td><span class="event-name">READY</span></td>
+            <td>Immediately after authentication</td>
+            <td><code>bot.id</code>, <code>bot.name</code></td>
+        </tr>
+        <tr>
+            <td><span class="event-name">MESSAGE_CREATE</span></td>
+            <td>A message is sent in any channel the bot can see</td>
+            <td><code>id</code>, <code>channel_id</code>, <code>user_id</code>, <code>username</code>, <code>content</code>, <code>created_at</code></td>
+        </tr>
+        <tr>
+            <td><span class="event-name">MESSAGE_UPDATE</span></td>
+            <td>A message is edited</td>
+            <td><code>id</code>, <code>channel_id</code>, <code>content</code></td>
+        </tr>
+        <tr>
+            <td><span class="event-name">MESSAGE_DELETE</span></td>
+            <td>A message is deleted</td>
+            <td><code>messageId</code>, <code>channelId</code></td>
+        </tr>
+        <tr>
+            <td><span class="event-name">INTERACTION_CREATE</span></td>
+            <td>A user invokes a slash command registered to this bot</td>
+            <td><code>id</code>, <code>token</code>, <code>channel_id</code>, <code>guild_id</code>, <code>user</code>, <code>data.name</code>, <code>data.options</code></td>
+        </tr>
+        <tr>
+            <td><span class="event-name">MEMBER_JOIN</span></td>
+            <td>A user joins a server the bot is in</td>
+            <td><code>userId</code>, <code>username</code>, <code>serverId</code></td>
+        </tr>
+        <tr>
+            <td><span class="event-name">MEMBER_LEAVE</span></td>
+            <td>A user leaves a server the bot is in</td>
+            <td><code>userId</code>, <code>serverId</code></td>
+        </tr>
+    </table>
+
+    <h3>Handling Slash Commands</h3>
+    <pre>gateway.on('INTERACTION_CREATE', async (interaction) => {
+  const { id, token, data } = interaction;
+
+  if (data.name === 'ping') {
+    await fetch(
+      `https://www.nexusguild.gg/api/interactions/${id}/${token}/callback`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: 'Pong!' }),
+      }
+    );
+  }
+});</pre>
+
+    <div class="note"><strong>Note:</strong> Interactions expire after 3 seconds. Respond to the callback URL within that window or the response will be ignored.</div>
+
+    <!-- ── REST ───────────────────────────────────────────────────────────── -->
+    <h2 id="rest">REST API</h2>
+    <p>All endpoints accept and return JSON. Successful responses use <code>200</code> or <code>204</code>. Errors return a JSON body with <code>code</code> and <code>message</code> fields, mirroring Discord's error format.</p>
+
+    <!-- Users -->
+    <h2 id="users">Users</h2>
+
+    <div class="endpoint">
+        <span class="method get">GET</span>
+        <span class="endpoint-path">/users/@me</span>
+    </div>
+    <p>Returns the bot's own user object.</p>
+    <pre>{
+  "id": "1234567890",
+  "username": "MyBot",
+  "avatar": null,
+  "bot": true
+}</pre>
+
+    <!-- Channels -->
+    <h2 id="channels">Channels</h2>
+
+    <div class="endpoint">
+        <span class="method get">GET</span>
+        <span class="endpoint-path">/channels/{channel.id}</span>
+    </div>
+    <p>Returns a channel object. The bot must be a member of the channel's server.</p>
+    <pre>{
+  "id": "...",
+  "type": 0,
+  "guild_id": "...",
+  "name": "general",
+  "topic": null,
+  "position": 0,
+  "parent_id": null
+}</pre>
+    <p>Channel type values mirror Discord: <code>0</code> = text, <code>2</code> = voice, <code>4</code> = category, <code>5</code> = announcement, <code>11</code> = thread, <code>15</code> = forum.</p>
+
+    <div class="endpoint">
+        <span class="method get">GET</span>
+        <span class="endpoint-path">/channels/{channel.id}/messages</span>
+    </div>
+    <p>Returns an array of message objects, newest last.</p>
+    <table>
+        <tr><th>Query param</th><th>Type</th><th>Description</th></tr>
+        <tr><td>limit</td><td>integer</td><td>Max messages to return (1–100, default 50)</td></tr>
+        <tr><td>before</td><td>snowflake</td><td>Get messages before this message ID</td></tr>
+        <tr><td>after</td><td>snowflake</td><td>Get messages after this message ID</td></tr>
+    </table>
+
+    <div class="endpoint">
+        <span class="method post">POST</span>
+        <span class="endpoint-path">/channels/{channel.id}/messages</span>
+    </div>
+    <p>Send a message to a channel. The bot must be a member of the server.</p>
+    <table>
+        <tr><th>Body field</th><th>Type</th><th>Description</th></tr>
+        <tr><td>content</td><td>string</td><td>The message text (required)</td></tr>
+    </table>
+    <pre>await fetch('https://www.nexusguild.gg/api/v1/channels/CHANNEL_ID/messages', {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Bot YOUR_TOKEN',
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({ content: 'Hello, world!' }),
+});</pre>
+
+    <div class="endpoint">
+        <span class="method patch">PATCH</span>
+        <span class="endpoint-path">/channels/{channel.id}/messages/{message.id}</span>
+    </div>
+    <p>Edit one of the bot's own messages.</p>
+    <table>
+        <tr><th>Body field</th><th>Type</th><th>Description</th></tr>
+        <tr><td>content</td><td>string</td><td>New message text (required)</td></tr>
+    </table>
+
+    <div class="endpoint">
+        <span class="method delete">DELETE</span>
+        <span class="endpoint-path">/channels/{channel.id}/messages/{message.id}</span>
+    </div>
+    <p>Delete one of the bot's own messages. Returns <code>204 No Content</code> on success.</p>
+
+    <div class="endpoint">
+        <span class="method put">PUT</span>
+        <span class="endpoint-path">/channels/{channel.id}/messages/{message.id}/reactions/{emoji}/@me</span>
+    </div>
+    <p>Add a reaction to a message. The emoji must be URL-encoded (e.g. <code>%F0%9F%91%8D</code> for 👍). Returns <code>204</code>.</p>
+
+    <div class="endpoint">
+        <span class="method delete">DELETE</span>
+        <span class="endpoint-path">/channels/{channel.id}/messages/{message.id}/reactions/{emoji}/@me</span>
+    </div>
+    <p>Remove the bot's reaction from a message. Returns <code>204</code>.</p>
+
+    <!-- Guilds -->
+    <h2 id="guilds">Guilds</h2>
+    <p>In NexusGuild, <em>guilds</em> are called <em>servers</em> — the IDs and concepts are identical.</p>
+
+    <div class="endpoint">
+        <span class="method get">GET</span>
+        <span class="endpoint-path">/guilds/{guild.id}</span>
+    </div>
+    <p>Returns a guild object.</p>
+    <pre>{
+  "id": "...",
+  "name": "My Server",
+  "icon": null,
+  "owner_id": "...",
+  "approximate_member_count": 42
+}</pre>
+
+    <div class="endpoint">
+        <span class="method get">GET</span>
+        <span class="endpoint-path">/guilds/{guild.id}/channels</span>
+    </div>
+    <p>Returns all channels in the guild as an array of channel objects.</p>
+
+    <div class="endpoint">
+        <span class="method get">GET</span>
+        <span class="endpoint-path">/guilds/{guild.id}/members</span>
+    </div>
+    <p>Returns an array of member objects.</p>
+    <table>
+        <tr><th>Query param</th><th>Type</th><th>Description</th></tr>
+        <tr><td>limit</td><td>integer</td><td>Max members to return (1–1000, default 100)</td></tr>
+        <tr><td>after</td><td>snowflake</td><td>Pagination cursor (user ID)</td></tr>
+    </table>
+    <pre>{
+  "user": { "id": "...", "username": "Alice", "avatar": null, "bot": false },
+  "nick": null,
+  "roles": ["role_id_1", "role_id_2"],
+  "joined_at": "2025-01-01T00:00:00.000Z"
+}</pre>
+
+    <div class="endpoint">
+        <span class="method get">GET</span>
+        <span class="endpoint-path">/guilds/{guild.id}/members/{user.id}</span>
+    </div>
+    <p>Returns a single member object.</p>
+
+    <!-- Interactions -->
+    <h2 id="interactions">Interactions</h2>
+    <p>When a user runs a slash command registered to your bot, an <span class="event-name">INTERACTION_CREATE</span> event is dispatched via the gateway. Respond by POSTing to the callback URL within 3 seconds.</p>
+
+    <div class="endpoint">
+        <span class="method post">POST</span>
+        <span class="endpoint-path">/api/interactions/{interaction.id}/{interaction.token}/callback</span>
+    </div>
+    <div class="note"><strong>Note:</strong> This endpoint does <em>not</em> use the <code>/api/v1</code> prefix and does not require the <code>Authorization</code> header — the interaction token serves as authentication.</div>
+    <table>
+        <tr><th>Body field</th><th>Type</th><th>Description</th></tr>
+        <tr><td>content</td><td>string</td><td>The reply text to post in the channel</td></tr>
+    </table>
+
+    <h3>Registering Slash Commands</h3>
+    <p>Commands are registered per-server from the <strong>Slash Commands</strong> tab in the developer portal. When a user types <code>/commandname</code> in a server where your bot is installed, they see an autocomplete suggestion. Selecting it dispatches an <span class="event-name">INTERACTION_CREATE</span> to your bot.</p>
+
+    <!-- Quickstart -->
+    <h2 id="quickstart">Quickstart</h2>
+    <pre>import { io } from 'socket.io-client';
+
+const TOKEN = 'YOUR_BOT_TOKEN';
+const API   = 'https://www.nexusguild.gg/api/v1';
+
+// 1. Connect to the gateway
+const gateway = io('https://www.nexusguild.gg/bot-gateway', {
+  auth: { token: TOKEN }
+});
+
+gateway.on('READY', ({ bot }) => console.log('Ready:', bot.name));
+gateway.on('HEARTBEAT', () => gateway.emit('HEARTBEAT_ACK'));
+
+// 2. Listen for messages and respond
+gateway.on('MESSAGE_CREATE', async (msg) => {
+  if (msg.content === '!hello') {
+    await fetch(`${API}/channels/${msg.channel_id}/messages`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bot ${TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: `Hello, ${msg.username}!` }),
+    });
+  }
+});
+
+// 3. Handle slash commands
+gateway.on('INTERACTION_CREATE', async ({ id, token, data }) => {
+  if (data.name === 'ping') {
+    await fetch(`https://www.nexusguild.gg/api/interactions/${id}/${token}/callback`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: 'Pong!' }),
+    });
+  }
+});</pre>
+
+</main>
+</body>
+</html>

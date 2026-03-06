@@ -33,6 +33,10 @@
                 <button class="btn-new-bot" onclick="showCreateBot()">+ New Bot</button>
             </div>
 
+            <div class="sidebar-section" style="flex:0;border-top:1px solid #1e1f22;padding-top:12px;">
+                <a href="docs.html" class="docs-link">API Documentation</a>
+            </div>
+
             <div class="sidebar-footer">
                 <img id="userAvatar" class="user-av" src="" alt="">
                 <span id="userName"></span>
@@ -145,42 +149,8 @@
                         </div>
                         <div id="tokenMsg" class="info-text" style="display:none;margin-top:12px;"></div>
                     </div>
-
                     <div class="form-card" style="margin-top:16px;">
-                        <h3>Gateway Connection</h3>
-                        <p class="info-text">Connect your bot to the NexusGuild gateway to receive real-time events.</p>
-                        <div class="code-block">
-<pre>// Node.js example (socket.io-client)
-import { io } from 'socket.io-client';
-import fetch from 'node-fetch';
-
-const gateway = io('https://www.nexusguild.gg/bot-gateway', {
-  auth: { token: 'YOUR_BOT_TOKEN' }
-});
-
-gateway.on('READY', (data) => console.log('Bot ready:', data));
-
-gateway.on('MESSAGE_CREATE', (msg) => {
-  console.log(`[${msg.channel_id}] ${msg.username}: ${msg.content}`);
-});
-
-// Respond to slash commands via REST callback
-gateway.on('INTERACTION_CREATE', async (interaction) => {
-  const { id, token, data } = interaction;
-  if (data.name === 'ping') {
-    await fetch(
-      `https://www.nexusguild.gg/api/interactions/${id}/${token}/callback`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: 'Pong!' }),
-      }
-    );
-  }
-});
-
-gateway.on('HEARTBEAT', () => gateway.emit('HEARTBEAT_ACK'));</pre>
-                        </div>
+                        <p class="info-text">See the <a href="docs.html" style="color:#5865f2;">API Documentation</a> for examples of how to connect to the gateway and use the REST API with your token.</p>
                     </div>
                 </div>
 
