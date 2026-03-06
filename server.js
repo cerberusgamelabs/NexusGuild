@@ -41,6 +41,7 @@ import auditRoutes from "./routes/audit.js";
 import webhookRoutes from "./routes/webhooks.js";
 import botRoutes from "./routes/bots.js";
 import interactionRoutes from "./routes/interactions.js";
+import v1Routes from "./routes/v1.js";
 import { initBotGateway } from "./gateway/botGateway.js";
 import { runExpirationJob } from "./controllers/ascensionController.js";
 
@@ -139,6 +140,7 @@ const startServer = async () => {
         app.use('/api/webhooks', webhookRoutes);
         app.use('/api/bots', botRoutes);
         app.use('/api/interactions', interactionRoutes);
+        app.use('/api/v1', v1Routes);
 
         app.get('/api/health', (req, res) => {
             res.json({ status: 'ok', timestamp: new Date(), uptime: process.uptime() * 1000, memory: process.memoryUsage() });

@@ -5,9 +5,12 @@ import express from "express";
 const router = express.Router();
 import MessageController from "../controllers/messageController.js";
 import ChannelController from "../controllers/channelController.js";
-import { requireAuth } from "../middleware/auth.js";
+import { requireAuth, requireBotAuth } from "../middleware/auth.js";
 import { validateMessage } from "../middleware/validation.js";
 import { uploadMultiple, handleUploadError } from "../middleware/upload.js";
+
+// Bot: post a message to a channel (token auth)
+router.post('/bot/channels/:channelId/messages', requireBotAuth, MessageController.createBotMessage);
 
 // Get channel messages
 router.get('/channels/:channelId/messages', requireAuth, MessageController.getChannelMessages);

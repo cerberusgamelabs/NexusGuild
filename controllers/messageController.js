@@ -213,6 +213,60 @@ class MessageController {
         }
     }
 
+    static async createBotMessage(req, res) {
+        try {
+            const { channelId } = req.params;
+            const { content } = req.body;
+            const bot = req.botUser;
+
+            if (!content?.trim()) return res.status(400).json({ error: 'content is required' });
+
+            // Channel must exist and bot must be a member of that server
+            const chanRes = await db.query('SELECT server_id FROM channels WHERE id = $1', [channelId]);
+            if (!chanRes.rows.length) return res.status(404).json({ error: 'Channel not found' });
+            const { server_id: serverId } = chanRes.rows[0];
+
+            const memberCheck = await db.query(
+                'SELECT 1 FROM server_members WHERE server_id = $1 AND user_id = $2',
+                [serverId, bot.id]
+            );
+            if (!memberCheck.rows.length) return res.status(403).json({ error: 'Bot is not in this server' });
+
+            const id = generateSnowflake();
+            const result = await db.query(
+                `INSERT INTO messages (id, channel_id, user_id, content) VALUES ($1, $2, $3, $4) RETURNING *`,
+                [id, channelId, bot.id, content.trim()]
+            );
+
+            const message = {
+                ...result.rows[0],
+                username: bot.username,
+                avatar: bot.avatar,
+                reply_to_content: null,
+                reply_to_username: null,
+                reply_to_user_id: null,
+                thread_channel_id: null,
+                thread_reply_count: 0,
+            };
+
+            const io = req.app.get('io');
+            if (io) {
+                io.to(`channel:${channelId}`).emit('message_created', message);
+                io.to(`server:${serverId}`).emit('channel_notification', {
+                    channelId, serverId, messageId: id,
+                    username: bot.username, content: content.trim(),
+                });
+                const botGateway = req.app.get('botGateway');
+                if (botGateway) botGateway.emit(serverId, 'MESSAGE_CREATE', message);
+            }
+
+            res.status(201).json({ message: 'Message sent successfully', data: message });
+        } catch (error) {
+            log(tags.error, 'Create bot message error:', error);
+            res.status(500).json({ error: 'Failed to send message' });
+        }
+    }
+
     static async updateMessage(req, res) {
         try {
             const { messageId } = req.params;
