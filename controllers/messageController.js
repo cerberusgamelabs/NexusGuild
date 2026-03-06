@@ -199,6 +199,9 @@ class MessageController {
                         username: userResult.rows[0].username,
                         content: content || '',
                     });
+                    // Forward to bot gateway
+                    const botGateway = req.app.get('botGateway');
+                    if (botGateway) botGateway.emit(serverId, 'MESSAGE_CREATE', message);
                 }
             }
 
@@ -437,9 +440,15 @@ class MessageController {
 
             await db.query('DELETE FROM messages WHERE id = $1', [messageId]);
 
+            const channelId = checkResult.rows[0].channel_id;
             const io = req.app.get('io');
             if (io) {
-                io.to(`channel:${checkResult.rows[0].channel_id}`).emit('message_deleted', { messageId });
+                io.to(`channel:${channelId}`).emit('message_deleted', { messageId });
+                const srvRes = await db.query('SELECT server_id FROM channels WHERE id = $1', [channelId]);
+                if (srvRes.rows.length) {
+                    const botGateway = req.app.get('botGateway');
+                    if (botGateway) botGateway.emit(srvRes.rows[0].server_id, 'MESSAGE_DELETE', { messageId, channelId });
+                }
             }
 
             res.json({ message: 'Message deleted successfully' });

@@ -39,6 +39,9 @@ import embedRoutes from "./routes/embed.js";
 import ascensionRoutes from "./routes/ascension.js";
 import auditRoutes from "./routes/audit.js";
 import webhookRoutes from "./routes/webhooks.js";
+import botRoutes from "./routes/bots.js";
+import interactionRoutes from "./routes/interactions.js";
+import { initBotGateway } from "./gateway/botGateway.js";
 import { runExpirationJob } from "./controllers/ascensionController.js";
 
 const app = express();
@@ -77,6 +80,15 @@ const startServer = async () => {
             [generateSnowflake(), defaultOrigin]
         );
 
+        // Seed developer portal origin (always allowed, not removable via staff portal)
+        const devOrigin = process.env.DEV_PORTAL_URL || 'https://dev.nexusguild.gg';
+        await db.query(
+            `INSERT INTO cors_origins (id, origin, description, is_default)
+             VALUES ($1, $2, 'Developer portal (default)', true)
+             ON CONFLICT (origin) DO UPDATE SET is_default = true`,
+            [generateSnowflake(), devOrigin]
+        );
+
         await loadAllowedOrigins();
         setInterval(loadAllowedOrigins, 60_000);
 
@@ -91,7 +103,8 @@ const startServer = async () => {
             cookie: {
                 maxAge: 30 * 24 * 60 * 60 * 1000,
                 httpOnly: true,
-                secure: process.env.NODE_ENV === 'production'
+                secure: process.env.NODE_ENV === 'production',
+                ...(process.env.NODE_ENV === 'production' && { domain: '.nexusguild.gg' })
             }
         });
 
@@ -124,6 +137,8 @@ const startServer = async () => {
         app.use('/api/ascension', ascensionRoutes);
         app.use('/api/audit', auditRoutes);
         app.use('/api/webhooks', webhookRoutes);
+        app.use('/api/bots', botRoutes);
+        app.use('/api/interactions', interactionRoutes);
 
         app.get('/api/health', (req, res) => {
             res.json({ status: 'ok', timestamp: new Date(), uptime: process.uptime() * 1000, memory: process.memoryUsage() });
@@ -187,6 +202,10 @@ const startServer = async () => {
         );
         app.get('/api/permissions', (req, res) => res.json(permissionsPayload));
 
+        app.get('/invite/bot/:botId', (req, res) => {
+            res.sendFile(path.join(__dirname, 'public', 'bot-invite.html'));
+        });
+
         app.get('/invite/:code', (req, res) => {
             res.sendFile(path.join(__dirname, 'public', 'index.html'));
         });
@@ -197,6 +216,8 @@ const startServer = async () => {
 
         const io = initializeSocket(server, sessionMiddleware);
         app.set('io', io);
+        const botGateway = initBotGateway(io);
+        app.set('botGateway', botGateway);
 
         // Run ascension expiration job every hour
         setInterval(runExpirationJob, 3_600_000);

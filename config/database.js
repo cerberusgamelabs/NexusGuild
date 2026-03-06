@@ -457,6 +457,36 @@ const initDB = async () => {
         await client.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS display_name  VARCHAR(80)`);
         await client.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS display_avatar VARCHAR(255)`);
 
+        // Idempotent: bot flag on users
+        await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_bot BOOLEAN DEFAULT FALSE`);
+
+        // ── Bot API ───────────────────────────────────────────────────────────
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS bots (
+                id           VARCHAR(20) PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                owner_id     VARCHAR(20) REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+                description  TEXT,
+                token        VARCHAR(64) UNIQUE NOT NULL,
+                public_bot   BOOLEAN DEFAULT FALSE,
+                callback_url VARCHAR(500),
+                created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS slash_commands (
+                id          VARCHAR(20) PRIMARY KEY,
+                bot_id      VARCHAR(20) REFERENCES bots(id) ON DELETE CASCADE NOT NULL,
+                server_id   VARCHAR(20) REFERENCES servers(id) ON DELETE CASCADE NOT NULL,
+                name        VARCHAR(32) NOT NULL,
+                description VARCHAR(100) NOT NULL DEFAULT '',
+                options     JSONB DEFAULT '[]',
+                created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(bot_id, server_id, name)
+            )
+        `);
+
         // Idempotent: replies + threads
         await client.query(`ALTER TABLE messages  ADD COLUMN IF NOT EXISTS reply_to_id        VARCHAR(20) REFERENCES messages(id)  ON DELETE SET NULL`);
         await client.query(`ALTER TABLE channels  ADD COLUMN IF NOT EXISTS parent_message_id  VARCHAR(20) REFERENCES messages(id)  ON DELETE CASCADE`);
@@ -513,6 +543,10 @@ const initDB = async () => {
         await pool.query('CREATE INDEX IF NOT EXISTS idx_messages_reply_to   ON messages(reply_to_id)         WHERE reply_to_id IS NOT NULL');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_channels_parent_msg ON channels(parent_message_id)   WHERE parent_message_id IS NOT NULL');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_thread_members      ON thread_members(thread_id)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_bots_owner          ON bots(owner_id)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_bots_token          ON bots(token)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_slash_commands_bot  ON slash_commands(bot_id)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_slash_commands_srv  ON slash_commands(server_id)');
 
         log(tags.success, 'Database schema initialized successfully');
     } catch (e) {
