@@ -3,28 +3,259 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Developer Portal</title>
-	<link rel="icon" href="https://www.nexusguild.gg/img/favicon.ico">
+    <title>NexusGuild Developer Portal</title>
+    <link rel="icon" href="https://www.nexusguild.gg/img/favicon.ico">
     <link rel="stylesheet" href="css/main.css">
 </head>
 <body>
-    <div class="legal-container">
-        <div class="legal-box">
-            <h1>Developer Portal</h1>
-            <p><a href="https://www.nexusguild.gg">← Back to NexusGuild</a></p>
-
-            <p>Welcome to the NexusGuild Developer Portal. This is a placeholder page for developer tools, API documentation, and portal resources.</p>
-
-            <h2>Features</h2>
-            <ul>
-                <li>Access API keys and integration guides.</li>
-                <li>Review documentation for NexusGuild services.</li>
-                <li>Manage developer settings and applications.</li>
-            </ul>
-
-            <h2>Contact</h2>
-            <p>For assistance with developer tools, reach out to <a href="mailto:cerberusgamelabs@gmail.com">cerberusgamelabs@gmail.com</a>.</p>
+    <!-- Auth gate -->
+    <div id="authGate" class="auth-gate" style="display:none;">
+        <div class="auth-box">
+            <h1>NexusGuild<br><span>Developer Portal</span></h1>
+            <p>Manage your bots, slash commands, and server integrations.</p>
+            <a href="https://www.nexusguild.gg" class="btn btn-primary">Log in to NexusGuild</a>
         </div>
     </div>
+
+    <!-- Main portal -->
+    <div id="portal" style="display:none;">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <img src="https://www.nexusguild.gg/img/favicon.ico" alt="NexusGuild" width="28" height="28">
+                    <span>Dev Portal</span>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="sidebar-label">Your Bots</div>
+                <div id="botList"></div>
+                <button class="btn-new-bot" onclick="showCreateBot()">+ New Bot</button>
+            </div>
+
+            <div class="sidebar-footer">
+                <img id="userAvatar" class="user-av" src="" alt="">
+                <span id="userName"></span>
+                <a href="https://www.nexusguild.gg" class="back-link">← Back to app</a>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <!-- Empty state -->
+            <div id="emptyState" class="empty-state">
+                <div class="empty-icon">🤖</div>
+                <h2>No bot selected</h2>
+                <p>Select a bot from the sidebar or create a new one to get started.</p>
+                <button class="btn btn-primary" onclick="showCreateBot()">Create your first bot</button>
+            </div>
+
+            <!-- Create bot form -->
+            <div id="createBotPanel" style="display:none;">
+                <div class="panel-header">
+                    <h2>Create a Bot</h2>
+                </div>
+                <div class="form-card">
+                    <div class="form-group">
+                        <label>Bot Name</label>
+                        <input type="text" id="newBotName" placeholder="My Awesome Bot" maxlength="32">
+                    </div>
+                    <div class="form-group">
+                        <label>Description <span class="optional">(optional)</span></label>
+                        <textarea id="newBotDesc" placeholder="What does your bot do?" rows="3"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Interactions Endpoint <span class="optional">(optional — only needed if your bot uses HTTP instead of the gateway)</span></label>
+                        <input type="url" id="newBotCallback" placeholder="https://your-bot.example.com/interactions">
+                    </div>
+                    <div class="form-actions">
+                        <button class="btn btn-secondary" onclick="showEmpty()">Cancel</button>
+                        <button class="btn btn-primary" onclick="createBot()">Create Bot</button>
+                    </div>
+                    <div id="createBotError" class="error-msg" style="display:none;"></div>
+                </div>
+            </div>
+
+            <!-- Bot detail panel -->
+            <div id="botPanel" style="display:none;">
+                <div class="panel-header">
+                    <div class="bot-identity">
+                        <div class="bot-av" id="botAv">🤖</div>
+                        <div>
+                            <h2 id="botName"></h2>
+                            <span class="bot-id" id="botIdDisplay"></span>
+                        </div>
+                    </div>
+                    <button class="btn btn-danger-sm" onclick="confirmDeleteBot()">Delete Bot</button>
+                </div>
+
+                <!-- Tabs -->
+                <div class="tabs">
+                    <button class="tab active" data-tab="overview" onclick="switchTab('overview', this)">Overview</button>
+                    <button class="tab" data-tab="token" onclick="switchTab('token', this)">Token</button>
+                    <button class="tab" data-tab="servers" onclick="switchTab('servers', this)">Servers</button>
+                    <button class="tab" data-tab="commands" onclick="switchTab('commands', this)">Slash Commands</button>
+                </div>
+
+                <!-- Overview tab -->
+                <div class="tab-panel" id="tab-overview">
+                    <div class="form-card">
+                        <div class="form-group">
+                            <label>Bot Name</label>
+                            <input type="text" id="editBotName" maxlength="32">
+                        </div>
+                        <div class="form-group">
+                            <label>Description</label>
+                            <textarea id="editBotDesc" rows="3"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Interactions Endpoint <span class="optional">(optional — HTTP fallback for slash commands)</span></label>
+                            <input type="url" id="editBotCallback" placeholder="https://your-bot.example.com/interactions">
+                        </div>
+                        <div class="form-actions">
+                            <button class="btn btn-primary" onclick="saveBot()">Save Changes</button>
+                        </div>
+                        <div id="overviewMsg" class="success-msg" style="display:none;"></div>
+                    </div>
+
+                    <div class="form-card" style="margin-top:16px;">
+                        <h3>Bot Invite Link</h3>
+                        <p class="info-text">Share this link so anyone with Manage Server permission can add your bot to their server.</p>
+                        <div class="token-row">
+                            <input type="text" id="inviteLinkField" readonly>
+                            <button class="btn btn-sm" onclick="copyInviteLink()">Copy</button>
+                            <a id="inviteLinkOpen" href="#" target="_blank" class="btn btn-sm">Open</a>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Token tab -->
+                <div class="tab-panel" id="tab-token" style="display:none;">
+                    <div class="form-card">
+                        <p class="info-text">Your bot token is used to authenticate API requests and gateway connections. <strong>Never share it publicly.</strong></p>
+                        <div class="form-group">
+                            <label>Bot Token</label>
+                            <div class="token-row">
+                                <input type="password" id="tokenField" readonly>
+                                <button class="btn btn-sm" onclick="toggleTokenVisibility()">Show</button>
+                                <button class="btn btn-sm" onclick="copyToken()">Copy</button>
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button class="btn btn-danger-sm" onclick="confirmRegenToken()">Regenerate Token</button>
+                        </div>
+                        <div id="tokenMsg" class="info-text" style="display:none;margin-top:12px;"></div>
+                    </div>
+
+                    <div class="form-card" style="margin-top:16px;">
+                        <h3>Gateway Connection</h3>
+                        <p class="info-text">Connect your bot to the NexusGuild gateway to receive real-time events.</p>
+                        <div class="code-block">
+<pre>// Node.js example (socket.io-client)
+import { io } from 'socket.io-client';
+import fetch from 'node-fetch';
+
+const gateway = io('https://www.nexusguild.gg/bot-gateway', {
+  auth: { token: 'YOUR_BOT_TOKEN' }
+});
+
+gateway.on('READY', (data) => console.log('Bot ready:', data));
+
+gateway.on('MESSAGE_CREATE', (msg) => {
+  console.log(`[${msg.channel_id}] ${msg.username}: ${msg.content}`);
+});
+
+// Respond to slash commands via REST callback
+gateway.on('INTERACTION_CREATE', async (interaction) => {
+  const { id, token, data } = interaction;
+  if (data.name === 'ping') {
+    await fetch(
+      `https://www.nexusguild.gg/api/interactions/${id}/${token}/callback`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: 'Pong!' }),
+      }
+    );
+  }
+});
+
+gateway.on('HEARTBEAT', () => gateway.emit('HEARTBEAT_ACK'));</pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Servers tab -->
+                <div class="tab-panel" id="tab-servers" style="display:none;">
+                    <div class="form-card">
+                        <h3>Add bot to a server</h3>
+                        <p class="info-text">You must be the server owner or have Manage Server permission.</p>
+                        <div class="form-group">
+                            <label>Select Server</label>
+                            <select id="addServerSelect">
+                                <option value="">Loading servers...</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-primary" onclick="addBotToServer()">Add to Server</button>
+                        <div id="addServerMsg" class="success-msg" style="display:none;"></div>
+                    </div>
+                    <div class="form-card" style="margin-top:16px;">
+                        <h3>Active in</h3>
+                        <div id="botServerList"><div class="loading">Loading...</div></div>
+                    </div>
+                </div>
+
+                <!-- Slash commands tab -->
+                <div class="tab-panel" id="tab-commands" style="display:none;">
+                    <div class="form-card">
+                        <h3>Register a Slash Command</h3>
+                        <div class="form-row">
+                            <div class="form-group" style="flex:1;">
+                                <label>Server</label>
+                                <select id="cmdServerSelect">
+                                    <option value="">Select server...</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group" style="flex:1;">
+                                <label>Command Name</label>
+                                <input type="text" id="cmdName" placeholder="ping" maxlength="32" pattern="[\w-]+">
+                            </div>
+                            <div class="form-group" style="flex:2;">
+                                <label>Description</label>
+                                <input type="text" id="cmdDesc" placeholder="Replies with Pong!" maxlength="100">
+                            </div>
+                        </div>
+                        <button class="btn btn-primary" onclick="upsertCommand()">Save Command</button>
+                        <div id="cmdMsg" class="success-msg" style="display:none;"></div>
+                    </div>
+                    <div class="form-card" style="margin-top:16px;">
+                        <h3>Registered Commands</h3>
+                        <div class="form-group">
+                            <label>Filter by Server</label>
+                            <select id="cmdListServerSelect" onchange="loadCommandsForServer()">
+                                <option value="">Select server...</option>
+                            </select>
+                        </div>
+                        <div id="commandList"><div class="empty-list">Select a server to view commands.</div></div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Confirm dialog -->
+    <div id="confirmOverlay" class="overlay" style="display:none;" onclick="closeConfirm()">
+        <div class="confirm-box" onclick="event.stopPropagation()">
+            <h3 id="confirmTitle"></h3>
+            <p id="confirmMsg"></p>
+            <div class="form-actions">
+                <button class="btn btn-secondary" onclick="closeConfirm()">Cancel</button>
+                <button class="btn btn-danger" id="confirmOk">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/portal.js"></script>
 </body>
 </html>
