@@ -178,6 +178,7 @@
                         <textarea id="messageInput" placeholder="Message..." rows="1" onkeydown="handleMessageInput(event)" oninput="updateAutocomplete(this)" onblur="setTimeout(hideAllAutocomplete,150)"></textarea>
                         <button class="emoji-picker-btn" id="inputEmojiBtn" onclick="toggleInputEmojiPicker()" title="Emoji">😊</button>
                         <button onclick="sendMessage()">Send</button>
+                        <div id="slashCommandDropdown" class="slash-dropdown" style="display:none;"></div>
                         <div id="mentionDropdown" class="mention-dropdown" style="display:none;"></div>
                         <div id="emojiDropdown" class="emoji-dropdown" style="display:none;"></div>
                         <div id="inputEmojiPicker" class="input-emoji-picker" style="display:none;"></div>

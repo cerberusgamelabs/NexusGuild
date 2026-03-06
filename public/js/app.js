@@ -17,6 +17,7 @@ const state = {
     voiceStates: {},
     myPermissions: 0n,      // current user's effective server-level permissions (BigInt)
     myChannelPerms: {},     // { [channelId]: BigInt } — channel-level resolved perms
+    slashCommands: [],      // slash commands for current server
 };
 
 // Client-side permission bit values
@@ -330,6 +331,9 @@ function selectServer(serverId) {
     loadServerMembers(serverId);  // updates myPermissions + management buttons when done
     // Pre-load server emoji so autocomplete has them ready
     if (typeof loadServerEmojis === 'function') loadServerEmojis(serverId);
+    // Pre-load slash commands for this server
+    state.slashCommands = [];
+    loadSlashCommands(serverId);
 
     // Update UI
     document.querySelectorAll('.space-rail button').forEach(btn => {
@@ -687,6 +691,17 @@ function getEmojiQuery(textarea) {
 
 // Routes oninput between emoji autocomplete and mention autocomplete
 function updateAutocomplete(textarea) {
+    // Slash commands — only when cursor is after /word at the start of the input
+    const val = textarea.value;
+    const slashMatch = val.match(/^\/(\w*)$/);
+    if (slashMatch) {
+        hideMentionDropdown();
+        hideEmojiDropdown();
+        _showSlashCommandMatches(slashMatch[1]);
+        return;
+    }
+    hideSlashDropdown();
+
     const emojiQuery = getEmojiQuery(textarea);
     if (emojiQuery !== null) {
         hideMentionDropdown();
@@ -700,6 +715,73 @@ function updateAutocomplete(textarea) {
 function hideAllAutocomplete() {
     hideMentionDropdown();
     hideEmojiDropdown();
+    hideSlashDropdown();
+}
+
+// ── Slash command autocomplete ────────────────────────────────────────────────
+
+let _slashIndex = 0;
+
+async function loadSlashCommands(serverId) {
+    try {
+        const res = await fetch(`/api/interactions/servers/${serverId}/commands`, { credentials: 'include' });
+        if (res.ok) {
+            const data = await res.json();
+            state.slashCommands = data.commands || [];
+        }
+    } catch { state.slashCommands = []; }
+}
+
+function hideSlashDropdown() {
+    const dd = document.getElementById('slashCommandDropdown');
+    if (dd) dd.style.display = 'none';
+    _slashIndex = 0;
+}
+
+function _showSlashCommandMatches(query) {
+    const dd = document.getElementById('slashCommandDropdown');
+    if (!dd) return;
+    const lower = query.toLowerCase();
+    const matches = state.slashCommands.filter(c => c.name.startsWith(lower));
+    if (!matches.length) { hideSlashDropdown(); return; }
+    dd.innerHTML = matches.map((c, i) =>
+        `<div class="slash-item${i === _slashIndex ? ' active' : ''}" data-name="${c.name}" data-id="${c.id}"
+              onmousedown="selectSlashCommand('${c.name}',event)">
+            <span class="slash-item-name">/${c.name}</span>
+            <span class="slash-item-desc">${c.description}</span>
+            <span class="slash-item-bot">${c.bot_name}</span>
+         </div>`
+    ).join('');
+    dd.style.display = 'block';
+}
+
+function selectSlashCommand(name, event) {
+    if (event) event.preventDefault();
+    const ta = document.getElementById('messageInput');
+    ta.value = `/${name} `;
+    ta.focus();
+    hideSlashDropdown();
+}
+
+async function _dispatchSlashCommand(content) {
+    const parts = content.slice(1).split(' ');
+    const cmdName = parts[0].toLowerCase();
+    const argText = parts.slice(1).join(' ').trim();
+    const cmd = state.slashCommands.find(c => c.name === cmdName);
+    if (!cmd) return false; // not a registered command — send as normal message
+
+    await fetch('/api/interactions', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            commandId: cmd.id,
+            channelId: state.currentChannel.id,
+            serverId:  state.currentServer?.id,
+            options:   argText ? [{ name: 'input', value: argText }] : [],
+        }),
+    });
+    return true;
 }
 
 function hideEmojiDropdown() {
@@ -846,6 +928,30 @@ function handleMessageInput(event) {
         }
     }
 
+    // Slash command dropdown keyboard nav
+    const sdd = document.getElementById('slashCommandDropdown');
+    const slashOpen = sdd && sdd.style.display !== 'none';
+    if (slashOpen) {
+        const items = sdd.querySelectorAll('.slash-item');
+        if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            _slashIndex = Math.max(0, _slashIndex - 1);
+            items.forEach((el, i) => el.classList.toggle('active', i === _slashIndex));
+            return;
+        }
+        if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            _slashIndex = Math.min(items.length - 1, _slashIndex + 1);
+            items.forEach((el, i) => el.classList.toggle('active', i === _slashIndex));
+            return;
+        }
+        if ((event.key === 'Enter' || event.key === 'Tab') && items[_slashIndex]) {
+            event.preventDefault();
+            items[_slashIndex].dispatchEvent(new MouseEvent('mousedown'));
+            return;
+        }
+    }
+
     if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault();
         sendMessage();
@@ -966,6 +1072,17 @@ async function sendMessage() {
 
     if (!content && selectedFiles.length === 0) return;
     if (!state.currentChannel) return;
+
+    // Slash command dispatch
+    if (content.startsWith('/') && state.slashCommands.length) {
+        const dispatched = await _dispatchSlashCommand(content);
+        if (dispatched) {
+            input.value = '';
+            input.style.height = 'auto';
+            hideSlashDropdown();
+            return;
+        }
+    }
 
     try {
         const formData = new FormData();

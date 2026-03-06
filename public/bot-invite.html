@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Add Bot — NexusGuild</title>
+    <link rel="icon" href="/img/favicon.ico">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #1e1f22;
+            color: #dbdee1;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+        .card {
+            background: #2b2d31;
+            border: 1px solid #1e1f22;
+            border-radius: 12px;
+            padding: 36px 32px;
+            width: 100%;
+            max-width: 440px;
+        }
+        .bot-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+        .bot-avatar {
+            width: 64px; height: 64px;
+            border-radius: 50%;
+            background: #5865f2;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 32px;
+            overflow: hidden; flex-shrink: 0;
+        }
+        .bot-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        .bot-name { font-size: 22px; font-weight: 700; color: #fff; }
+        .bot-badge { display: inline-block; background: #5865f2; color: #fff; font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 4px; margin-top: 4px; }
+        .bot-desc { color: #949ba4; font-size: 14px; line-height: 1.5; margin-bottom: 24px; }
+        label { display: block; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #b5bac1; margin-bottom: 6px; }
+        select {
+            width: 100%; padding: 10px 12px;
+            background: #1e1f22; border: 1px solid #1e1f22;
+            border-radius: 4px; color: #dbdee1; font-size: 14px;
+            outline: none; font-family: inherit;
+        }
+        select:focus { border-color: #5865f2; }
+        .actions { display: flex; gap: 10px; margin-top: 20px; }
+        .btn {
+            flex: 1; padding: 11px; border: none; border-radius: 4px;
+            font-size: 14px; font-weight: 600; cursor: pointer; text-align: center; text-decoration: none;
+        }
+        .btn-primary { background: #5865f2; color: #fff; }
+        .btn-primary:hover { background: #4752c4; }
+        .btn-secondary { background: #4e5058; color: #fff; }
+        .btn-secondary:hover { background: #6d6f78; }
+        .msg { font-size: 13px; margin-top: 12px; text-align: center; }
+        .msg.error { color: #da373c; }
+        .msg.success { color: #23a559; }
+        .login-prompt { text-align: center; }
+        .login-prompt p { color: #949ba4; margin-bottom: 16px; }
+        .not-found { text-align: center; }
+        .not-found p { color: #949ba4; margin-top: 8px; }
+    </style>
+</head>
+<body>
+<div class="card" id="card">
+    <div style="color:#949ba4;text-align:center;padding:24px 0;">Loading...</div>
+</div>
+<script>
+const API = '';
+const botId = location.pathname.split('/').pop();
+
+async function init() {
+    // Load bot info (public)
+    const botRes = await fetch(`${API}/api/bots/${botId}/public`).catch(() => null);
+    if (!botRes || !botRes.ok) { showNotFound(); return; }
+    const { bot } = await botRes.json();
+
+    // Check if user is logged in
+    const meRes = await fetch(`${API}/api/auth/me`, { credentials: 'include' }).catch(() => null);
+    if (!meRes || !meRes.ok) { showLogin(bot); return; }
+    const me = await meRes.json();
+
+    // Load user's servers
+    const srvRes = await fetch(`${API}/api/servers`, { credentials: 'include' }).catch(() => null);
+    const servers = srvRes?.ok ? (await srvRes.json()).servers || [] : [];
+
+    showInvite(bot, servers);
+}
+
+function showNotFound() {
+    document.getElementById('card').innerHTML = `
+        <div class="not-found">
+            <div style="font-size:48px;margin-bottom:12px;">🤖</div>
+            <h2 style="color:#fff;">Bot not found</h2>
+            <p>This bot doesn't exist or has been deleted.</p>
+            <a href="/" style="display:inline-block;margin-top:16px;color:#5865f2;">← Back to NexusGuild</a>
+        </div>`;
+}
+
+function showLogin(bot) {
+    document.getElementById('card').innerHTML = `
+        <div class="bot-header">
+            <div class="bot-avatar">${bot.avatar ? `<img src="/img/avatars/${bot.avatar}" alt="">` : '🤖'}</div>
+            <div>
+                <div class="bot-name">${esc(bot.name)}</div>
+                <span class="bot-badge">BOT</span>
+            </div>
+        </div>
+        ${bot.description ? `<p class="bot-desc">${esc(bot.description)}</p>` : ''}
+        <div class="login-prompt">
+            <p>You need to be logged in to NexusGuild to add this bot.</p>
+            <a href="/?redirect=${encodeURIComponent(location.href)}" class="btn btn-primary" style="display:block;">Log in to NexusGuild</a>
+        </div>`;
+}
+
+function showInvite(bot, servers) {
+    const opts = servers.length
+        ? servers.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('')
+        : '<option value="" disabled>No servers available</option>';
+
+    document.getElementById('card').innerHTML = `
+        <div class="bot-header">
+            <div class="bot-avatar">${bot.avatar ? `<img src="/img/avatars/${bot.avatar}" alt="">` : '🤖'}</div>
+            <div>
+                <div class="bot-name">${esc(bot.name)}</div>
+                <span class="bot-badge">BOT</span>
+            </div>
+        </div>
+        ${bot.description ? `<p class="bot-desc">${esc(bot.description)}</p>` : ''}
+        <label>Add to server</label>
+        <select id="serverSelect">${opts}</select>
+        <div class="actions">
+            <a href="/" class="btn btn-secondary">Cancel</a>
+            <button class="btn btn-primary" onclick="addBot()">Authorize</button>
+        </div>
+        <div id="msg" class="msg"></div>`;
+}
+
+async function addBot() {
+    const serverId = document.getElementById('serverSelect')?.value;
+    const msgEl = document.getElementById('msg');
+    if (!serverId) { msgEl.className = 'msg error'; msgEl.textContent = 'Select a server.'; return; }
+
+    const res = await fetch(`${API}/api/bots/${botId}/servers/${serverId}`, {
+        method: 'PUT', credentials: 'include'
+    });
+    const data = await res.json();
+    if (!res.ok) {
+        msgEl.className = 'msg error';
+        msgEl.textContent = data.error || 'Failed to add bot.';
+        return;
+    }
+    msgEl.className = 'msg success';
+    msgEl.textContent = 'Bot added! Redirecting...';
+    setTimeout(() => location.href = '/', 1500);
+}
+
+function esc(str) {
+    return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+init();
+</script>
+</body>
+</html>

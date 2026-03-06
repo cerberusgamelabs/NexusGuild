@@ -2308,6 +2308,14 @@ textarea.modal-input {
 }
 .danger-zone-card h3 { font-size: 15px; color: #f2f3f5; margin-bottom: 4px; }
 
+/* ── Slash Command Autocomplete ──────────────────────────────────────────── */
+.slash-dropdown { position:absolute; bottom:calc(100% + 4px); left:0; right:0; background:#2b2d31; border:1px solid #1e1f22; border-radius:6px; max-height:300px; overflow-y:auto; z-index:200; box-shadow:0 -4px 16px rgba(0,0,0,.4); }
+.slash-item { display:flex; align-items:baseline; gap:8px; padding:8px 12px; cursor:pointer; }
+.slash-item:hover, .slash-item.active { background:#404249; }
+.slash-item-name { font-size:14px; color:#fff; font-weight:600; flex-shrink:0; }
+.slash-item-desc { font-size:13px; color:#949ba4; flex:1; }
+.slash-item-bot { font-size:11px; color:#5865f2; flex-shrink:0; }
+
 /* ── Mention Autocomplete ─────────────────────────────────────────────────── */
 .mention-dropdown { position:absolute; bottom:calc(100% + 4px); left:0; right:0; background:#2b2d31; border:1px solid #1e1f22; border-radius:6px; max-height:240px; overflow-y:auto; z-index:200; box-shadow:0 -4px 16px rgba(0,0,0,.4); }
 .mention-item { display:flex; align-items:center; gap:8px; padding:8px 12px; cursor:pointer; }
