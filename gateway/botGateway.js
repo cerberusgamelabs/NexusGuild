@@ -48,13 +48,24 @@ export function initBotGateway(io) {
         connectedBots.set(bot.id, socket);
 
         // Join rooms for all servers the bot is in
+        let botServerIds = [];
         try {
             const servers = await db.query(
                 `SELECT server_id FROM server_members WHERE user_id = $1`, [bot.id]
             );
-            for (const { server_id } of servers.rows) socket.join(`server:${server_id}`);
+            botServerIds = servers.rows.map(r => r.server_id);
+            for (const server_id of botServerIds) socket.join(`server:${server_id}`);
         } catch (err) {
             log(tags.error, 'Gateway: failed to load bot servers:', err);
+        }
+
+        // Broadcast online presence to all servers the bot is in
+        for (const serverId of botServerIds) {
+            io.to(`server:${serverId}`).emit('presence_update', {
+                userId: bot.id,
+                username: bot.name,
+                status: 'online'
+            });
         }
 
         // Send READY event
@@ -66,6 +77,15 @@ export function initBotGateway(io) {
         socket.on('disconnect', () => {
             if (connectedBots.get(bot.id) === socket) connectedBots.delete(bot.id);
             log(tags.info, `Bot disconnected from gateway: ${bot.name} (${bot.id})`);
+
+            // Broadcast offline presence
+            for (const serverId of botServerIds) {
+                io.to(`server:${serverId}`).emit('presence_update', {
+                    userId: bot.id,
+                    username: bot.name,
+                    status: 'offline'
+                });
+            }
         });
     });
 
