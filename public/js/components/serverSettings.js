@@ -1109,6 +1109,7 @@ const _AUDIT_LABELS = {
     message_pin:    e => `Pinned a message`,
     message_unpin:  e => `Unpinned a message`,
     webhook_create: e => `Created webhook <strong>${escHtml(e.changes?.name || '')}</strong>`,
+    webhook_update: e => `Updated webhook <strong>${escHtml(e.changes?.name || '')}</strong>`,
     webhook_delete: e => `Deleted webhook <strong>${escHtml(e.changes?.name || '')}</strong>`,
 };
 
@@ -1167,11 +1168,15 @@ async function renderAuditTab(container) {
 
 // ── Webhooks Tab ──────────────────────────────────────────────────────────────
 
+function _webhookChannelOptions(selectedId) {
+    return (state.channels || [])
+        .filter(c => c.type === 'text' || c.type === 'announcement')
+        .map(c => `<option value="${c.id}"${c.id === selectedId ? ' selected' : ''}>#${escHtml(c.name)}</option>`)
+        .join('');
+}
+
 async function renderWebhooksTab(container) {
     container.innerHTML = '<div class="settings-loading">Loading webhooks…</div>';
-
-    const textChannels = (state.channels || []).filter(c => c.type === 'text' || c.type === 'announcement');
-    const channelOptions = textChannels.map(c => `<option value="${c.id}">#${escHtml(c.name)}</option>`).join('');
 
     try {
         const res = await fetch(`/api/webhooks/servers/${_settingsServerId}`, { credentials: 'include' });
@@ -1187,31 +1192,69 @@ async function renderWebhooksTab(container) {
         // Create form
         html += `
             <div class="settings-field">
-                <label class="settings-label">Create Webhook</label>
+                <label class="settings-label">New Webhook</label>
                 <div class="webhook-create-form">
                     <input class="settings-input" id="webhookName" type="text" placeholder="Webhook name" maxlength="80">
-                    <select class="settings-input" id="webhookChannel">${channelOptions}</select>
+                    <select class="settings-input" id="webhookChannel">${_webhookChannelOptions('')}</select>
                     <button class="settings-btn" onclick="_createWebhook()">Create</button>
                 </div>
                 <div id="webhookCreateError" class="settings-error" style="display:none;"></div>
-            </div>`;
+            </div>
+            <div class="settings-divider"></div>`;
 
-        // List existing
         if (webhooks.length === 0) {
             html += `<p class="settings-empty">No webhooks yet.</p>`;
         } else {
             html += `<div class="webhook-list">`;
             for (const wh of webhooks) {
                 const url = `${window.location.origin}/api/webhooks/${wh.id}/${wh.token}`;
+                const avatarPreview = wh.avatar
+                    ? `<img class="webhook-avatar-preview" src="${escHtml(wh.avatar)}" alt="">`
+                    : `<div class="webhook-avatar-preview webhook-avatar-placeholder">🔗</div>`;
                 html += `
                     <div class="webhook-item" id="wh-${wh.id}">
-                        <div class="webhook-item-info">
-                            <div class="webhook-item-name">${escHtml(wh.name)}</div>
-                            <div class="webhook-item-channel">#${escHtml(wh.channel_name)}</div>
+                        <div class="webhook-item-header">
+                            ${avatarPreview}
+                            <div class="webhook-item-info">
+                                <div class="webhook-item-name">${escHtml(wh.name)}</div>
+                                <div class="webhook-item-channel">#${escHtml(wh.channel_name)}</div>
+                            </div>
+                            <div class="webhook-item-actions">
+                                <button class="settings-btn secondary small" onclick="_copyWebhookUrl('${escHtml(url)}')">Copy URL</button>
+                                <button class="settings-btn secondary small" onclick="_toggleWebhookEdit('${wh.id}')">Edit</button>
+                                <button class="settings-btn danger small" onclick="_deleteWebhook('${wh.id}')">Delete</button>
+                            </div>
                         </div>
-                        <div class="webhook-item-actions">
-                            <button class="settings-btn secondary small" onclick="_copyWebhookUrl('${escHtml(url)}')">Copy URL</button>
-                            <button class="settings-btn danger small" onclick="_deleteWebhook('${wh.id}')">Delete</button>
+                        <div class="webhook-edit-form" id="wh-edit-${wh.id}" style="display:none;">
+                            <div class="webhook-edit-row">
+                                <label class="webhook-edit-label">Default Name</label>
+                                <input class="settings-input" id="wh-name-${wh.id}" type="text"
+                                       value="${escHtml(wh.name)}" maxlength="80" placeholder="Webhook display name">
+                            </div>
+                            <div class="webhook-edit-row">
+                                <label class="webhook-edit-label">Channel</label>
+                                <select class="settings-input" id="wh-channel-${wh.id}">
+                                    ${_webhookChannelOptions(wh.channel_id)}
+                                </select>
+                            </div>
+                            <div class="webhook-edit-row">
+                                <label class="webhook-edit-label">Default Avatar URL</label>
+                                <input class="settings-input" id="wh-avatar-${wh.id}" type="url"
+                                       value="${escHtml(wh.avatar || '')}" placeholder="https://… (optional)">
+                            </div>
+                            <div class="webhook-edit-row">
+                                <label class="webhook-edit-label">Webhook URL</label>
+                                <div class="webhook-url-row">
+                                    <input class="settings-input webhook-url-input" type="text"
+                                           value="${escHtml(url)}" readonly onclick="this.select()">
+                                    <button class="settings-btn secondary small" onclick="_copyWebhookUrl('${escHtml(url)}')">Copy</button>
+                                </div>
+                            </div>
+                            <div class="webhook-edit-actions">
+                                <button class="settings-btn" onclick="_saveWebhook('${wh.id}')">Save Changes</button>
+                                <button class="settings-btn secondary" onclick="_toggleWebhookEdit('${wh.id}')">Cancel</button>
+                                <div class="webhook-edit-error" id="wh-err-${wh.id}" style="display:none;"></div>
+                            </div>
                         </div>
                     </div>`;
             }
@@ -1221,6 +1264,43 @@ async function renderWebhooksTab(container) {
         container.innerHTML = html;
     } catch {
         container.innerHTML = `<h2 class="settings-section-title">Webhooks</h2><p class="settings-empty">Failed to load webhooks.</p>`;
+    }
+}
+
+function _toggleWebhookEdit(webhookId) {
+    const form = document.getElementById(`wh-edit-${webhookId}`);
+    if (!form) return;
+    const open = form.style.display === 'none';
+    form.style.display = open ? 'block' : 'none';
+    const item = document.getElementById(`wh-${webhookId}`);
+    if (item) item.classList.toggle('editing', open);
+}
+
+async function _saveWebhook(webhookId) {
+    const name      = document.getElementById(`wh-name-${webhookId}`)?.value.trim();
+    const channelId = document.getElementById(`wh-channel-${webhookId}`)?.value;
+    const avatar    = document.getElementById(`wh-avatar-${webhookId}`)?.value.trim();
+    const errEl     = document.getElementById(`wh-err-${webhookId}`);
+    if (errEl) errEl.style.display = 'none';
+
+    if (!name) {
+        if (errEl) { errEl.textContent = 'Name cannot be empty.'; errEl.style.display = 'block'; }
+        return;
+    }
+
+    const res = await fetch(`/api/webhooks/${webhookId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ name, channelId, avatar: avatar || null }),
+    });
+
+    if (res.ok) {
+        showToast('Webhook updated!');
+        renderWebhooksTab(document.getElementById('settingsContent'));
+    } else {
+        const d = await res.json().catch(() => ({}));
+        if (errEl) { errEl.textContent = d.error || 'Failed to save.'; errEl.style.display = 'block'; }
     }
 }
 

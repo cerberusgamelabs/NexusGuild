@@ -25,6 +25,9 @@ router.post(
     WebhookController.createWebhook
 );
 
+// Update webhook (permission checked inline)
+router.patch('/:webhookId', requireAuth, WebhookController.updateWebhook);
+
 // Delete webhook (permission checked inline — no serverId in path)
 router.delete('/:webhookId', requireAuth, WebhookController.deleteWebhook);
 

@@ -7,6 +7,39 @@ import { generateSnowflake } from '#utils/functions';
 import { log, tags } from '#utils/logging';
 import { logAuditEvent } from '../utils/audit.js';
 
+// Shared: verify userId has MANAGE_WEBHOOKS in the webhook's server.
+// Returns the webhook row if allowed, null if not found, or throws with a res already sent.
+async function _checkWebhookPerm(webhookId, userId, res) {
+    const wh = await db.query(`SELECT * FROM webhooks WHERE id = $1`, [webhookId]);
+    if (wh.rows.length === 0) {
+        res.status(404).json({ error: 'Webhook not found' });
+        return null;
+    }
+    const webhook = wh.rows[0];
+    const ownerRes = await db.query(`SELECT owner_id FROM servers WHERE id = $1`, [webhook.server_id]);
+    if (ownerRes.rows[0]?.owner_id !== userId) {
+        const permRes = await db.query(
+            `SELECT COALESCE(bit_or(r.permissions::bigint), 0)::text AS perms
+             FROM roles r JOIN user_roles ur ON r.id = ur.role_id
+             WHERE ur.user_id = $1 AND ur.server_id = $2`,
+            [userId, webhook.server_id]
+        );
+        const evRes = await db.query(
+            `SELECT permissions FROM roles WHERE server_id = $1 AND name = '@everyone'`,
+            [webhook.server_id]
+        );
+        let perms = BigInt(permRes.rows[0]?.perms || '0');
+        if (evRes.rows[0]) perms |= BigInt(evRes.rows[0].permissions);
+        const MANAGE_WEBHOOKS = 1n << 29n;
+        const ADMINISTRATOR   = 1n << 3n;
+        if (!((perms & ADMINISTRATOR) === ADMINISTRATOR) && !((perms & MANAGE_WEBHOOKS) === MANAGE_WEBHOOKS)) {
+            res.status(403).json({ error: 'Insufficient permissions' });
+            return null;
+        }
+    }
+    return webhook;
+}
+
 class WebhookController {
     static async listWebhooks(req, res) {
         try {
@@ -61,43 +94,54 @@ class WebhookController {
         }
     }
 
+    static async updateWebhook(req, res) {
+        try {
+            const { webhookId } = req.params;
+            const userId = req.session.user.id;
+            const { name, channelId, avatar } = req.body;
+
+            const webhook = await _checkWebhookPerm(webhookId, userId, res);
+            if (!webhook) return;
+
+            // If channelId is being changed, verify it belongs to the same server
+            if (channelId && channelId !== webhook.channel_id) {
+                const chanCheck = await db.query(
+                    `SELECT id FROM channels WHERE id = $1 AND server_id = $2`,
+                    [channelId, webhook.server_id]
+                );
+                if (chanCheck.rows.length === 0) {
+                    return res.status(404).json({ error: 'Channel not found in this server' });
+                }
+            }
+
+            const result = await db.query(
+                `UPDATE webhooks
+                 SET name       = COALESCE($1, name),
+                     channel_id = COALESCE($2, channel_id),
+                     avatar     = $3
+                 WHERE id = $4
+                 RETURNING *`,
+                [name?.trim() || null, channelId || null, avatar?.trim() || null, webhookId]
+            );
+
+            await logAuditEvent(webhook.server_id, 'webhook_update', userId, webhookId, 'webhook', { name: result.rows[0].name });
+            res.json({ webhook: result.rows[0] });
+        } catch (error) {
+            log(tags.error, 'Update webhook error:', error);
+            res.status(500).json({ error: 'Failed to update webhook' });
+        }
+    }
+
     static async deleteWebhook(req, res) {
         try {
             const { webhookId } = req.params;
             const userId = req.session.user.id;
 
-            const wh = await db.query(`SELECT * FROM webhooks WHERE id = $1`, [webhookId]);
-            if (wh.rows.length === 0) return res.status(404).json({ error: 'Webhook not found' });
-
-            // Verify caller has MANAGE_WEBHOOKS in the webhook's server
-            const { server_id, name } = wh.rows[0];
-            const ownerRes = await db.query(`SELECT owner_id FROM servers WHERE id = $1`, [server_id]);
-            if (ownerRes.rows[0]?.owner_id !== userId) {
-                // Check permission via role
-                const permRes = await db.query(
-                    `SELECT COALESCE(bit_or(r.permissions::bigint), 0)::text AS perms
-                     FROM roles r
-                     JOIN user_roles ur ON r.id = ur.role_id
-                     WHERE ur.user_id = $1 AND ur.server_id = $2`,
-                    [userId, server_id]
-                );
-                const evRes = await db.query(
-                    `SELECT permissions FROM roles WHERE server_id = $1 AND name = '@everyone'`,
-                    [server_id]
-                );
-                let perms = BigInt(permRes.rows[0]?.perms || '0');
-                if (evRes.rows[0]) perms |= BigInt(evRes.rows[0].permissions);
-                const MANAGE_WEBHOOKS = 1n << 29n;
-                const ADMINISTRATOR   = 1n << 3n;
-                const hasAdmin = (perms & ADMINISTRATOR) === ADMINISTRATOR;
-                const hasPerm  = (perms & MANAGE_WEBHOOKS) === MANAGE_WEBHOOKS;
-                if (!hasAdmin && !hasPerm) {
-                    return res.status(403).json({ error: 'Insufficient permissions' });
-                }
-            }
+            const webhook = await _checkWebhookPerm(webhookId, userId, res);
+            if (!webhook) return;
 
             await db.query(`DELETE FROM webhooks WHERE id = $1`, [webhookId]);
-            await logAuditEvent(server_id, 'webhook_delete', userId, webhookId, 'webhook', { name });
+            await logAuditEvent(webhook.server_id, 'webhook_delete', userId, webhookId, 'webhook', { name: webhook.name });
             res.json({ message: 'Webhook deleted' });
         } catch (error) {
             log(tags.error, 'Delete webhook error:', error);
