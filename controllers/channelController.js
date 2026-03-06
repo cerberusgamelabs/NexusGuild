@@ -62,7 +62,7 @@ class ChannelController {
                         AND m.id > ucr.last_read_message_id
                      WHERE ucr.channel_id = c.id AND ucr.user_id = $2
                  ) unread ON true
-                 WHERE c.server_id = $1
+                 WHERE c.server_id = $1 AND c.type NOT IN ('thread', 'private_thread')
                  ORDER BY c.position`,
                 [serverId, userId, username]
             );
@@ -315,6 +315,98 @@ class ChannelController {
         } catch (error) {
             log(tags.error, 'Delete category error:', error);
             res.status(500).json({ error: 'Failed to delete category' });
+        }
+    }
+
+    static async createThread(req, res) {
+        try {
+            const { messageId } = req.params;
+            const { name, isPrivate = false } = req.body;
+            const userId = req.session.user.id;
+
+            if (!name?.trim()) return res.status(400).json({ error: 'Thread name required' });
+
+            // Get parent message → channel → server
+            const msgRes = await db.query(
+                `SELECT m.channel_id, c.server_id, c.type AS channel_type
+                 FROM messages m JOIN channels c ON c.id = m.channel_id
+                 WHERE m.id = $1`, [messageId]
+            );
+            if (!msgRes.rows.length) return res.status(404).json({ error: 'Message not found' });
+            const { channel_id: parentChannelId, server_id: serverId, channel_type } = msgRes.rows[0];
+
+            if (!['text', 'announcement'].includes(channel_type)) {
+                return res.status(400).json({ error: 'Threads can only be created in text or announcement channels' });
+            }
+
+            // Reuse existing perm helper (SEND_MESSAGES on parent channel)
+            const perm = await checkChannelPerm(userId, parentChannelId, PERMISSIONS.SEND_MESSAGES);
+            if (!perm?.allowed) return res.status(403).json({ error: 'Insufficient permissions' });
+
+            // Return existing thread if already created for this message
+            const existing = await db.query(
+                'SELECT * FROM channels WHERE parent_message_id = $1 LIMIT 1', [messageId]
+            );
+            if (existing.rows.length) return res.json({ thread: existing.rows[0] });
+
+            const threadId = generateSnowflake();
+            const type = isPrivate ? 'private_thread' : 'thread';
+
+            const result = await db.query(
+                `INSERT INTO channels (id, server_id, category_id, name, type, parent_message_id, is_private, position)
+                 VALUES ($1, $2, NULL, $3, $4, $5, $6, 0) RETURNING *`,
+                [threadId, serverId, name.trim(), type, messageId, Boolean(isPrivate)]
+            );
+
+            // Creator automatically becomes a thread member
+            await db.query(
+                'INSERT INTO thread_members (thread_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+                [threadId, userId]
+            );
+
+            const io = req.app.get('io');
+            if (io) {
+                io.to(`server:${serverId}`).emit('thread_created', {
+                    serverId, parentChannelId, messageId, thread: result.rows[0],
+                });
+            }
+
+            log(tags.success, `Thread "${name.trim()}" created by ${userId} on message ${messageId}`);
+            res.status(201).json({ thread: result.rows[0] });
+        } catch (error) {
+            log(tags.error, 'Create thread error:', error);
+            res.status(500).json({ error: 'Failed to create thread' });
+        }
+    }
+
+    static async getThread(req, res) {
+        try {
+            const { messageId } = req.params;
+            const userId = req.session.user.id;
+
+            const result = await db.query(
+                `SELECT c.*, COUNT(m.id)::int AS reply_count
+                 FROM channels c
+                 LEFT JOIN messages m ON m.channel_id = c.id
+                 WHERE c.parent_message_id = $1
+                 GROUP BY c.id
+                 LIMIT 1`, [messageId]
+            );
+            if (!result.rows.length) return res.status(404).json({ error: 'No thread found' });
+
+            const thread = result.rows[0];
+            if (thread.type === 'private_thread') {
+                const memberCheck = await db.query(
+                    'SELECT 1 FROM thread_members WHERE thread_id = $1 AND user_id = $2',
+                    [thread.id, userId]
+                );
+                if (!memberCheck.rows.length) return res.status(403).json({ error: 'Not a member of this private thread' });
+            }
+
+            res.json({ thread });
+        } catch (error) {
+            log(tags.error, 'Get thread error:', error);
+            res.status(500).json({ error: 'Failed to get thread' });
         }
     }
 

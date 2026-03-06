@@ -112,7 +112,8 @@ function _makeChannelEl(channel, canDrag) {
         const handle = document.createElement('span');
         handle.className = 'drag-handle';
         handle.textContent = '⠿';
-        btn.insertBefore(handle, btn.firstChild);
+        const nameSpan = btn.querySelector('span');
+        nameSpan.insertBefore(handle, nameSpan.firstChild);
         wrapper.draggable = true;
         wrapper.addEventListener('dragstart', (e) => {
             _drag = { type: 'channel', id: channel.id, el: wrapper };

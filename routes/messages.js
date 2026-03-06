@@ -4,6 +4,7 @@
 import express from "express";
 const router = express.Router();
 import MessageController from "../controllers/messageController.js";
+import ChannelController from "../controllers/channelController.js";
 import { requireAuth } from "../middleware/auth.js";
 import { validateMessage } from "../middleware/validation.js";
 import { uploadMultiple, handleUploadError } from "../middleware/upload.js";
@@ -35,5 +36,9 @@ router.delete('/:messageId/pin', requireAuth, MessageController.unpinMessage);
 
 // Suppress embed (author only)
 router.patch('/:messageId/embed', requireAuth, MessageController.suppressEmbed);
+
+// Threads
+router.post('/:messageId/thread', requireAuth, ChannelController.createThread);
+router.get('/:messageId/thread',  requireAuth, ChannelController.getThread);
 
 export default router;
