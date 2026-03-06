@@ -47,6 +47,36 @@ function extractMeta(html) {
 }
 
 class EmbedController {
+    static async getOEmbed(req, res) {
+        const { url } = req.query;
+        if (!url) return res.status(400).json({ error: 'url required' });
+
+        let oembedUrl;
+        if (/youtube\.com|youtu\.be/.test(url)) {
+            oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
+        } else if (/soundcloud\.com/.test(url)) {
+            oembedUrl = `https://soundcloud.com/oembed?format=json&url=${encodeURIComponent(url)}`;
+        } else {
+            return res.status(400).json({ error: 'Unsupported provider' });
+        }
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+        try {
+            const resp = await fetch(oembedUrl, {
+                signal: controller.signal,
+                headers: { 'User-Agent': 'Mozilla/5.0 (compatible; NexusGuild/1.0)' },
+            });
+            clearTimeout(timeoutId);
+            if (!resp.ok) return res.status(204).end();
+            res.json(await resp.json());
+        } catch {
+            clearTimeout(timeoutId);
+            res.status(204).end();
+        }
+    }
+
     static async getEmbed(req, res) {
         const { url } = req.query;
         if (!url) return res.status(400).json({ error: 'url query param required' });

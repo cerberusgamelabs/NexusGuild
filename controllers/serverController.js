@@ -6,6 +6,7 @@ import { DEFAULT_PERMISSIONS, PERMISSIONS, PermissionHandler } from "../config/p
 import { v4 as uuidv4 } from "uuid";
 import { generateSnowflake } from "#utils/functions";
 import { log, tags } from "#utils/logging";
+import { logAuditEvent } from "../utils/audit.js";
 
 class ServerController {
     static async createServer(req, res) {
@@ -117,6 +118,7 @@ class ServerController {
             );
             if (result.rows.length === 0) return res.status(404).json({ error: 'Server not found' });
             log(tags.info, `Server updated: "${result.rows[0].name}" [${serverId}]`);
+            logAuditEvent(serverId, 'server_update', req.session.user.id, serverId, 'server', { name: result.rows[0].name });
             res.json({ message: 'Server updated successfully', server: result.rows[0] });
         } catch (error) {
             log(tags.error, 'Update server error:', error);
@@ -386,6 +388,7 @@ class ServerController {
                 return res.status(400).json({ error: 'Cannot kick the server owner' });
             }
             await db.query(`DELETE FROM server_members WHERE server_id = $1 AND user_id = $2`, [serverId, memberId]);
+            logAuditEvent(serverId, 'member_kick', req.session.user.id, memberId, 'user');
             const io = req.app.get('io');
             io?.to(`server:${serverId}`).emit('user_left', { userId: memberId, serverId });
             res.json({ message: 'Member kicked' });
@@ -413,6 +416,7 @@ class ServerController {
                 [id, serverId, memberId, req.session.user.id, reason || null]
             );
             await db.query(`DELETE FROM server_members WHERE server_id = $1 AND user_id = $2`, [serverId, memberId]);
+            logAuditEvent(serverId, 'member_ban', req.session.user.id, memberId, 'user', { reason: reason || null });
             const io = req.app.get('io');
             io?.to(`server:${serverId}`).emit('user_left', { userId: memberId, serverId });
             res.json({ message: 'Member banned' });
@@ -426,6 +430,7 @@ class ServerController {
         try {
             const { serverId, memberId } = req.params;
             await db.query(`DELETE FROM bans WHERE server_id = $1 AND user_id = $2`, [serverId, memberId]);
+            logAuditEvent(serverId, 'member_unban', req.session.user.id, memberId, 'user');
             res.json({ message: 'Member unbanned' });
         } catch (error) {
             log(tags.error, 'Unban member error:', error);

@@ -33,4 +33,7 @@ router.delete('/:messageId', requireAuth, MessageController.deleteMessage);
 router.put('/:messageId/pin', requireAuth, MessageController.pinMessage);
 router.delete('/:messageId/pin', requireAuth, MessageController.unpinMessage);
 
+// Suppress embed (author only)
+router.patch('/:messageId/embed', requireAuth, MessageController.suppressEmbed);
+
 export default router;

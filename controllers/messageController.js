@@ -9,6 +9,7 @@ import { generateSnowflake } from "#utils/functions";
 import { log, tags } from "#utils/logging";
 import { PermissionHandler, PERMISSIONS } from "../config/permissions.js";
 import { resolveChannelPerms } from "../utils/channelPerms.js";
+import { logAuditEvent } from "../utils/audit.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -49,10 +50,12 @@ class MessageController {
             }
 
             let query = `
-                SELECT m.*, u.username, u.avatar,
-                       (pm.message_id IS NOT NULL) AS is_pinned
+                SELECT m.*,
+                       COALESCE(m.display_name, u.username)   AS username,
+                       COALESCE(m.display_avatar, u.avatar)   AS avatar,
+                       (pm.message_id IS NOT NULL)             AS is_pinned
                 FROM messages m
-                JOIN users u ON m.user_id = u.id
+                LEFT JOIN users u ON m.user_id = u.id
                 LEFT JOIN pinned_messages pm
                     ON pm.message_id = m.id AND pm.channel_id = m.channel_id
                 WHERE m.channel_id = $1
@@ -253,6 +256,7 @@ class MessageController {
             const io = req.app.get('io');
             if (io) io.to(`channel:${channelId}`).emit('message_pinned', { messageId, channelId });
 
+            logAuditEvent(serverId, 'message_pin', userId, messageId, 'message', { channel_id: channelId });
             log(tags.info, `Message ${messageId} pinned in channel ${channelId} by ${userId}`);
             res.json({ message: 'Message pinned' });
         } catch (error) {
@@ -286,6 +290,7 @@ class MessageController {
             const io = req.app.get('io');
             if (io) io.to(`channel:${channelId}`).emit('message_unpinned', { messageId, channelId });
 
+            logAuditEvent(serverId, 'message_unpin', userId, messageId, 'message', { channel_id: channelId });
             log(tags.info, `Message ${messageId} unpinned in channel ${channelId} by ${userId}`);
             res.json({ message: 'Message unpinned' });
         } catch (error) {
@@ -329,6 +334,33 @@ class MessageController {
         } catch (error) {
             log(tags.error, 'Get pinned messages error:', error);
             res.status(500).json({ error: 'Failed to get pinned messages' });
+        }
+    }
+
+    static async suppressEmbed(req, res) {
+        try {
+            const { messageId } = req.params;
+            const userId = req.session.user.id;
+
+            const checkResult = await db.query(
+                'SELECT user_id, channel_id FROM messages WHERE id = $1',
+                [messageId]
+            );
+            if (checkResult.rows.length === 0) return res.status(404).json({ error: 'Message not found' });
+            const msg = checkResult.rows[0];
+            if (msg.user_id !== userId) return res.status(403).json({ error: 'Only the message author can remove embeds' });
+
+            await db.query('UPDATE messages SET embed_suppressed = TRUE WHERE id = $1', [messageId]);
+
+            const io = req.app.get('io');
+            if (io) {
+                io.to(`channel:${msg.channel_id}`).emit('embed_suppressed', { messageId, channelId: msg.channel_id });
+            }
+
+            res.json({ ok: true });
+        } catch (error) {
+            log(tags.error, 'Suppress embed error:', error);
+            res.status(500).json({ error: 'Failed to suppress embed' });
         }
     }
 

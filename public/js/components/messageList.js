@@ -1,5 +1,143 @@
 // Message list rendering
 
+// ── HTML escape (no newline conversion — used internally by markdown) ─────────
+function _esc(str) {
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ── Markdown parser ───────────────────────────────────────────────────────────
+function parseMarkdown(raw) {
+    if (!raw) return '';
+
+    const slots = [];
+    const protect = html => `\x00${slots.push(html) - 1}\x00`;
+    const restore = s => s.replace(/\x00(\d+)\x00/g, (_, i) => slots[+i]);
+
+    let s = raw;
+
+    // 1. Fenced code blocks — protect entirely from further processing
+    s = s.replace(/```(\w*)\r?\n?([\s\S]*?)```/g, (_, lang, code) => {
+        const trimmed   = code.replace(/^\n+/, '').replace(/\n+$/, '');
+        const lines     = trimmed.split('\n');
+        const multiline = lines.length > 1;
+        const body  = _esc(trimmed);
+        const label = lang ? _esc(lang) : '';
+        return protect(
+            `<div class="msg-code-block">` +
+            (label && multiline ? `<div class="msg-code-lang">${label}</div>` : '') +
+            `<pre><code>${body}</code></pre></div>`
+        );
+    });
+
+    // 2. Inline formatting helper (used for regular lines + block element interiors)
+    function applyInline(str) {
+        // Inline code — protect before escaping
+        str = str.replace(/`([^`\n]+)`/g, (_, c) => protect(`<code class="msg-inline-code">${_esc(c)}</code>`));
+
+        // HTML-escape non-placeholder parts
+        str = str.split(/(\x00\d+\x00)/).map(p => /^\x00\d+\x00$/.test(p) ? p : _esc(p)).join('');
+
+        // Bold italic (*** must come before **)
+        str = str.replace(/\*\*\*(.+?)\*\*\*/gs, '<strong><em>$1</em></strong>');
+        str = str.replace(/\*\*(.+?)\*\*/gs, '<strong>$1</strong>');
+        str = str.replace(/\*([^*\n]+?)\*/g, '<em>$1</em>');
+
+        // Underline (__text__)
+        str = str.replace(/__(.+?)__/gs, '<u>$1</u>');
+
+        // Italic underscore — only when not adjacent to word chars or underscores
+        str = str.replace(/(?<![_\w])_([^_\n]+?)_(?![_\w])/g, '<em>$1</em>');
+
+        // Strikethrough
+        str = str.replace(/~~(.+?)~~/gs, '<s>$1</s>');
+
+        // Spoiler — protect so inner HTML isn't re-processed
+        str = str.replace(/\|\|(.+?)\|\|/gs, (_, c) =>
+            protect(`<span class="msg-spoiler" onclick="this.classList.toggle('revealed')" title="Click to reveal spoiler">${c}</span>`)
+        );
+
+        // Masked links [text](url) — https only
+        str = str.replace(/\[([^\]]+)\]\((https:\/\/[^\s)]+)\)/g,
+            (_, t, u) => protect(`<a href="${_esc(u)}" target="_blank" rel="noopener noreferrer">${t}</a>`)
+        );
+
+        // Emoji shortcodes, URL linkification, @mentions
+        str = parseEmojiShortcodes(str);
+        str = linkifyUrls(str);
+        str = highlightMentions(str);
+
+        return str;
+    }
+
+    // 3. Block-level elements — processed line by line
+    const lines = s.split('\n');
+    const out = [];
+    let i = 0;
+
+    while (i < lines.length) {
+        const ln = lines[i];
+
+        // Blockquote — collect consecutive > lines into one block
+        if (ln.startsWith('> ') || ln === '>') {
+            const qls = [];
+            while (i < lines.length && (lines[i].startsWith('> ') || lines[i] === '>')) {
+                qls.push(lines[i].replace(/^> ?/, ''));
+                i++;
+            }
+            const inner = applyInline(qls.join('\n')).replace(/\n/g, '<br>');
+            out.push(protect(
+                `<div class="msg-blockquote"><div class="msg-bq-bar"></div>` +
+                `<div class="msg-bq-text">${inner}</div></div>`
+            ));
+            continue;
+        }
+
+        // Headers
+        if (ln.startsWith('### ')) { out.push(protect(`<h3 class="msg-h3">${applyInline(ln.slice(4))}</h3>`)); i++; continue; }
+        if (ln.startsWith('## '))  { out.push(protect(`<h2 class="msg-h2">${applyInline(ln.slice(3))}</h2>`)); i++; continue; }
+        if (ln.startsWith('# '))   { out.push(protect(`<h1 class="msg-h1">${applyInline(ln.slice(2))}</h1>`)); i++; continue; }
+
+        // Subtext (-# text)
+        if (ln.startsWith('-# '))  { out.push(protect(`<span class="msg-subtext">${applyInline(ln.slice(3))}</span>`)); i++; continue; }
+
+        // Unordered list (- item or * item)
+        if (/^[*-] /.test(ln)) {
+            const items = [];
+            while (i < lines.length && /^[*-] /.test(lines[i])) {
+                items.push(`<li>${applyInline(lines[i].slice(2))}</li>`);
+                i++;
+            }
+            out.push(protect(`<ul class="msg-list">${items.join('')}</ul>`));
+            continue;
+        }
+
+        // Ordered list (1. 2. etc.)
+        if (/^\d+\. /.test(ln)) {
+            const items = [];
+            while (i < lines.length && /^\d+\. /.test(lines[i])) {
+                items.push(`<li>${applyInline(lines[i].replace(/^\d+\. /, ''))}</li>`);
+                i++;
+            }
+            out.push(protect(`<ol class="msg-list">${items.join('')}</ol>`));
+            continue;
+        }
+
+        // Regular line — apply inline formatting only
+        out.push(applyInline(ln));
+        i++;
+    }
+
+    s = out.join('\n');
+
+    // 4. Remaining newlines to <br>
+    s = s.replace(/\n/g, '<br>');
+
+    // 5. Restore all protected slots
+    s = restore(s);
+
+    return s;
+}
+
 // ── Emoji shortcode rendering ─────────────────────────────────────────────────
 
 function parseEmojiShortcodes(html) {
@@ -78,7 +216,7 @@ function buildMessageHTML(message, prevMessage, { roleColorMap = {}, nicknameMap
         }).join('');
     }
 
-    const messageContent = message.content ? linkifyUrls(highlightMentions(parseEmojiShortcodes(escapeHtml(message.content)))) : '';
+    const messageContent = message.content ? parseMarkdown(message.content) : '';
     const editedTag = message.edited_at ? ' <span class="edited-tag">(edited)</span>' : '';
     const pinIcon = message.is_pinned ? ' <span class="pin-indicator" title="Pinned message">📌</span>' : '';
     const isMentioned = parseMentions(message.content);
@@ -116,6 +254,22 @@ function buildMessageHTML(message, prevMessage, { roleColorMap = {}, nicknameMap
     }
 }
 
+// ── Divider helpers ───────────────────────────────────────────────────────────
+
+function _formatDividerDate(dateStr) {
+    const d = new Date(dateStr);
+    const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const day = d.getDate();
+    const suffix = (day === 1 || day === 21 || day === 31) ? 'st'
+                 : (day === 2 || day === 22)               ? 'nd'
+                 : (day === 3 || day === 23)               ? 'rd' : 'th';
+    return `${months[d.getMonth()]} ${day}${suffix}, ${d.getFullYear()}`;
+}
+
+function _sameDayStr(a, b) {
+    return new Date(a).toDateString() === new Date(b).toDateString();
+}
+
 // ── Full list render (initial load + load-more) ───────────────────────────────
 
 function renderMessages() {
@@ -136,14 +290,32 @@ function renderMessages() {
     const prevHeight = container.scrollHeight;
     const prevTop = container.scrollTop;
 
+    let listHtml = '';
+    let lastDateStr = null;
+    const firstUnreadId = state.firstUnreadMessageId;
+
+    for (let i = 0; i < state.messages.length; i++) {
+        const message = state.messages[i];
+        const prevMessage = i > 0 ? state.messages[i - 1] : null;
+
+        const msgDateStr = new Date(message.created_at).toDateString();
+        if (msgDateStr !== lastDateStr) {
+            lastDateStr = msgDateStr;
+            listHtml += `<div class="msg-divider-date"><span>${_formatDividerDate(message.created_at)}</span></div>`;
+        }
+
+        if (firstUnreadId && message.id === firstUnreadId) {
+            listHtml += `<div class="msg-divider-new" id="newMsgDivider"><span>New Messages</span></div>`;
+        }
+
+        listHtml += buildMessageHTML(message, prevMessage, lookups);
+    }
+
     container.innerHTML =
         (state.hasMoreMessages
             ? '<div class="load-more-spinner" id="loadMoreSpinner">Loading earlier messages...</div>'
             : '<div class="load-more-end" id="loadMoreEnd">Beginning of channel history</div>') +
-        state.messages.map((message, index) => {
-            const prevMessage = index > 0 ? state.messages[index - 1] : null;
-            return buildMessageHTML(message, prevMessage, lookups);
-        }).join('');
+        listHtml;
 
     // Restore scroll position after prepending older messages
     if (prevTop < 200) {
@@ -157,7 +329,7 @@ function renderMessages() {
 
     if (clientHasPermission(CLIENT_PERMS.EMBED_LINKS)) {
         state.messages.forEach(message => {
-            if (!message.content) return;
+            if (!message.content || message.embed_suppressed) return;
             const embedSlot = container.querySelector(`[data-embed-id="${message.id}"]`);
             if (!embedSlot || embedSlot.dataset.embedLoaded) return;
             injectEmbed(message, embedSlot);
@@ -188,6 +360,15 @@ function appendMessage(message) {
 
     const lookups = buildMemberLookups();
     const prevMessage = state.messages[state.messages.length - 2];
+
+    // Date divider if the new message is on a different day
+    if (prevMessage && !_sameDayStr(message.created_at, prevMessage.created_at)) {
+        const dateDivEl = document.createElement('div');
+        dateDivEl.className = 'msg-divider-date';
+        dateDivEl.innerHTML = `<span>${_formatDividerDate(message.created_at)}</span>`;
+        container.appendChild(dateDivEl);
+    }
+
     const temp = document.createElement('div');
     temp.innerHTML = buildMessageHTML(message, prevMessage, lookups).trim();
     const el = temp.firstElementChild;
@@ -195,7 +376,7 @@ function appendMessage(message) {
 
     attachMessageContextMenu(el, message);
 
-    if (clientHasPermission(CLIENT_PERMS.EMBED_LINKS) && message.content) {
+    if (clientHasPermission(CLIENT_PERMS.EMBED_LINKS) && message.content && !message.embed_suppressed) {
         const embedSlot = el.querySelector(`[data-embed-id="${message.id}"]`);
         if (embedSlot) injectEmbed(message, embedSlot);
     }
@@ -286,6 +467,35 @@ function removeMessageEl(messageId) {
     }
 }
 
+// ── Embed suppression ─────────────────────────────────────────────────────────
+
+window.suppressEmbed = async function(messageId) {
+    try {
+        const res = await fetch(`/api/messages/${messageId}/embed`, {
+            method: 'PATCH',
+            credentials: 'include',
+        });
+        if (res.ok) {
+            const msg = state.messages.find(m => m.id === messageId);
+            if (msg) msg.embed_suppressed = true;
+            const slot = document.querySelector(`[data-embed-id="${messageId}"]`);
+            if (slot) { slot.innerHTML = ''; delete slot.dataset.embedLoaded; }
+        }
+    } catch (err) {
+        console.error('suppressEmbed error:', err);
+    }
+};
+
+function _maybeAddEmbedDismiss(slot, message) {
+    if (!state.currentUser || message.user_id !== state.currentUser.id) return;
+    const btn = document.createElement('button');
+    btn.className = 'embed-dismiss-btn';
+    btn.title = 'Remove embed';
+    btn.textContent = '✕';
+    btn.onclick = (e) => { e.stopPropagation(); suppressEmbed(message.id); };
+    slot.appendChild(btn);
+}
+
 // ── Link embed cache & injection ─────────────────────────────────────────────
 const _embedCache = new Map();
 
@@ -303,15 +513,40 @@ async function fetchEmbed(url) {
     }
 }
 
+// Replaces a click-to-play preview card with the live iframe.
+window.playEmbedVideo = function(el) {
+    const src = el.dataset.embedSrc;
+    if (!src) return;
+    const wrapper = document.createElement('div');
+    wrapper.className = 'msg-embed-video-wrapper';
+    wrapper.innerHTML = `<iframe src="${src}" allow="autoplay; accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="eager"></iframe>`;
+    el.replaceWith(wrapper);
+};
+
+function videoPreviewCard(thumbUrl, embedSrc, title, metaText, linkUrl) {
+    const infoHtml = (title || metaText) ? `
+        <div class="msg-embed-video-info">
+            ${title ? `<a class="msg-embed-video-title" href="${escapeHtml(linkUrl)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">${escapeHtml(title)}</a>` : ''}
+            ${metaText ? `<div class="msg-embed-video-meta">${escapeHtml(metaText)}</div>` : ''}
+        </div>` : '';
+    return `
+        <div class="msg-embed-video-preview" data-embed-src="${escapeHtml(embedSrc)}" onclick="playEmbedVideo(this)">
+            <div class="msg-embed-video-thumb">
+                <img src="${escapeHtml(thumbUrl)}" alt="" loading="lazy" onerror="this.closest('.msg-embed-video-thumb').style.background='#111'">
+                <div class="msg-embed-play-btn"></div>
+            </div>
+            ${infoHtml}
+        </div>`;
+}
+
 async function injectEmbed(message, slot) {
+    if (message.embed_suppressed) return;
     slot.dataset.embedLoaded = 'true';
 
-    const urlMatch = message.content.match(/https?:\/\/[^\s<>"]+/);
+    const urlMatch = message.content.match(/https:\/\/[^\s<>"]+/);
     if (!urlMatch) return;
 
     const url = urlMatch[0];
-    const isMedia = /\.(jpg|jpeg|png|gif|webp|mp4|mov|avi|webm)(\?.*)?$/i.test(url);
-    if (isMedia && message.attachments) return;
 
     // ── NexusGuild invite links ────────────────────────────────────────────────
     const inviteMatch = url.match(/\/invite\/([A-Z0-9]{4,12})/i);
@@ -353,20 +588,49 @@ async function injectEmbed(message, slot) {
                         </div>
                     </div>`;
             }
+            _maybeAddEmbedDismiss(slot, message);
         } catch { /* silent */ }
+        return;
+    }
+
+    // ── Direct image / video URLs ─────────────────────────────────────────────
+    const isImageUrl = _IMAGE_URL_RE.test(url);
+    const isVideoUrl = /\.(mp4|webm|mov|ogg)(\?.*)?$/i.test(url);
+
+    // Images are rendered inline by linkifyUrls — skip embed slot
+    if (isImageUrl) return;
+
+    // Skip video if already rendered as an attachment
+    if (isVideoUrl && message.attachments?.length) return;
+
+    if (isVideoUrl) {
+        if (!document.contains(slot)) return;
+        slot.innerHTML = `<video class="msg-embed-direct-video" src="${escapeHtml(url)}" controls preload="metadata"></video>`;
+        _maybeAddEmbedDismiss(slot, message);
         return;
     }
 
     // ── YouTube ────────────────────────────────────────────────────────────────
     const ytMatch = url.match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
     if (ytMatch) {
+        const videoId = ytMatch[1];
+        const isShort = url.includes('/shorts/');
+        const thumbUrl = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+        const embedSrc = `https://www.youtube.com/embed/${videoId}?autoplay=1`;
+
+        let title = '', meta = `YouTube${isShort ? ' Short' : ''}`;
+        try {
+            const res = await fetch(`/api/embed/oembed?url=${encodeURIComponent(url)}`, { credentials: 'include' });
+            if (res.ok) {
+                const d = await res.json();
+                title = d.title || '';
+                if (d.author_name) meta = `YouTube${isShort ? ' Short' : ''} · ${d.author_name}`;
+            }
+        } catch { /* use defaults */ }
+
         if (!document.contains(slot)) return;
-        slot.innerHTML = `
-            <div class="msg-embed-video-wrapper">
-                <iframe src="https://www.youtube.com/embed/${ytMatch[1]}"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowfullscreen loading="lazy"></iframe>
-            </div>`;
+        slot.innerHTML = videoPreviewCard(thumbUrl, embedSrc, title, meta, url);
+        _maybeAddEmbedDismiss(slot, message);
         return;
     }
 
@@ -375,34 +639,88 @@ async function injectEmbed(message, slot) {
 
     const twitchVodMatch = url.match(/twitch\.tv\/videos\/(\d+)/);
     if (twitchVodMatch) {
+        const embedSrc = `https://player.twitch.tv/?video=${twitchVodMatch[1]}&parent=${parent}&autoplay=true`;
+        let title = '', meta = 'Twitch VOD', thumbUrl = '';
+        const ogData = await fetchEmbed(url);
+        if (ogData) {
+            title = ogData.title || '';
+            thumbUrl = ogData.image || '';
+            if (ogData.description) meta = `Twitch VOD · ${ogData.description.slice(0, 80)}`;
+        }
         if (!document.contains(slot)) return;
-        slot.innerHTML = `
-            <div class="msg-embed-video-wrapper">
-                <iframe src="https://player.twitch.tv/?video=${twitchVodMatch[1]}&parent=${parent}"
-                    allowfullscreen loading="lazy"></iframe>
-            </div>`;
+        slot.innerHTML = thumbUrl
+            ? videoPreviewCard(thumbUrl, embedSrc, title, meta, url)
+            : `<div class="msg-embed-video-wrapper"><iframe src="${embedSrc}" allowfullscreen loading="lazy"></iframe></div>`;
+        _maybeAddEmbedDismiss(slot, message);
         return;
     }
 
     const twitchClipMatch = url.match(/(?:clips\.twitch\.tv\/|twitch\.tv\/\w+\/clip\/)([a-zA-Z0-9_-]+)/);
     if (twitchClipMatch) {
+        const embedSrc = `https://clips.twitch.tv/embed?clip=${twitchClipMatch[1]}&parent=${parent}&autoplay=true`;
+        let title = '', meta = 'Twitch Clip', thumbUrl = '';
+        const ogData = await fetchEmbed(url);
+        if (ogData) {
+            title = ogData.title || '';
+            thumbUrl = ogData.image || '';
+            if (ogData.description) meta = `Twitch Clip · ${ogData.description.slice(0, 80)}`;
+        }
         if (!document.contains(slot)) return;
-        slot.innerHTML = `
-            <div class="msg-embed-video-wrapper">
-                <iframe src="https://clips.twitch.tv/embed?clip=${twitchClipMatch[1]}&parent=${parent}"
-                    allowfullscreen loading="lazy"></iframe>
-            </div>`;
+        slot.innerHTML = thumbUrl
+            ? videoPreviewCard(thumbUrl, embedSrc, title, meta, url)
+            : `<div class="msg-embed-video-wrapper"><iframe src="${embedSrc}" allowfullscreen loading="lazy"></iframe></div>`;
+        _maybeAddEmbedDismiss(slot, message);
         return;
     }
 
     const twitchStreamMatch = url.match(/twitch\.tv\/([a-zA-Z0-9_]+)\/?(?:\?.*)?$/);
     if (twitchStreamMatch) {
+        const channel = twitchStreamMatch[1];
+        const embedSrc = `https://player.twitch.tv/?channel=${channel}&parent=${parent}&autoplay=true`;
+        let title = '', meta = 'Twitch', thumbUrl = '';
+        const ogData = await fetchEmbed(url);
+        if (ogData) {
+            title = ogData.title || '';
+            thumbUrl = ogData.image || '';
+            // og:description on Twitch stream pages often contains viewer count and category
+            meta = ogData.description ? ogData.description.slice(0, 80) : 'Twitch';
+        }
+        if (!document.contains(slot)) return;
+        slot.innerHTML = thumbUrl
+            ? videoPreviewCard(thumbUrl, embedSrc, title, meta, url)
+            : `<div class="msg-embed-video-wrapper"><iframe src="${embedSrc}" allowfullscreen loading="lazy"></iframe></div>`;
+        _maybeAddEmbedDismiss(slot, message);
+        return;
+    }
+
+    // ── Spotify ────────────────────────────────────────────────────────────────
+    const spotifyMatch = url.match(/open\.spotify\.com\/(track|album|playlist|artist|episode|show)\/([a-zA-Z0-9]+)/);
+    if (spotifyMatch) {
+        const [, type, id] = spotifyMatch;
+        const isTall = ['album', 'playlist', 'artist', 'show'].includes(type);
         if (!document.contains(slot)) return;
         slot.innerHTML = `
-            <div class="msg-embed-video-wrapper">
-                <iframe src="https://player.twitch.tv/?channel=${twitchStreamMatch[1]}&parent=${parent}"
-                    allowfullscreen loading="lazy"></iframe>
+            <div class="msg-embed-spotify${isTall ? ' tall' : ''}">
+                <iframe src="https://open.spotify.com/embed/${type}/${id}"
+                    allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                    loading="lazy"></iframe>
             </div>`;
+        _maybeAddEmbedDismiss(slot, message);
+        return;
+    }
+
+    // ── SoundCloud ─────────────────────────────────────────────────────────────
+    if (/soundcloud\.com\/[^?]+/.test(url)) {
+        try {
+            const res = await fetch(`/api/embed/oembed?url=${encodeURIComponent(url)}`, { credentials: 'include' });
+            if (res.ok) {
+                const d = await res.json();
+                if (d.html && document.contains(slot)) {
+                    slot.innerHTML = `<div class="msg-embed-soundcloud">${d.html}</div>`;
+                    _maybeAddEmbedDismiss(slot, message);
+                }
+            }
+        } catch { /* silent */ }
         return;
     }
 
@@ -429,6 +747,7 @@ async function injectEmbed(message, slot) {
             ${imgHtml}
         </div>
     `;
+    _maybeAddEmbedDismiss(slot, message);
 }
 
 async function joinFromEmbed(code, btn) {
@@ -458,7 +777,15 @@ async function joinFromEmbed(code, btn) {
 
 async function handleMessageScroll() {
     const container = document.getElementById('messagesContainer');
-    if (!container || !state.hasMoreMessages || state.isLoadingMessages) return;
+    if (!container) return;
+
+    // Clear unread + remove new messages divider when user reaches the bottom
+    const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 80;
+    if (atBottom && state.currentChannel && typeof _clearChannelUnreadIfNeeded === 'function') {
+        _clearChannelUnreadIfNeeded(state.currentChannel.id);
+    }
+
+    if (!state.hasMoreMessages || state.isLoadingMessages) return;
     if (!state.currentChannel) return;
     if (container.scrollTop > 100) return;
 
@@ -643,12 +970,22 @@ function escapeHtml(text) {
     return div.innerHTML.replace(/\n/g, '<br>');
 }
 
+const _IMAGE_URL_RE = /\.(jpg|jpeg|png|gif|webp|avif|svg)(\?[^\s<>"\x00]*)?$/i;
+
 function linkifyUrls(html) {
-    // Wrap bare http(s) URLs in anchor tags. Runs after escapeHtml so the
-    // text is already safe; stops at whitespace or HTML delimiters.
+    // Image URLs become inline <img> (replacing the link text entirely).
+    // All other https:// URLs become clickable anchors.
+    // Stops at whitespace, HTML delimiters, or \x00 (placeholder sentinel).
     return html.replace(
-        /(https?:\/\/[^\s<>"]+)/g,
-        (url) => `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`
+        /(https:\/\/[^\s<>"\x00]+)/g,
+        (url) => {
+            if (_IMAGE_URL_RE.test(url)) {
+                return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="msg-image-link">` +
+                    `<img class="msg-inline-image" src="${url}" alt="" loading="lazy" ` +
+                    `onerror="this.closest('.msg-image-link').style.display='none'"></a>`;
+            }
+            return `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`;
+        }
     );
 }
 

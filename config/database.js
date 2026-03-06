@@ -213,6 +213,9 @@ const initDB = async () => {
         await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_layout TEXT`);
         await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_banner VARCHAR(255)`);
 
+        // Idempotent: embed suppression
+        await client.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS embed_suppressed BOOLEAN DEFAULT FALSE`);
+
         await client.query(`
             CREATE TABLE IF NOT EXISTS pinned_messages (
                 channel_id  VARCHAR(20) REFERENCES channels(id) ON DELETE CASCADE,
@@ -419,6 +422,41 @@ const initDB = async () => {
             )
         `);
 
+        // ── Audit Log ─────────────────────────────────────────────────────────
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS server_audit_log (
+                id          VARCHAR(20) PRIMARY KEY,
+                server_id   VARCHAR(20) REFERENCES servers(id) ON DELETE CASCADE,
+                action      VARCHAR(50) NOT NULL,
+                actor_id    VARCHAR(20) REFERENCES users(id) ON DELETE SET NULL,
+                target_id   VARCHAR(20),
+                target_type VARCHAR(20),
+                changes     JSONB,
+                created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        // ── Webhooks ──────────────────────────────────────────────────────────
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS webhooks (
+                id          VARCHAR(20) PRIMARY KEY,
+                server_id   VARCHAR(20) REFERENCES servers(id) ON DELETE CASCADE,
+                channel_id  VARCHAR(20) REFERENCES channels(id) ON DELETE CASCADE,
+                name        VARCHAR(80) NOT NULL,
+                token       VARCHAR(64) UNIQUE NOT NULL,
+                avatar      VARCHAR(255),
+                created_by  VARCHAR(20) REFERENCES users(id) ON DELETE SET NULL,
+                created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        // Idempotent: webhook message columns
+        await client.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS webhook_id    VARCHAR(20) REFERENCES webhooks(id) ON DELETE SET NULL`);
+        await client.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS display_name  VARCHAR(80)`);
+        await client.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS display_avatar VARCHAR(255)`);
+
         // Seed skill tree nodes (ON CONFLICT DO NOTHING — safe to re-run)
         await client.query(`
             INSERT INTO skill_tree_nodes (id, type, parent_id, tier, name, description, icon, cost, sort_order)
@@ -456,6 +494,9 @@ const initDB = async () => {
         await pool.query('CREATE INDEX IF NOT EXISTS idx_skill_nodes_type     ON skill_tree_nodes(type, tier, sort_order)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_staff_members_user   ON staff_members(user_id)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_cors_origins_origin  ON cors_origins(origin)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_audit_log_server     ON server_audit_log(server_id, created_at DESC)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_webhooks_server      ON webhooks(server_id)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_messages_webhook     ON messages(webhook_id) WHERE webhook_id IS NOT NULL');
 
         log(tags.success, 'Database schema initialized successfully');
     } catch (e) {

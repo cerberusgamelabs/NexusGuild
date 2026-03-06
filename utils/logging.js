@@ -16,7 +16,7 @@ const tags = {
     system: chalk.bold.ansi256(208)('[SYSTEM]'),
 };
 
-// Discord Logging Init
+// Bot Logging Init
 import { Client, GatewayIntentBits } from 'discord.js';
 import dotenv from 'dotenv';
 dotenv.config();
@@ -28,7 +28,7 @@ let logsChannel;
 client.once('ready', async () => {
     const guild = await client.guilds.fetch(process.env.GUILD_ID);
     logsChannel = await guild.channels.fetch(process.env.LOGS_CHANNEL_ID);
-    console.log(`[LOGS] Discord logging ready in channel: ${logsChannel.name}`);
+    console.log(`[LOGS] Bot logging ready in channel: ${logsChannel.name}`);
 });
 
 client.login(process.env.TOKEN);
@@ -63,8 +63,8 @@ function stripAnsiCodes(text) {
     // eslint-disable-next-line no-control-regex
     return text.replace(/\x1b\[[0-9;]*m/g, "");
 }
-let lastDiscordLog = '';
-let lastDiscordLogTime = 0;
+let lastBotLog = '';
+let lastBotLogTime = 0;
 
 // Dual-output logging function
 function log(...args) {
@@ -80,13 +80,13 @@ function log(...args) {
 
     logStream.write(plainText + "\n");
 
-    // New: send to Discord
+    // Send to bot logs channel
     if (logsChannel) {
         let now = Date.now();
-        if (plainText === lastDiscordLog && (now - lastDiscordLogTime) < 60000) return;
+        if (plainText === lastBotLog && (now - lastBotLogTime) < 60000) return;
 
-        lastDiscordLog = plainText;
-        lastDiscordLogTime = now;
+        lastBotLog = plainText;
+        lastBotLogTime = now;
 
         // Make sure message <= 2000 characters
         const MAX_LENGTH = 2000;

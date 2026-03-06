@@ -220,6 +220,15 @@ function attachMessageContextMenu(el, message) {
             if (isOwner) items.push({ label: 'Edit Message', action: 'editMsg' });
             items.push({ label: 'Delete Message', action: 'deleteMsg', danger: true });
         }
+
+        // "Remove Embed" for message author if an embed is currently loaded
+        if (isOwner && !message.embed_suppressed) {
+            const embedSlot = el.querySelector('[data-embed-id]');
+            if (embedSlot && embedSlot.dataset.embedLoaded && embedSlot.children.length > 0) {
+                items.push({ label: 'Remove Embed', action: 'suppressEmbed' });
+            }
+        }
+
         items.push('divider');
         items.push({ label: 'Copy Text', action: 'copyText' });
 
@@ -230,6 +239,7 @@ function attachMessageContextMenu(el, message) {
         ctxMenu._handlers.editMsg = () => startEditMessage(message);
         ctxMenu._handlers.deleteMsg = () => deleteMessage(message);
         ctxMenu._handlers.copyText = () => navigator.clipboard.writeText(message.content);
+        ctxMenu._handlers.suppressEmbed = () => suppressEmbed(message.id);
 
         ctxMenu.show(e.clientX, e.clientY, items);
     });
@@ -584,6 +594,22 @@ async function unpinMessage(message) {
 }
 
 async function showPinsPanel(channelId) {
+    const panel = document.getElementById('pinsSidePanel');
+    const body  = document.getElementById('pinsPanelBody');
+
+    // If already open for same channel, close instead
+    if (panel.classList.contains('open') && panel.dataset.channelId === String(channelId)) {
+        closePinsPanel();
+        return;
+    }
+
+    panel.dataset.channelId = channelId;
+    body.innerHTML = '<div class="pins-loading">Loading...</div>';
+
+    // Open panel first so user sees loading state immediately
+    panel.style.display = 'flex';
+    requestAnimationFrame(() => panel.classList.add('open'));
+
     let pins = [];
     try {
         const res = await fetch(`/api/messages/channels/${channelId}/pins`, { credentials: 'include' });
@@ -591,45 +617,44 @@ async function showPinsPanel(channelId) {
             const d = await res.json();
             pins = d.pins || [];
         } else {
-            showToast('Failed to load pinned messages');
+            body.innerHTML = '<div class="pins-empty">Failed to load pinned messages.</div>';
             return;
         }
     } catch {
-        showToast('Failed to load pinned messages');
+        body.innerHTML = '<div class="pins-empty">Failed to load pinned messages.</div>';
         return;
     }
 
     const canManage = clientHasPermission(CLIENT_PERMS.MANAGE_MESSAGES);
 
-    let html = `<div class="pins-panel">`;
     if (pins.length === 0) {
-        html += `<div class="pins-empty">No pinned messages in this channel.</div>`;
-    } else {
-        pins.forEach(pin => {
-            const content = pin.content
-                ? (pin.content.length > 200 ? pin.content.slice(0, 200) + '…' : pin.content)
-                : '(attachment)';
-            const date = new Date(pin.pinned_at).toLocaleDateString();
-            html += `
-                <div class="pin-item" data-message-id="${pin.id}">
-                    <div class="pin-icon">📌</div>
-                    <div class="pin-body">
-                        <div class="pin-author">${escapeHtml(pin.username)}</div>
-                        <div class="pin-content">${escapeHtml(content)}</div>
-                        <div class="pin-meta">Pinned ${date}${pin.pinned_by_username ? ` by ${escapeHtml(pin.pinned_by_username)}` : ''}</div>
-                    </div>
-                    ${canManage ? `<button class="pin-remove-btn" onclick="unpinFromPanel('${pin.id}', '${channelId}')">✕</button>` : ''}
-                </div>
-            `;
-        });
+        body.innerHTML = '<div class="pins-empty">No pinned messages in this channel.</div>';
+        return;
     }
-    html += `</div>`;
 
-    showModal({
-        title: `📌 Pinned Messages`,
-        customHTML: html,
-        buttons: [{ text: 'Close', style: 'secondary', action: closeModal }]
-    });
+    body.innerHTML = pins.map(pin => {
+        const content = pin.content
+            ? (pin.content.length > 200 ? pin.content.slice(0, 200) + '\u2026' : pin.content)
+            : '(attachment)';
+        const date = new Date(pin.pinned_at).toLocaleDateString();
+        return `
+            <div class="pin-item" data-message-id="${pin.id}">
+                <div class="pin-body">
+                    <div class="pin-author">${escapeHtml(pin.username)}</div>
+                    <div class="pin-content">${escapeHtml(content)}</div>
+                    <div class="pin-meta">Pinned ${date}${pin.pinned_by_username ? ` by ${escapeHtml(pin.pinned_by_username)}` : ''}</div>
+                </div>
+                ${canManage ? `<button class="pin-remove-btn" title="Unpin" onclick="unpinFromPanel('${pin.id}', '${channelId}')">✕</button>` : ''}
+            </div>`;
+    }).join('');
+}
+
+function closePinsPanel() {
+    const panel = document.getElementById('pinsSidePanel');
+    panel.classList.remove('open');
+    panel.addEventListener('transitionend', () => {
+        if (!panel.classList.contains('open')) panel.style.display = 'none';
+    }, { once: true });
 }
 
 async function unpinFromPanel(messageId, channelId) {
@@ -638,9 +663,10 @@ async function unpinFromPanel(messageId, channelId) {
             method: 'DELETE', credentials: 'include'
         });
         if (res.ok) {
-            // Re-open the panel to refresh
-            closeModal();
-            showPinsPanel(channelId);
+            // Close then reopen so showPinsPanel re-fetches
+            const panel = document.getElementById('pinsSidePanel');
+            panel.classList.remove('open');
+            setTimeout(() => showPinsPanel(channelId), 50);
         } else {
             const d = await res.json();
             showToast(d.error || 'Failed to unpin');

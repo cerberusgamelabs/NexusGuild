@@ -408,9 +408,9 @@ function renderDMMessages(prepending = false) {
             prev.sender_id !== msg.sender_id ||
             (new Date(msg.created_at) - new Date(prev.created_at)) > 300000;
 
-        let content = escapeHtmlDM(msg.content);
-        if (typeof parseEmojiShortcodes === 'function') content = parseEmojiShortcodes(content);
-        if (typeof linkifyUrls === 'function') content = linkifyUrls(content);
+        const content = (typeof parseMarkdown === 'function')
+            ? parseMarkdown(msg.content || '')
+            : escapeHtmlDM(msg.content);
         const editedTag = msg.edited_at ? ' <span class="edited-tag">(edited)</span>' : '';
         const ts = (typeof formatTimestamp === 'function')
             ? formatTimestamp(msg.created_at)

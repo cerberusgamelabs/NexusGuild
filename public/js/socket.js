@@ -161,6 +161,13 @@ function initializeSocket() {
         patchMessagePin(data.messageId, false);
     });
 
+    state.socket.on('embed_suppressed', (data) => {
+        const msg = state.messages.find(m => m.id === data.messageId);
+        if (msg) msg.embed_suppressed = true;
+        const slot = document.querySelector(`[data-embed-id="${data.messageId}"]`);
+        if (slot) { slot.innerHTML = ''; delete slot.dataset.embedLoaded; }
+    });
+
     state.socket.on('server_emojis_updated', (data) => {
         if (typeof loadServerEmojis === 'function') loadServerEmojis(data.serverId);
     });

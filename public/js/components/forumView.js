@@ -216,7 +216,7 @@ function _fvMakeMessage(msg, isOpener) {
                     <span class="fv-msg-time">${date}</span>
                     ${isOpener ? '<span class="fv-opener-badge">Original Post</span>' : ''}
                 </div>
-                <div class="fv-msg-content">${msg.content ? highlightMentions(escapeHtml(msg.content)) : ''}</div>
+                <div class="fv-msg-content">${msg.content ? parseMarkdown(msg.content) : ''}</div>
                 ${attachHtml}
             </div>
         </div>`;

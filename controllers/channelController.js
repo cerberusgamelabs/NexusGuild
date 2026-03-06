@@ -6,6 +6,7 @@ import { generateSnowflake } from "#utils/functions";
 import { log, tags } from "#utils/logging";
 import { PermissionHandler, PERMISSIONS } from "../config/permissions.js";
 import { batchResolveChannelPerms } from "../utils/channelPerms.js";
+import { logAuditEvent } from "../utils/audit.js";
 
 // Resolve channelId → serverId and check if userId holds the given permission.
 // Returns { serverId, allowed } or null if the channel doesn't exist.
@@ -141,6 +142,7 @@ class ChannelController {
             );
 
             log(tags.success, `Channel created: "${name}" (${id}) in server ${serverId}`);
+            logAuditEvent(serverId, 'channel_create', req.session.user.id, id, 'channel', { name, type });
 
             const io = req.app.get('io');
             if (io) {
@@ -228,6 +230,7 @@ class ChannelController {
                 });
             }
 
+            logAuditEvent(serverId, 'channel_delete', req.session.user.id, channelId, 'channel', { name: channelName });
             log(tags.warning, `Channel deleted: "${channelName}" [${channelId}]`);
             res.json({ message: 'Channel deleted successfully' });
         } catch (error) {

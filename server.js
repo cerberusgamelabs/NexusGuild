@@ -37,6 +37,8 @@ import forumRoutes from "./routes/forum.js";
 import voiceRoutes from "./routes/voice.js";
 import embedRoutes from "./routes/embed.js";
 import ascensionRoutes from "./routes/ascension.js";
+import auditRoutes from "./routes/audit.js";
+import webhookRoutes from "./routes/webhooks.js";
 import { runExpirationJob } from "./controllers/ascensionController.js";
 
 const app = express();
@@ -64,12 +66,14 @@ const startServer = async () => {
     try {
         await db.initDB();
 
-        // Seed the default origin (untouchable in staff portal)
+        // Seed the default origin (untouchable in staff portal).
+        // Delete any stale default row first so a changed CLIENT_URL takes effect on restart.
         const defaultOrigin = process.env.CLIENT_URL || 'https://www.nexusguild.gg';
+        await db.query(`DELETE FROM cors_origins WHERE is_default = true AND origin != $1`, [defaultOrigin]);
         await db.query(
             `INSERT INTO cors_origins (id, origin, description, is_default)
              VALUES ($1, $2, 'Main NexusGuild client (default)', true)
-             ON CONFLICT (origin) DO NOTHING`,
+             ON CONFLICT (origin) DO UPDATE SET is_default = true`,
             [generateSnowflake(), defaultOrigin]
         );
 
@@ -118,6 +122,8 @@ const startServer = async () => {
         app.use('/api/voice', voiceRoutes);
         app.use('/api/embed', embedRoutes);
         app.use('/api/ascension', ascensionRoutes);
+        app.use('/api/audit', auditRoutes);
+        app.use('/api/webhooks', webhookRoutes);
 
         app.get('/api/health', (req, res) => {
             res.json({ status: 'ok', timestamp: new Date(), uptime: process.uptime() * 1000, memory: process.memoryUsage() });

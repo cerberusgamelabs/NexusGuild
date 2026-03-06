@@ -4,6 +4,7 @@
 import db from "../config/database.js";
 import { generateSnowflake } from "#utils/functions";
 import { log, tags } from "#utils/logging";
+import { logAuditEvent } from "../utils/audit.js";
 
 class RoleController {
     // GET /api/servers/:serverId/roles
@@ -36,6 +37,7 @@ class RoleController {
                 `INSERT INTO roles (id, server_id, name, color, permissions, position) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
                 [id, serverId, name, color, permissions, position]
             );
+            logAuditEvent(serverId, 'role_create', req.session.user.id, id, 'role', { name });
             const io = req.app.get('io');
             io?.to(`server:${serverId}`).emit('role_updated', { serverId });
             res.status(201).json({ role: result.rows[0] });
@@ -65,6 +67,7 @@ class RoleController {
                 [name, color, permissions, roleId, serverId, hoist ?? null, mentionable ?? null]
             );
             if (result.rows.length === 0) return res.status(404).json({ error: 'Role not found' });
+            logAuditEvent(serverId, 'role_update', req.session.user.id, roleId, 'role', { name: result.rows[0].name });
             const io = req.app.get('io');
             io?.to(`server:${serverId}`).emit('role_updated', { serverId });
             res.json({ role: result.rows[0] });
@@ -103,7 +106,9 @@ class RoleController {
             if (check.rows[0]?.name === '@everyone') {
                 return res.status(400).json({ error: 'Cannot delete @everyone role' });
             }
+            const roleName = check.rows[0]?.name;
             await db.query(`DELETE FROM roles WHERE id = $1 AND server_id = $2`, [roleId, serverId]);
+            logAuditEvent(serverId, 'role_delete', req.session.user.id, roleId, 'role', { name: roleName });
             const io = req.app.get('io');
             io?.to(`server:${serverId}`).emit('role_updated', { serverId });
             res.json({ message: 'Role deleted' });
@@ -143,6 +148,7 @@ class RoleController {
                 `INSERT INTO user_roles (user_id, role_id, server_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
                 [memberId, roleId, serverId]
             );
+            logAuditEvent(serverId, 'role_assign', req.session.user.id, memberId, 'user', { role_id: roleId });
             const io = req.app.get('io');
             io?.to(`server:${serverId}`).emit('role_updated', { serverId });
             res.json({ message: 'Role assigned' });
@@ -164,6 +170,7 @@ class RoleController {
                 `DELETE FROM user_roles WHERE user_id = $1 AND role_id = $2 AND server_id = $3`,
                 [memberId, roleId, serverId]
             );
+            logAuditEvent(serverId, 'role_remove', req.session.user.id, memberId, 'user', { role_id: roleId });
             const io = req.app.get('io');
             io?.to(`server:${serverId}`).emit('role_updated', { serverId });
             res.json({ message: 'Role removed' });

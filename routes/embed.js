@@ -6,5 +6,6 @@ const router = express.Router();
 import EmbedController from "../controllers/embedController.js";
 
 router.get('/', EmbedController.getEmbed);
+router.get('/oembed', EmbedController.getOEmbed);
 
 export default router;

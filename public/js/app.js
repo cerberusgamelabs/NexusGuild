@@ -19,7 +19,7 @@ const state = {
     myChannelPerms: {},     // { [channelId]: BigInt } — channel-level resolved perms
 };
 
-// Client-side permission bit values — matches Discord's bit positions exactly
+// Client-side permission bit values
 const CLIENT_PERMS = {
     KICK_MEMBERS:         2n,
     BAN_MEMBERS:          4n,
@@ -396,12 +396,25 @@ async function loadServerChannels(serverId) {
     }
 }
 
+function _clearChannelUnreadIfNeeded(channelId) {
+    if (!channelId) return;
+    if (!state.unread[channelId] && !state.firstUnreadMessageId) return;
+    clearUnread(channelId);
+    fetch(`/api/channels/${channelId}/read`, { method: 'PATCH', credentials: 'include' });
+    state.firstUnreadMessageId = null;
+    const divider = document.getElementById('newMsgDivider');
+    if (divider) divider.remove();
+    renderChannelList(state.channels, state.categories);
+    renderServerList();
+}
+
 function selectChannel(channelId) {
     const channel = state.channels.find(c => c.id === channelId);
     if (!channel) return;
 
-    clearUnread(channelId);
-    fetch(`/api/channels/${channelId}/read`, { method: 'PATCH', credentials: 'include' });
+    // Save unread count to position the "New Messages" divider; defer clearing until scroll-to-bottom
+    state.firstUnreadCount = state.unread[channelId]?.count || 0;
+    state.firstUnreadMessageId = null;
 
     const prevChannelId = state.currentChannel?.id;
     state.currentChannel = channel;
@@ -419,6 +432,9 @@ function selectChannel(channelId) {
                  : channel.type === 'media'        ? '🖼️'
                  : '#';
     document.getElementById('currentChannelName').textContent = `${chIcon} ${channel.name}`;
+
+    // Close pins panel when switching channels
+    if (typeof closePinsPanel === 'function') closePinsPanel();
 
     // Show pins button only for text/announcement channels (not voice/forum/media)
     const pinsBtn = document.getElementById('pinsBtn');
@@ -501,10 +517,46 @@ async function loadChannelMessages(channelId) {
             // Discard if the user navigated away while the fetch was in-flight
             if (state.currentChannel?.id !== channelId) return;
             state.messages = data.messages;
+
+            // Determine first unread message for the "New Messages" divider
+            state.firstUnreadMessageId = null;
+            const unreadCount = state.firstUnreadCount || 0;
+            if (unreadCount > 0 && state.messages.length > 0) {
+                const idx = state.messages.length - unreadCount;
+                if (idx > 0) state.firstUnreadMessageId = state.messages[idx].id;
+            }
+
             renderMessages();
-            scrollToBottom();
+
+            // Scroll to new messages divider if unread, else to bottom and clear
+            if (state.firstUnreadMessageId) {
+                scrollToNewMessageDivider();
+            } else {
+                scrollToBottom();
+                _clearChannelUnreadIfNeeded(channelId);
+            }
+
             await loadMessageReactions(state.messages);
+            if (state.currentChannel?.id !== channelId) return;
+
+            // Check if user reached the bottom while reactions were loading
+            const container = document.getElementById('messagesContainer');
+            const reachedBottom = container &&
+                container.scrollHeight - container.scrollTop - container.clientHeight < 80;
+            if (reachedBottom && state.firstUnreadMessageId) {
+                state.firstUnreadMessageId = null;
+                _clearChannelUnreadIfNeeded(channelId);
+            }
+
             renderMessages();
+
+            // Reapply scroll after second render resets scrollTop
+            if (state.firstUnreadMessageId) {
+                scrollToNewMessageDivider();
+            } else {
+                scrollToBottom();
+            }
+
             // Re-emit join_channel here — by the time both fetches complete the
             // socket is connected, so this is guaranteed to reach the server even
             // if the earlier emit (in selectChannel) was lost during handshake.
@@ -1003,6 +1055,14 @@ function scrollToBottom() {
     requestAnimationFrame(() => {
         const container = document.getElementById('messagesContainer');
         if (container) container.scrollTop = container.scrollHeight;
+    });
+}
+
+function scrollToNewMessageDivider() {
+    requestAnimationFrame(() => {
+        const divider = document.getElementById('newMsgDivider');
+        if (divider) divider.scrollIntoView({ block: 'start', behavior: 'instant' });
+        else scrollToBottom();
     });
 }
 

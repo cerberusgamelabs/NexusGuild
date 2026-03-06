@@ -128,6 +128,8 @@ function switchSettingsTab(tab) {
         case 'invites':  renderInvitesTab(content);  break;
         case 'emojis':     renderEmojisTab(content);      break;
         case 'ascension':  renderAscensionTab(content);   break;
+        case 'audit':      renderAuditTab(content);       break;
+        case 'webhooks':   renderWebhooksTab(content);    break;
         case 'danger':     renderDangerZoneTab(content);  break;
     }
 }
@@ -1088,4 +1090,181 @@ async function _ascDonateTo(serverId) {
         const data = await res.json().catch(() => ({}));
         showToast(data.error || 'Donation failed', true);
     }
+}
+
+// ── Audit Log Tab ─────────────────────────────────────────────────────────────
+
+const _AUDIT_LABELS = {
+    member_kick:    e => `Kicked ${escHtml(e.target_username || e.target_id || 'a member')}`,
+    member_ban:     e => `Banned ${escHtml(e.target_username || e.target_id || 'a member')}${e.changes?.reason ? ` — ${escHtml(e.changes.reason)}` : ''}`,
+    member_unban:   e => `Unbanned ${escHtml(e.target_username || e.target_id || 'a member')}`,
+    channel_create: e => `Created channel <strong>#${escHtml(e.changes?.name || '')}</strong>`,
+    channel_delete: e => `Deleted channel <strong>#${escHtml(e.changes?.name || '')}</strong>`,
+    role_create:    e => `Created role <strong>${escHtml(e.changes?.name || '')}</strong>`,
+    role_delete:    e => `Deleted role <strong>${escHtml(e.changes?.name || '')}</strong>`,
+    role_update:    e => `Updated role <strong>${escHtml(e.changes?.name || '')}</strong>`,
+    role_assign:    e => `Assigned a role to ${escHtml(e.target_username || e.target_id || 'a member')}`,
+    role_remove:    e => `Removed a role from ${escHtml(e.target_username || e.target_id || 'a member')}`,
+    server_update:  e => `Updated server settings`,
+    message_pin:    e => `Pinned a message`,
+    message_unpin:  e => `Unpinned a message`,
+    webhook_create: e => `Created webhook <strong>${escHtml(e.changes?.name || '')}</strong>`,
+    webhook_delete: e => `Deleted webhook <strong>${escHtml(e.changes?.name || '')}</strong>`,
+};
+
+const _AUDIT_ICONS = {
+    member_kick: '🥾', member_ban: '🔨', member_unban: '✅',
+    channel_create: '#️⃣', channel_delete: '🗑️',
+    role_create: '🎭', role_delete: '🗑️', role_update: '✏️', role_assign: '➕', role_remove: '➖',
+    server_update: '⚙️',
+    message_pin: '📌', message_unpin: '📌',
+    webhook_create: '🔗', webhook_delete: '🗑️',
+};
+
+async function renderAuditTab(container) {
+    container.innerHTML = '<div class="settings-loading">Loading audit log…</div>';
+    try {
+        const res = await fetch(`/api/audit/servers/${_settingsServerId}?limit=50`, { credentials: 'include' });
+        if (!res.ok) {
+            const d = await res.json().catch(() => ({}));
+            container.innerHTML = `<h2 class="settings-section-title">Audit Log</h2><p class="settings-empty">${escHtml(d.error || 'Failed to load audit log.')}</p>`;
+            return;
+        }
+        const { entries } = await res.json();
+
+        let html = `<h2 class="settings-section-title">Audit Log</h2>`;
+
+        if (entries.length === 0) {
+            html += `<p class="settings-empty">No audit log entries yet.</p>`;
+        } else {
+            html += `<div class="audit-log-list">`;
+            for (const e of entries) {
+                const labelFn = _AUDIT_LABELS[e.action];
+                const label   = labelFn ? labelFn(e) : escHtml(e.action);
+                const icon    = _AUDIT_ICONS[e.action] || '📋';
+                const actor   = escHtml(e.actor_username || 'System');
+                const when    = new Date(e.created_at).toLocaleString();
+                html += `
+                    <div class="audit-entry">
+                        <div class="audit-entry-icon">${icon}</div>
+                        <div class="audit-entry-body">
+                            <div class="audit-entry-action">
+                                <span class="audit-actor">${actor}</span>
+                                <span class="audit-label"> ${label}</span>
+                            </div>
+                            <div class="audit-entry-time">${when}</div>
+                        </div>
+                    </div>`;
+            }
+            html += `</div>`;
+        }
+
+        container.innerHTML = html;
+    } catch {
+        container.innerHTML = `<h2 class="settings-section-title">Audit Log</h2><p class="settings-empty">Failed to load audit log.</p>`;
+    }
+}
+
+// ── Webhooks Tab ──────────────────────────────────────────────────────────────
+
+async function renderWebhooksTab(container) {
+    container.innerHTML = '<div class="settings-loading">Loading webhooks…</div>';
+
+    const textChannels = (state.channels || []).filter(c => c.type === 'text' || c.type === 'announcement');
+    const channelOptions = textChannels.map(c => `<option value="${c.id}">#${escHtml(c.name)}</option>`).join('');
+
+    try {
+        const res = await fetch(`/api/webhooks/servers/${_settingsServerId}`, { credentials: 'include' });
+        if (!res.ok) {
+            const d = await res.json().catch(() => ({}));
+            container.innerHTML = `<h2 class="settings-section-title">Webhooks</h2><p class="settings-empty">${escHtml(d.error || 'Failed to load.')}</p>`;
+            return;
+        }
+        const { webhooks } = await res.json();
+
+        let html = `<h2 class="settings-section-title">Webhooks</h2>`;
+
+        // Create form
+        html += `
+            <div class="settings-field">
+                <label class="settings-label">Create Webhook</label>
+                <div class="webhook-create-form">
+                    <input class="settings-input" id="webhookName" type="text" placeholder="Webhook name" maxlength="80">
+                    <select class="settings-input" id="webhookChannel">${channelOptions}</select>
+                    <button class="settings-btn" onclick="_createWebhook()">Create</button>
+                </div>
+                <div id="webhookCreateError" class="settings-error" style="display:none;"></div>
+            </div>`;
+
+        // List existing
+        if (webhooks.length === 0) {
+            html += `<p class="settings-empty">No webhooks yet.</p>`;
+        } else {
+            html += `<div class="webhook-list">`;
+            for (const wh of webhooks) {
+                const url = `${window.location.origin}/api/webhooks/${wh.id}/${wh.token}`;
+                html += `
+                    <div class="webhook-item" id="wh-${wh.id}">
+                        <div class="webhook-item-info">
+                            <div class="webhook-item-name">${escHtml(wh.name)}</div>
+                            <div class="webhook-item-channel">#${escHtml(wh.channel_name)}</div>
+                        </div>
+                        <div class="webhook-item-actions">
+                            <button class="settings-btn secondary small" onclick="_copyWebhookUrl('${escHtml(url)}')">Copy URL</button>
+                            <button class="settings-btn danger small" onclick="_deleteWebhook('${wh.id}')">Delete</button>
+                        </div>
+                    </div>`;
+            }
+            html += `</div>`;
+        }
+
+        container.innerHTML = html;
+    } catch {
+        container.innerHTML = `<h2 class="settings-section-title">Webhooks</h2><p class="settings-empty">Failed to load webhooks.</p>`;
+    }
+}
+
+async function _createWebhook() {
+    const name      = document.getElementById('webhookName')?.value.trim();
+    const channelId = document.getElementById('webhookChannel')?.value;
+    const errEl     = document.getElementById('webhookCreateError');
+    if (errEl) errEl.style.display = 'none';
+
+    if (!name) {
+        if (errEl) { errEl.textContent = 'Name is required.'; errEl.style.display = 'block'; }
+        return;
+    }
+
+    const res = await fetch(`/api/webhooks/servers/${_settingsServerId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ name, channelId }),
+    });
+
+    if (res.ok) {
+        showToast('Webhook created!');
+        renderWebhooksTab(document.getElementById('settingsContent'));
+    } else {
+        const d = await res.json().catch(() => ({}));
+        if (errEl) { errEl.textContent = d.error || 'Failed to create webhook.'; errEl.style.display = 'block'; }
+    }
+}
+
+async function _deleteWebhook(webhookId) {
+    const res = await fetch(`/api/webhooks/${webhookId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+    });
+    if (res.ok) {
+        showToast('Webhook deleted.');
+        renderWebhooksTab(document.getElementById('settingsContent'));
+    } else {
+        const d = await res.json().catch(() => ({}));
+        showToast(d.error || 'Failed to delete webhook.', true);
+    }
+}
+
+function _copyWebhookUrl(url) {
+    navigator.clipboard.writeText(url).then(() => showToast('Webhook URL copied!'));
 }

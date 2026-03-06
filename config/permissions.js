@@ -1,7 +1,7 @@
 // Proprietary — Cerberus Game Labs. See LICENSE for terms.
 // File Location: /config/permissions.js
 
-// Permission flags matching Discord's bit positions exactly (skipping TTS at bit 12, Insights at bit 19)
+// Permission flags (bitfield — skipping TTS at bit 12, Insights at bit 19)
 const PERMISSIONS = {
     // ── General ────────────────────────────────────────────────────────────
     CREATE_INSTANT_INVITE:      1n << 0n,   // 1

@@ -124,6 +124,15 @@
                         </button>
                     </div>
                 </div>
+                <!-- ── Pins Side Panel ───────────────────────────────────────── -->
+                <div id="pinsSidePanel" class="side-panel">
+                    <div class="side-panel-header">
+                        <h3 class="side-panel-title">📌 Pinned Messages</h3>
+                        <button class="side-panel-close" onclick="closePinsPanel()">✕</button>
+                    </div>
+                    <div class="side-panel-body" id="pinsPanelBody"></div>
+                </div>
+
                 <div class="input-area">
                     <div class="file-preview" id="filePreview"></div>
                     <div id="typingIndicator" class="typing-indicator" style="display:none;"></div>
@@ -279,6 +288,9 @@
                     <button class="settings-nav-item" data-tab="invites" onclick="switchSettingsTab('invites')">Invites</button>
                     <button class="settings-nav-item" data-tab="emojis"     onclick="switchSettingsTab('emojis')">Emoji</button>
                     <button class="settings-nav-item" data-tab="ascension" onclick="switchSettingsTab('ascension')">Ascension</button>
+                    <div class="settings-nav-divider"></div>
+                    <button class="settings-nav-item" data-tab="audit"    onclick="switchSettingsTab('audit')">Audit Log</button>
+                    <button class="settings-nav-item" data-tab="webhooks" onclick="switchSettingsTab('webhooks')">Webhooks</button>
                     <div class="settings-nav-divider"></div>
                     <button class="settings-nav-item danger" data-tab="danger" onclick="switchSettingsTab('danger')">Danger Zone</button>
                 </nav>
