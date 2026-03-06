@@ -50,6 +50,15 @@ router.delete(
 );
 
 
+// Reorder channels and categories
+router.patch(
+    '/servers/:serverId/reorder',
+    requireAuth,
+    isServerMember,
+    checkPermission(PERMISSIONS.MANAGE_CHANNELS),
+    ChannelController.reorderChannels
+);
+
 // Update channel
 router.patch(
     '/:channelId',

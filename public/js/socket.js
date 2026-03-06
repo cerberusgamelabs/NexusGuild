@@ -133,6 +133,10 @@ function initializeSocket() {
         if (state.currentServer?.id === data.serverId) loadServerChannels(data.serverId);
     });
 
+    state.socket.on('channels_reordered', (data) => {
+        if (state.currentServer?.id === data.serverId) loadServerChannels(data.serverId);
+    });
+
     state.socket.on('permissions_updated', async ({ serverId }) => {
         if (state.currentServer && state.currentServer.id === serverId) {
             await loadServerChannels(serverId);

@@ -318,6 +318,43 @@ class ChannelController {
         }
     }
 
+    static async reorderChannels(req, res) {
+        try {
+            const { serverId } = req.params;
+            const { channels = [], categories = [] } = req.body;
+
+            const client = await db.pool.connect();
+            try {
+                await client.query('BEGIN');
+                for (const ch of channels) {
+                    await client.query(
+                        `UPDATE channels SET position = $1, category_id = $2 WHERE id = $3 AND server_id = $4`,
+                        [ch.position, ch.categoryId ?? null, ch.id, serverId]
+                    );
+                }
+                for (const cat of categories) {
+                    await client.query(
+                        `UPDATE categories SET position = $1 WHERE id = $2 AND server_id = $3`,
+                        [cat.position, cat.id, serverId]
+                    );
+                }
+                await client.query('COMMIT');
+            } catch (err) {
+                await client.query('ROLLBACK');
+                throw err;
+            } finally {
+                client.release();
+            }
+
+            const io = req.app.get('io');
+            if (io) io.to(`server:${serverId}`).emit('channels_reordered', { serverId });
+
+            res.json({ ok: true });
+        } catch (error) {
+            log(tags.error, 'Reorder channels error:', error);
+            res.status(500).json({ error: 'Failed to reorder channels' });
+        }
+    }
 }
 
 export default ChannelController;

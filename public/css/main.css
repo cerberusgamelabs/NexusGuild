@@ -272,6 +272,41 @@ body {
     text-transform: uppercase;
     cursor: pointer;
     padding: 5px;
+    display: flex;
+    align-items: center;
+}
+
+.drag-handle {
+    opacity: 0;
+    cursor: grab;
+    padding: 0 4px;
+    color: #888;
+    font-size: 14px;
+    transition: opacity 0.1s;
+    user-select: none;
+    flex-shrink: 0;
+    line-height: 1;
+}
+
+.channel-button:hover .drag-handle,
+.channel-category:hover > .drag-handle {
+    opacity: 0.5;
+}
+
+.drag-handle:hover {
+    opacity: 1 !important;
+}
+
+.drag-ghost {
+    opacity: 0.4;
+}
+
+.drag-drop-indicator {
+    height: 2px;
+    background: var(--accent, #5865f2);
+    border-radius: 1px;
+    margin: 1px 4px;
+    pointer-events: none;
 }
 
 .channel-button {
@@ -2994,10 +3029,78 @@ a.msg-image-link {
     border-radius: 8px;
     gap: 12px;
 }
+.webhook-item-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.webhook-avatar-preview {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+.webhook-avatar-placeholder {
+    background: #3c3f45;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+}
 .webhook-item-name { font-size: 14px; font-weight: 600; color: #f2f3f5; }
 .webhook-item-channel { font-size: 12px; color: #72767d; margin-top: 2px; }
-.webhook-item-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.webhook-item-actions { display: flex; gap: 8px; flex-shrink: 0; margin-left: auto; }
 .settings-btn.small { padding: 4px 10px; font-size: 12px; }
 .settings-btn.danger { background: #f23f43; }
 .settings-btn.danger:hover { background: #da3034; }
+
+.webhook-edit-form {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #3a3d44;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.webhook-item.editing { background: #2e3035; }
+.webhook-edit-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.webhook-edit-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #b5bac1;
+}
+.webhook-url-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+.webhook-url-input {
+    flex: 1;
+    font-family: monospace;
+    font-size: 12px;
+    color: #949ba4;
+    cursor: text;
+}
+.webhook-edit-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.webhook-edit-error {
+    font-size: 13px;
+    color: #f23f43;
+}
+.settings-divider {
+    border: none;
+    border-top: 1px solid #3a3d44;
+    margin: 16px 0;
+}
 
