@@ -433,8 +433,10 @@ function selectChannel(channelId) {
                  : '#';
     document.getElementById('currentChannelName').textContent = `${chIcon} ${channel.name}`;
 
-    // Close pins panel when switching channels
+    // Close side panels and clear reply when switching channels
     if (typeof closePinsPanel === 'function') closePinsPanel();
+    if (typeof closeThreadPanel === 'function') closeThreadPanel();
+    clearReply();
 
     // Show pins button only for text/announcement channels (not voice/forum/media)
     const pinsBtn = document.getElementById('pinsBtn');
@@ -932,6 +934,31 @@ function removeFile(index) {
     renderFilePreview();
 }
 
+// ── Reply state ──────────────────────────────────────────────────────────────
+let replyTo = null;
+
+function setReply(messageId, username, content) {
+    replyTo = { id: messageId, username, content };
+    document.getElementById('replyBarName').textContent = username;
+    document.getElementById('replyBarPreview').textContent = content?.slice(0, 80) || '';
+    document.getElementById('replyBar').style.display = 'flex';
+    document.getElementById('messageInput').focus();
+}
+
+function clearReply() {
+    replyTo = null;
+    const bar = document.getElementById('replyBar');
+    if (bar) bar.style.display = 'none';
+}
+
+function scrollToMessage(messageId) {
+    const el = document.querySelector(`[data-message-id="${messageId}"]`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.add('highlight-flash');
+    setTimeout(() => el.classList.remove('highlight-flash'), 2000);
+}
+
 async function sendMessage() {
     requestNotificationPermission();
     const input = document.getElementById('messageInput');
@@ -943,6 +970,7 @@ async function sendMessage() {
     try {
         const formData = new FormData();
         if (content) formData.append('content', content);
+        if (replyTo) formData.append('replyToId', replyTo.id);
 
         selectedFiles.forEach(file => {
             formData.append('files', file);
@@ -962,6 +990,7 @@ async function sendMessage() {
             selectedFiles = [];
             renderFilePreview();
             document.getElementById('fileInput').value = '';
+            clearReply();
         } else {
             const data = await response.json();
             alert(data.error || 'Failed to send message');

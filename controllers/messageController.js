@@ -40,7 +40,7 @@ class MessageController {
             const { limit = 50, before } = req.query;
 
             // Channel-level VIEW_CHANNEL + READ_MESSAGE_HISTORY check
-            const chanRes = await db.query('SELECT server_id FROM channels WHERE id = $1', [channelId]);
+            const chanRes = await db.query('SELECT server_id, type FROM channels WHERE id = $1', [channelId]);
             if (chanRes.rows.length > 0) {
                 const perms = await resolveChannelPerms(userId, chanRes.rows[0].server_id, channelId);
                 if (!PermissionHandler.hasPermission(perms, PERMISSIONS.VIEW_CHANNEL) ||
@@ -49,15 +49,42 @@ class MessageController {
                 }
             }
 
+            // Private thread: require membership
+            if (chanRes.rows[0]?.type === 'private_thread') {
+                const memberCheck = await db.query(
+                    'SELECT 1 FROM thread_members WHERE thread_id = $1 AND user_id = $2',
+                    [channelId, userId]
+                );
+                if (!memberCheck.rows.length) {
+                    return res.status(403).json({ error: 'Not a member of this private thread' });
+                }
+            }
+
             let query = `
                 SELECT m.*,
-                       COALESCE(m.display_name, u.username)   AS username,
-                       COALESCE(m.display_avatar, u.avatar)   AS avatar,
-                       (pm.message_id IS NOT NULL)             AS is_pinned
+                       COALESCE(m.display_name, u.username)      AS username,
+                       COALESCE(m.display_avatar, u.avatar)      AS avatar,
+                       (pm.message_id IS NOT NULL)                AS is_pinned,
+                       rm.content                                 AS reply_to_content,
+                       COALESCE(rm.display_name, ru.username)     AS reply_to_username,
+                       rm.user_id                                 AS reply_to_user_id,
+                       thr.thread_channel_id,
+                       thr.thread_reply_count
                 FROM messages m
                 LEFT JOIN users u ON m.user_id = u.id
                 LEFT JOIN pinned_messages pm
                     ON pm.message_id = m.id AND pm.channel_id = m.channel_id
+                LEFT JOIN messages rm ON rm.id = m.reply_to_id
+                LEFT JOIN users ru ON ru.id = rm.user_id
+                LEFT JOIN LATERAL (
+                    SELECT c.id AS thread_channel_id,
+                           COUNT(tm.id)::int AS thread_reply_count
+                    FROM channels c
+                    LEFT JOIN messages tm ON tm.channel_id = c.id
+                    WHERE c.parent_message_id = m.id
+                    GROUP BY c.id
+                    LIMIT 1
+                ) thr ON true
                 WHERE m.channel_id = $1
             `;
             const params = [channelId];
@@ -81,7 +108,7 @@ class MessageController {
     static async createMessage(req, res) {
         try {
             const { channelId } = req.params;
-            const { content } = req.body;
+            const { content, replyToId } = req.body;
             const userId = req.session.user.id;
 
             // Handle file attachments from multer
@@ -102,7 +129,7 @@ class MessageController {
             }
 
             // Channel-level permission checks (SEND_MESSAGES + MENTION_EVERYONE)
-            const chanRes = await db.query('SELECT server_id FROM channels WHERE id = $1', [channelId]);
+            const chanRes = await db.query('SELECT server_id, type FROM channels WHERE id = $1', [channelId]);
             if (chanRes.rows.length > 0) {
                 const chPerms = await resolveChannelPerms(userId, chanRes.rows[0].server_id, channelId);
                 if (!PermissionHandler.hasPermission(chPerms, PERMISSIONS.SEND_MESSAGES)) {
@@ -114,24 +141,45 @@ class MessageController {
                 }
             }
 
+            // Private thread: require membership
+            if (chanRes.rows[0]?.type === 'private_thread') {
+                const memberCheck = await db.query(
+                    'SELECT 1 FROM thread_members WHERE thread_id = $1 AND user_id = $2',
+                    [channelId, userId]
+                );
+                if (!memberCheck.rows.length) {
+                    return res.status(403).json({ error: 'Not a member of this private thread' });
+                }
+            }
+
             const id = generateSnowflake();
 
             const result = await db.query(
-                `INSERT INTO messages (id, channel_id, user_id, content, attachments)
-                 VALUES ($1, $2, $3, $4, $5)
+                `INSERT INTO messages (id, channel_id, user_id, content, attachments, reply_to_id)
+                 VALUES ($1, $2, $3, $4, $5, $6)
                  RETURNING *`,
-                [id, channelId, userId, content || '', attachments ? JSON.stringify(attachments) : null]
+                [id, channelId, userId, content || '', attachments ? JSON.stringify(attachments) : null, replyToId || null]
             );
 
-            const userResult = await db.query(
-                'SELECT username, avatar FROM users WHERE id = $1',
-                [userId]
-            );
+            const [userResult, replyResult] = await Promise.all([
+                db.query('SELECT username, avatar FROM users WHERE id = $1', [userId]),
+                replyToId ? db.query(
+                    `SELECT m.content, m.display_name, m.user_id, u.username
+                     FROM messages m LEFT JOIN users u ON u.id = m.user_id
+                     WHERE m.id = $1`, [replyToId]
+                ) : Promise.resolve({ rows: [] }),
+            ]);
 
+            const replyRow = replyResult.rows[0];
             const message = {
                 ...result.rows[0],
                 username: userResult.rows[0].username,
-                avatar: userResult.rows[0].avatar
+                avatar: userResult.rows[0].avatar,
+                reply_to_content:  replyRow?.content  ?? null,
+                reply_to_username: replyRow?.display_name ?? replyRow?.username ?? null,
+                reply_to_user_id:  replyRow?.user_id  ?? null,
+                thread_channel_id: null,
+                thread_reply_count: 0,
             };
 
             const io = req.app.get('io');

@@ -133,7 +133,41 @@
                     <div class="side-panel-body" id="pinsPanelBody"></div>
                 </div>
 
+                <div id="threadSidePanel" class="side-panel" style="display:none;">
+                    <div class="side-panel-header">
+                        <div>
+                            <h3 class="side-panel-title">🧵 Thread</h3>
+                            <div class="thread-panel-name" id="threadPanelName"></div>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:4px;">
+                            <button id="threadDeleteBtn" class="side-panel-close" title="Delete thread" onclick="deleteThread()" style="display:none;">🗑</button>
+                            <button class="side-panel-close" onclick="closeThreadPanel()">✕</button>
+                        </div>
+                    </div>
+                    <div class="side-panel-body" id="threadPanelBody"></div>
+                    <div class="thread-panel-input">
+                        <div id="threadReplyBar" class="reply-bar" style="display:none;">
+                            <div class="reply-bar-content">
+                                <span class="reply-bar-label">Replying to <strong id="threadReplyBarName"></strong></span>
+                                <span class="reply-bar-preview" id="threadReplyBarPreview"></span>
+                            </div>
+                            <button class="reply-bar-close" onclick="clearThreadReply()">✕</button>
+                        </div>
+                        <div class="thread-input-row">
+                            <textarea id="threadMessageInput" placeholder="Reply in thread..." rows="1" onkeydown="handleThreadInput(event)" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'"></textarea>
+                            <button onclick="sendThreadMessage()">Send</button>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="input-area">
+                    <div id="replyBar" class="reply-bar" style="display:none;">
+                        <div class="reply-bar-content">
+                            <span class="reply-bar-label">Replying to <strong id="replyBarName"></strong></span>
+                            <span class="reply-bar-preview" id="replyBarPreview"></span>
+                        </div>
+                        <button class="reply-bar-close" onclick="clearReply()">✕</button>
+                    </div>
                     <div class="file-preview" id="filePreview"></div>
                     <div id="typingIndicator" class="typing-indicator" style="display:none;"></div>
                     <div class="input-bar">
@@ -313,6 +347,7 @@
     <script src="/js/components/serverList.js"></script>
     <script src="/js/components/channelList.js"></script>
     <script src="/js/components/messageList.js"></script>
+    <script src="/js/components/threadPanel.js"></script>
     <script src="/js/components/memberList.js"></script>
     <script src="/js/components/voicePanel.js"></script>
     <script src="/js/components/emojiPicker.js"></script>

@@ -181,9 +181,11 @@ function buildMemberLookups() {
 }
 
 function buildMessageHTML(message, prevMessage, { roleColorMap = {}, nicknameMap = {}, avatarMap = {} } = {}) {
+    // Always show header when replying — reply reference breaks visual grouping
     const showHeader = !prevMessage ||
         prevMessage.user_id !== message.user_id ||
-        (new Date(message.created_at) - new Date(prevMessage.created_at)) > 300000;
+        (new Date(message.created_at) - new Date(prevMessage.created_at)) > 300000 ||
+        !!message.reply_to_id;
 
     let attachmentsHtml = '';
     if (message.attachments) {
@@ -222,6 +224,20 @@ function buildMessageHTML(message, prevMessage, { roleColorMap = {}, nicknameMap
     const isMentioned = parseMentions(message.content);
     const reactionsHTML = message.reactions ? renderReactions(message.reactions, message.id) : '';
 
+    // Reply reference
+    const replyRef = message.reply_to_id ? `
+        <div class="reply-reference" onclick="scrollToMessage('${message.reply_to_id}')">
+            <span class="reply-ref-bar"></span>
+            <span class="reply-ref-author">${_esc(message.reply_to_username || 'Unknown')}</span>
+            <span class="reply-ref-content">${_esc((message.reply_to_content || '').slice(0, 100))}</span>
+        </div>` : '';
+
+    // Thread indicator
+    const threadIndicator = message.thread_channel_id ? `
+        <div class="thread-indicator" data-thread-id="${message.thread_channel_id}" data-message-id="${message.id}" onclick="handleThreadIndicatorClick(this)">
+            🧵 <span>${message.thread_reply_count || 0} repl${message.thread_reply_count === 1 ? 'y' : 'ies'}</span>
+        </div>` : '';
+
     const authorColor = roleColorMap[message.user_id] ? ` style="color:${roleColorMap[message.user_id]}"` : '';
     const authorName = nicknameMap[message.user_id] || message.username;
     const authorAvatar = avatarMap[message.user_id]
@@ -231,6 +247,7 @@ function buildMessageHTML(message, prevMessage, { roleColorMap = {}, nicknameMap
     if (showHeader) {
         return `
         <div class="message${isMentioned ? ' mention-highlight' : ''}${message.is_pinned ? ' pinned-message' : ''}" data-message-id="${message.id}">
+          ${replyRef}
           <div class="message-header">
             ${authorAvatar}
             <span class="message-author"${authorColor} onclick="openProfileModal('${message.user_id}')" style="cursor:pointer">${authorName}</span>
@@ -241,6 +258,7 @@ function buildMessageHTML(message, prevMessage, { roleColorMap = {}, nicknameMap
           ${attachmentsHtml}
           <div class="msg-embeds" data-embed-id="${message.id}"></div>
           ${reactionsHTML}
+          ${threadIndicator}
         </div>`;
     } else {
         return `
@@ -250,6 +268,7 @@ function buildMessageHTML(message, prevMessage, { roleColorMap = {}, nicknameMap
           ${attachmentsHtml ? `<div style="margin-left:48px;">${attachmentsHtml}</div>` : ''}
           <div class="msg-embeds" data-embed-id="${message.id}" style="margin-left:48px;"></div>
           ${reactionsHTML ? `<div style="margin-left:48px;">${reactionsHTML}</div>` : ''}
+          ${threadIndicator ? `<div style="margin-left:48px;">${threadIndicator}</div>` : ''}
         </div>`;
     }
 }

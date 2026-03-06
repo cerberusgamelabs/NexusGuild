@@ -20,6 +20,8 @@ function initializeSocket() {
             state.messages.push(message);
             appendMessage(message);
         }
+        // Forward to thread panel if it's for the open thread
+        if (typeof onThreadMessageCreated === 'function') onThreadMessageCreated(message);
     });
 
     state.socket.on('message_updated', (message) => {
@@ -28,6 +30,7 @@ function initializeSocket() {
 
     state.socket.on('message_deleted', (data) => {
         removeMessageEl(data.messageId);
+        if (typeof onThreadMessageDeleted === 'function') onThreadMessageDeleted(data.messageId);
     });
 
     // -- Channel notifications (unread tracking) ---------------------------
@@ -108,6 +111,11 @@ function initializeSocket() {
     });
 
     state.socket.on('channel_deleted', (data) => {
+        // Capture before onThreadChannelDeleted clears threadState
+        const wasThread = typeof threadState !== 'undefined' && threadState.threadId === data.channelId;
+        if (typeof onThreadChannelDeleted === 'function') onThreadChannelDeleted(data.channelId);
+        // Threads don't appear in the channel list — skip reload if it was a thread deletion
+        if (wasThread) return;
         if (state.currentServer && data.serverId === state.currentServer.id) {
             // If the deleted channel is the current one, switch to first available
             if (state.currentChannel && state.currentChannel.id === data.channelId) {
@@ -135,6 +143,21 @@ function initializeSocket() {
 
     state.socket.on('channels_reordered', (data) => {
         if (state.currentServer?.id === data.serverId) loadServerChannels(data.serverId);
+    });
+
+    state.socket.on('thread_created', (data) => {
+        if (state.currentChannel?.id !== data.parentChannelId) return;
+        const msgEl = document.querySelector(`[data-message-id="${data.messageId}"]`);
+        if (!msgEl) return;
+        // Only inject if no indicator already exists for this message
+        if (msgEl.querySelector('.thread-indicator')) return;
+        const indicator = document.createElement('div');
+        indicator.className = 'thread-indicator';
+        indicator.dataset.threadId  = data.thread.id;
+        indicator.dataset.messageId = data.messageId;
+        indicator.innerHTML = '🧵 <span>0 replies</span>';
+        indicator.addEventListener('click', () => handleThreadIndicatorClick(indicator));
+        msgEl.appendChild(indicator);
     });
 
     state.socket.on('permissions_updated', async ({ serverId }) => {

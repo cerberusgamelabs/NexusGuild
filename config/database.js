@@ -457,6 +457,19 @@ const initDB = async () => {
         await client.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS display_name  VARCHAR(80)`);
         await client.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS display_avatar VARCHAR(255)`);
 
+        // Idempotent: replies + threads
+        await client.query(`ALTER TABLE messages  ADD COLUMN IF NOT EXISTS reply_to_id        VARCHAR(20) REFERENCES messages(id)  ON DELETE SET NULL`);
+        await client.query(`ALTER TABLE channels  ADD COLUMN IF NOT EXISTS parent_message_id  VARCHAR(20) REFERENCES messages(id)  ON DELETE CASCADE`);
+        await client.query(`ALTER TABLE channels  ADD COLUMN IF NOT EXISTS is_private         BOOLEAN DEFAULT FALSE`);
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS thread_members (
+                thread_id  VARCHAR(20) REFERENCES channels(id)  ON DELETE CASCADE,
+                user_id    VARCHAR(20) REFERENCES users(id)     ON DELETE CASCADE,
+                added_at   TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                PRIMARY KEY (thread_id, user_id)
+            )
+        `);
+
         // Seed skill tree nodes (ON CONFLICT DO NOTHING — safe to re-run)
         await client.query(`
             INSERT INTO skill_tree_nodes (id, type, parent_id, tier, name, description, icon, cost, sort_order)
@@ -496,7 +509,10 @@ const initDB = async () => {
         await pool.query('CREATE INDEX IF NOT EXISTS idx_cors_origins_origin  ON cors_origins(origin)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_audit_log_server     ON server_audit_log(server_id, created_at DESC)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_webhooks_server      ON webhooks(server_id)');
-        await pool.query('CREATE INDEX IF NOT EXISTS idx_messages_webhook     ON messages(webhook_id) WHERE webhook_id IS NOT NULL');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_messages_webhook     ON messages(webhook_id)          WHERE webhook_id IS NOT NULL');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_messages_reply_to   ON messages(reply_to_id)         WHERE reply_to_id IS NOT NULL');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_channels_parent_msg ON channels(parent_message_id)   WHERE parent_message_id IS NOT NULL');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_thread_members      ON thread_members(thread_id)');
 
         log(tags.success, 'Database schema initialized successfully');
     } catch (e) {

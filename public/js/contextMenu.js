@@ -204,6 +204,7 @@ function attachMessageContextMenu(el, message) {
         const canManageMessages = clientHasPermission(CLIENT_PERMS.MANAGE_MESSAGES);
         const items = [];
 
+        items.push({ label: '↩ Reply', action: 'reply' });
         items.push({ label: 'View Profile', action: 'viewProfile' });
         items.push('divider');
         items.push({ label: 'Add Reaction', action: 'addReaction' });
@@ -221,6 +222,13 @@ function attachMessageContextMenu(el, message) {
             items.push({ label: 'Delete Message', action: 'deleteMsg', danger: true });
         }
 
+        // Thread creation — text/announcement channels only, not inside existing threads
+        const chType = state.currentChannel?.type;
+        if (['text', 'announcement'].includes(chType) && clientHasPermission(CLIENT_PERMS.SEND_MESSAGES) && !el.closest('#threadSidePanel')) {
+            items.push('divider');
+            items.push({ label: '🧵 Create Thread', action: 'createThread' });
+        }
+
         // "Remove Embed" for message author if an embed is currently loaded
         if (isOwner && !message.embed_suppressed) {
             const embedSlot = el.querySelector('[data-embed-id]');
@@ -232,6 +240,14 @@ function attachMessageContextMenu(el, message) {
         items.push('divider');
         items.push({ label: 'Copy Text', action: 'copyText' });
 
+        const inThreadPanel = !!el.closest('#threadSidePanel');
+        ctxMenu._handlers.reply = () => {
+            if (inThreadPanel) {
+                setThreadReply(message.id, message.username, message.content);
+            } else {
+                setReply(message.id, message.username, message.content);
+            }
+        };
         ctxMenu._handlers.viewProfile = () => openProfileModal(message.user_id);
         ctxMenu._handlers.addReaction = () => showReactionModal(message.id, null, e.clientX, e.clientY);
         ctxMenu._handlers.pinMsg = () => pinMessage(message);
@@ -240,6 +256,7 @@ function attachMessageContextMenu(el, message) {
         ctxMenu._handlers.deleteMsg = () => deleteMessage(message);
         ctxMenu._handlers.copyText = () => navigator.clipboard.writeText(message.content);
         ctxMenu._handlers.suppressEmbed = () => suppressEmbed(message.id);
+        ctxMenu._handlers.createThread = () => promptCreateThread(message.id);
 
         ctxMenu.show(e.clientX, e.clientY, items);
     });
@@ -258,6 +275,42 @@ function attachCategoryContextMenu(el, category) {
             { label: 'Rename Category', action: 'renameCategory' },
             { label: 'Delete Category', action: 'deleteCategory', danger: true }
         ]);
+    });
+}
+
+function promptCreateThread(messageId) {
+    async function doCreate() {
+        const name = getModalInputValue().trim();
+        if (!name) { showModalError('Thread name is required.'); return; }
+        const isPrivate = document.getElementById('threadPrivateCheck')?.checked || false;
+        const res = await fetch(`/api/messages/${messageId}/thread`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ name, isPrivate }),
+        });
+        if (res.ok) {
+            const data = await res.json();
+            closeModal();
+            openThreadPanel(data.thread, messageId);
+        } else {
+            const d = await res.json();
+            showModalError(d.error || 'Failed to create thread.');
+        }
+    }
+    showModal({
+        title: '🧵 Create Thread',
+        inputType: 'text',
+        inputPlaceholder: 'Thread name...',
+        customHTML: `
+            <label style="display:flex;align-items:center;gap:8px;margin-top:10px;cursor:pointer;color:#b5bac1;font-size:14px;">
+                <input type="checkbox" id="threadPrivateCheck"> Make private
+            </label>`,
+        buttons: [
+            { text: 'Cancel', style: 'secondary', action: closeModal },
+            { text: 'Create Thread', style: 'primary', action: doCreate },
+        ],
+        onEnter: doCreate,
     });
 }
 
