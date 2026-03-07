@@ -176,6 +176,9 @@ function showDashboard() {
     document.getElementById('topbarUsername').textContent = state.user.username;
 
     // Show role-gated nav items
+    if (roleAtLeast('moderator')) {
+        document.querySelectorAll('.nav-moderator-only').forEach(el => el.style.display = 'flex');
+    }
     if (roleAtLeast('superadmin')) {
         document.querySelectorAll('.nav-superadmin-only').forEach(el => el.style.display = 'flex');
     }
@@ -201,6 +204,7 @@ const TAB_RENDERERS = {
     servers:   () => renderServers(1, ''),
     ascension: () => renderAscension(),
     audit:     () => renderAudit(1),
+    inbox:     () => renderInbox(1),
     cors:      () => renderCors(),
     staff:     () => renderStaff()
 };
@@ -837,6 +841,107 @@ function removeCorsOrigin(id, origin) {
         if (!res?.ok) { toast(res?.data?.error || 'Failed to remove origin.', true); return; }
         toast('Origin removed. Takes effect within 60 seconds.');
         renderCors();
+    });
+}
+
+/* ─── Inbox ─────────────────────────────────────────────────────────────── */
+
+async function renderInbox(page = 1) {
+    const res = await api('GET', `/inbox?page=${page}`);
+    if (!res?.ok) { setContent('<div class="loading">Failed to load inbox.</div>'); return; }
+    const { emails, total } = res.data;
+
+    const canDelete = roleAtLeast('superadmin');
+
+    const rows = emails.map(e => `
+        <tr class="${e.is_read ? '' : 'inbox-unread'}">
+            <td class="cell-muted" style="white-space:nowrap">${fmtDate(e.received_at)}</td>
+            <td>${escHtml(e.from_address)}</td>
+            <td>${escHtml(e.subject)}</td>
+            <td>${e.is_read
+                ? `<span class="cell-muted">Read${e.read_by_username ? ' by ' + escHtml(e.read_by_username) : ''}</span>`
+                : '<span style="color:var(--primary);font-weight:600">Unread</span>'}</td>
+            <td>
+                <div class="actions-cell">
+                    <button class="btn btn-ghost btn-sm" onclick="renderEmailDetail('${escHtml(e.id)}')">Open</button>
+                    ${canDelete ? `<button class="btn btn-danger btn-sm" onclick="deleteEmail('${escHtml(e.id)}')">Delete</button>` : ''}
+                </div>
+            </td>
+        </tr>
+    `).join('');
+
+    const pagFn = `function(p){ renderInbox(p) }`;
+
+    setContent(`
+        <div class="section-header">
+            <h2>Inbox</h2>
+            <span class="cell-muted" style="font-size:13px">${fmtNum(total)} total</span>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Received</th><th>From</th><th>Subject</th><th>Status</th><th>Actions</th></tr></thead>
+                <tbody>${rows || '<tr><td colspan="5" class="empty-state">No emails yet.</td></tr>'}</tbody>
+            </table>
+        </div>
+        ${paginationHtml(page, total, 50, pagFn)}
+    `);
+}
+
+async function renderEmailDetail(id) {
+    const res = await api('GET', `/inbox/${id}`);
+    if (!res?.ok) { toast('Failed to load email.', true); return; }
+    const { email } = res.data;
+
+    const canDelete = roleAtLeast('superadmin');
+
+    // Render HTML body in a sandboxed iframe
+    const iframeSrc = email.body_html
+        ? `data:text/html;charset=utf-8,${encodeURIComponent(email.body_html)}`
+        : null;
+
+    setContent(`
+        <span class="back-link" onclick="renderInbox(1)">← Back to Inbox</span>
+        <div class="detail-card">
+            <div class="detail-grid">
+                <span class="detail-label">From</span><span class="detail-value">${escHtml(email.from_address)}</span>
+                <span class="detail-label">To</span><span class="detail-value">${escHtml(email.to_address || '—')}</span>
+                <span class="detail-label">Subject</span><span class="detail-value"><strong>${escHtml(email.subject)}</strong></span>
+                <span class="detail-label">Received</span><span class="detail-value">${fmtDate(email.received_at)}</span>
+                ${email.read_by_username ? `<span class="detail-label">Read by</span><span class="detail-value">${escHtml(email.read_by_username)} at ${fmtDate(email.read_at)}</span>` : ''}
+            </div>
+            <div class="detail-actions">
+                <button class="btn btn-primary" onclick="replyToEmail('${escHtml(email.id)}', '${escHtml(email.subject)}')">Reply</button>
+                ${canDelete ? `<button class="btn btn-danger" onclick="deleteEmail('${escHtml(email.id)}', true)">Delete Email</button>` : ''}
+            </div>
+        </div>
+        <div class="detail-card">
+            ${iframeSrc
+                ? `<iframe src="${iframeSrc}" sandbox="allow-same-origin" style="width:100%;min-height:400px;border:none;border-radius:4px;background:#fff"></iframe>`
+                : `<pre style="white-space:pre-wrap;font-size:13px;color:var(--text-secondary)">${escHtml(email.body_text || '(no body)')}</pre>`
+            }
+        </div>
+    `);
+}
+
+function replyToEmail(id, originalSubject) {
+    showFormModal(`Reply`, [
+        { name: 'subject', label: 'Subject', type: 'text', default: `Re: ${originalSubject}` },
+        { name: 'body', label: 'Message', type: 'textarea' }
+    ], async (vals) => {
+        if (!vals.body) { toast('Message body is required.', true); return; }
+        const res = await api('POST', `/inbox/${id}/reply`, { subject: vals.subject, body: vals.body });
+        if (!res?.ok) { toast(res?.data?.error || 'Failed to send reply.', true); return; }
+        toast('Reply sent.');
+        closeModal();
+    });
+}
+
+function deleteEmail(id, fromDetail = false) {
+    showConfirm('Permanently delete this email?', async () => {
+        const res = await api('DELETE', `/inbox/${id}`);
+        if (!res?.ok) { toast(res?.data?.error || 'Delete failed.', true); return; }
+        toast('Email deleted.');
+        renderInbox(1);
     });
 }
 

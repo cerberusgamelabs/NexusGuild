@@ -16,6 +16,7 @@ import { dirname } from 'path';
 
 import db from './config/database.js';
 import { generateSnowflake } from './utils/functions.js';
+import { sendEmail } from './utils/email.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = dirname(__filename);
@@ -704,6 +705,112 @@ app.delete('/api/staff/cors/:id', requireStaff('superadmin'), async (req, res) =
     } catch (err) {
         console.error('[staff] cors delete error:', err);
         res.status(500).json({ error: 'Failed to remove CORS origin' });
+    }
+});
+
+// ── Inbound Email Inbox ───────────────────────────────────────────────────────
+
+// GET /api/staff/inbox?page=
+app.get('/api/staff/inbox', requireStaff('moderator'), async (req, res) => {
+    try {
+        const page   = Math.max(1, parseInt(req.query.page, 10) || 1);
+        const offset = (page - 1) * 50;
+
+        const [rows, total] = await Promise.all([
+            db.query(
+                `SELECT ie.id, ie.from_address, ie.to_address, ie.subject, ie.is_read,
+                        ie.received_at, u.username AS read_by_username
+                 FROM inbound_emails ie
+                 LEFT JOIN users u ON u.id = ie.read_by
+                 ORDER BY ie.received_at DESC
+                 LIMIT 50 OFFSET $1`,
+                [offset]
+            ),
+            db.query(`SELECT COUNT(*) AS count FROM inbound_emails`)
+        ]);
+
+        res.json({ emails: rows.rows, total: parseInt(total.rows[0].count, 10), page });
+    } catch (err) {
+        console.error('[staff] inbox list error:', err);
+        res.status(500).json({ error: 'Failed to get inbox' });
+    }
+});
+
+// GET /api/staff/inbox/:id — get email + mark as read
+app.get('/api/staff/inbox/:id', requireStaff('moderator'), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await db.query(
+            `SELECT ie.*, u.username AS read_by_username
+             FROM inbound_emails ie
+             LEFT JOIN users u ON u.id = ie.read_by
+             WHERE ie.id = $1`,
+            [id]
+        );
+        if (!result.rows.length) return res.status(404).json({ error: 'Email not found' });
+
+        // Mark as read if not already
+        if (!result.rows[0].is_read) {
+            await db.query(
+                `UPDATE inbound_emails SET is_read = true, read_by = $1, read_at = NOW() WHERE id = $2`,
+                [req.session.user.id, id]
+            );
+        }
+
+        res.json({ email: result.rows[0] });
+    } catch (err) {
+        console.error('[staff] inbox detail error:', err);
+        res.status(500).json({ error: 'Failed to get email' });
+    }
+});
+
+// POST /api/staff/inbox/:id/reply
+app.post('/api/staff/inbox/:id/reply', requireStaff('moderator'), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { subject, body } = req.body;
+        if (!body) return res.status(400).json({ error: 'body is required' });
+
+        const emailRes = await db.query(
+            `SELECT from_address, subject AS original_subject FROM inbound_emails WHERE id = $1`,
+            [id]
+        );
+        if (!emailRes.rows.length) return res.status(404).json({ error: 'Email not found' });
+
+        const { from_address, original_subject } = emailRes.rows[0];
+        const replySubject = subject || `Re: ${original_subject}`;
+        const staffName = req.session.user.username;
+        const fromAddress = `${staffName} <${staffName}@nexusguild.gg>`;
+
+        await sendEmail({
+            from: fromAddress,
+            to: from_address,
+            subject: replySubject,
+            html: `
+                <div style="font-family:sans-serif;max-width:600px;margin:0 auto;background:#1e1f22;color:#dbdee1;padding:32px;border-radius:8px;">
+                    <p style="white-space:pre-wrap;color:#dbdee1">${body.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>
+                    <hr style="border:none;border-top:1px solid #2e2f35;margin:24px 0">
+                    <p style="color:#949ba4;font-size:12px">${staffName} — NexusGuild Support</p>
+                </div>
+            `,
+        });
+
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('[staff] inbox reply error:', err);
+        res.status(500).json({ error: 'Failed to send reply' });
+    }
+});
+
+// DELETE /api/staff/inbox/:id
+app.delete('/api/staff/inbox/:id', requireStaff('superadmin'), async (req, res) => {
+    try {
+        const { id } = req.params;
+        await db.query(`DELETE FROM inbound_emails WHERE id = $1`, [id]);
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('[staff] inbox delete error:', err);
+        res.status(500).json({ error: 'Failed to delete email' });
     }
 });
 

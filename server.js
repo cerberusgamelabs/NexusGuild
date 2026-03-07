@@ -204,6 +204,49 @@ const startServer = async () => {
         );
         app.get('/api/permissions', (req, res) => res.json(permissionsPayload));
 
+        // POST /api/inbound-email — Resend inbound email webhook (no auth)
+        app.post('/api/inbound-email', async (req, res) => {
+            try {
+                const payload = req.body;
+                const meta = payload.data || payload;
+
+                // Fetch full email body via Resend receiving API
+                let html = null;
+                let text = null;
+                if (meta.email_id && process.env.RESEND_API_KEY) {
+                    const { Resend } = await import('resend');
+                    const resend = new Resend(process.env.RESEND_API_KEY);
+                    const { data: full } = await resend.emails.receiving.get(meta.email_id);
+                    html = full?.html || null;
+                    text = full?.text || null;
+                }
+
+                const id = generateSnowflake();
+                await db.query(
+                    `INSERT INTO inbound_emails (id, from_address, to_address, subject, body_html, body_text, raw_payload)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                    [
+                        id,
+                        meta.from || '',
+                        Array.isArray(meta.to) ? meta.to.join(', ') : (meta.to || ''),
+                        meta.subject || '(no subject)',
+                        html,
+                        text,
+                        payload
+                    ]
+                );
+                log(tags.info, `Inbound email stored: ${meta.subject} from ${meta.from}`);
+                res.status(200).json({ ok: true });
+            } catch (err) {
+                log(tags.error, 'Inbound email webhook error:', err);
+                res.status(500).json({ error: 'Failed to store email' });
+            }
+        });
+
+        app.get('/reset-password', (req, res) => {
+            res.sendFile(path.join(__dirname, 'public', 'reset-password.html'));
+        });
+
         app.get('/invite/bot/:botId', (req, res) => {
             res.sendFile(path.join(__dirname, 'public', 'bot-invite.html'));
         });

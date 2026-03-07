@@ -514,6 +514,33 @@ const initDB = async () => {
             ON CONFLICT (id) DO NOTHING
         `);
 
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                token      VARCHAR(64) PRIMARY KEY,
+                user_id    VARCHAR(20) REFERENCES users(id) ON DELETE CASCADE,
+                expires_at TIMESTAMP NOT NULL,
+                used       BOOLEAN DEFAULT FALSE
+            )
+        `);
+
+        // ── Inbound Email ─────────────────────────────────────────────────────
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS inbound_emails (
+                id           VARCHAR(20) PRIMARY KEY,
+                from_address TEXT NOT NULL,
+                to_address   TEXT,
+                subject      TEXT,
+                body_html    TEXT,
+                body_text    TEXT,
+                raw_payload  JSONB,
+                is_read      BOOLEAN DEFAULT FALSE,
+                read_by      VARCHAR(20) REFERENCES users(id) ON DELETE SET NULL,
+                read_at      TIMESTAMP,
+                received_at  TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
         await client.query('COMMIT');
 
         // Indexes must run outside a transaction
