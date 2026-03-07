@@ -122,8 +122,17 @@
                     </div>
 
                     <div class="form-card" style="margin-top:16px;">
+                        <h3>Default Permissions</h3>
+                        <p class="info-text">Select the permissions your bot needs. These are shown as a checklist when someone invites your bot — they can uncheck any they don't want to grant.</p>
+                        <div id="permPickerList" style="margin:12px 0;display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;"></div>
+                        <div class="form-actions">
+                            <button class="btn btn-primary" onclick="saveBot()">Save Changes</button>
+                        </div>
+                    </div>
+
+                    <div class="form-card" style="margin-top:16px;">
                         <h3>Bot Invite Link</h3>
-                        <p class="info-text">Share this link so anyone with Manage Server permission can add your bot to their server.</p>
+                        <p class="info-text">Share this link so server owners and administrators can add your bot. They can approve or revoke individual permissions during the invite flow.</p>
                         <div class="token-row">
                             <input type="text" id="inviteLinkField" readonly>
                             <button class="btn btn-sm" onclick="copyInviteLink()">Copy</button>

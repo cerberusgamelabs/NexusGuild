@@ -131,6 +131,7 @@
         <a class="nav-item" href="#channels">— Channels</a>
         <a class="nav-item" href="#guilds">— Guilds</a>
         <a class="nav-item" href="#interactions">— Interactions</a>
+        <a class="nav-item" href="#permissions">— Permissions</a>
         <a class="nav-item" href="#quickstart">Quickstart</a>
     </div>
     <a class="back-link" href="index.html">← Back to Portal</a>
@@ -149,6 +150,8 @@
     </ul>
     <p>The base URL for all REST calls is:</p>
     <pre>https://www.nexusguild.gg/api/v1</pre>
+
+    <div class="note"><strong>Adding bots to servers:</strong> Only server owners and members with the <strong>Administrator</strong> permission can add bots. Manage Server alone is not sufficient. When a bot is authorized, a server role named after the bot is automatically created with the permissions the admin approved. The bot's effective permissions are determined by this role.</div>
 
     <!-- ── Auth ──────────────────────────────────────────────────────────── -->
     <h2 id="auth">Authentication</h2>
@@ -267,7 +270,7 @@ const gateway = io('https://www.nexusguild.gg/bot-gateway', {
         <span class="method get">GET</span>
         <span class="endpoint-path">/channels/{channel.id}</span>
     </div>
-    <p>Returns a channel object. The bot must be a member of the channel's server.</p>
+    <p>Returns a channel object. Requires <code>VIEW_CHANNEL</code>.</p>
     <pre>{
   "id": "...",
   "type": 0,
@@ -283,7 +286,7 @@ const gateway = io('https://www.nexusguild.gg/bot-gateway', {
         <span class="method get">GET</span>
         <span class="endpoint-path">/channels/{channel.id}/messages</span>
     </div>
-    <p>Returns an array of message objects, newest last.</p>
+    <p>Returns an array of message objects, newest last. Requires <code>VIEW_CHANNEL</code> and <code>READ_MESSAGE_HISTORY</code>.</p>
     <table>
         <tr><th>Query param</th><th>Type</th><th>Description</th></tr>
         <tr><td>limit</td><td>integer</td><td>Max messages to return (1–100, default 50)</td></tr>
@@ -295,7 +298,7 @@ const gateway = io('https://www.nexusguild.gg/bot-gateway', {
         <span class="method post">POST</span>
         <span class="endpoint-path">/channels/{channel.id}/messages</span>
     </div>
-    <p>Send a message to a channel. The bot must be a member of the server.</p>
+    <p>Send a message to a channel. Requires <code>VIEW_CHANNEL</code> and <code>SEND_MESSAGES</code>.</p>
     <table>
         <tr><th>Body field</th><th>Type</th><th>Description</th></tr>
         <tr><td>content</td><td>string</td><td>The message text (required)</td></tr>
@@ -313,7 +316,7 @@ const gateway = io('https://www.nexusguild.gg/bot-gateway', {
         <span class="method patch">PATCH</span>
         <span class="endpoint-path">/channels/{channel.id}/messages/{message.id}</span>
     </div>
-    <p>Edit one of the bot's own messages.</p>
+    <p>Edit one of the bot's own messages. Requires <code>VIEW_CHANNEL</code>.</p>
     <table>
         <tr><th>Body field</th><th>Type</th><th>Description</th></tr>
         <tr><td>content</td><td>string</td><td>New message text (required)</td></tr>
@@ -323,13 +326,13 @@ const gateway = io('https://www.nexusguild.gg/bot-gateway', {
         <span class="method delete">DELETE</span>
         <span class="endpoint-path">/channels/{channel.id}/messages/{message.id}</span>
     </div>
-    <p>Delete one of the bot's own messages. Returns <code>204 No Content</code> on success.</p>
+    <p>Delete one of the bot's own messages. Requires <code>VIEW_CHANNEL</code>. Returns <code>204 No Content</code> on success.</p>
 
     <div class="endpoint">
         <span class="method put">PUT</span>
         <span class="endpoint-path">/channels/{channel.id}/messages/{message.id}/reactions/{emoji}/@me</span>
     </div>
-    <p>Add a reaction to a message. The emoji must be URL-encoded (e.g. <code>%F0%9F%91%8D</code> for 👍). Returns <code>204</code>.</p>
+    <p>Add a reaction to a message. Requires <code>VIEW_CHANNEL</code> and <code>ADD_REACTIONS</code>. The emoji must be URL-encoded (e.g. <code>%F0%9F%91%8D</code> for 👍). Returns <code>204</code>.</p>
 
     <div class="endpoint">
         <span class="method delete">DELETE</span>
@@ -399,6 +402,24 @@ const gateway = io('https://www.nexusguild.gg/bot-gateway', {
 
     <h3>Registering Slash Commands</h3>
     <p>Commands are registered per-server from the <strong>Slash Commands</strong> tab in the developer portal. When a user types <code>/commandname</code> in a server where your bot is installed, they see an autocomplete suggestion. Selecting it dispatches an <span class="event-name">INTERACTION_CREATE</span> to your bot.</p>
+
+    <!-- Permissions -->
+    <h2 id="permissions">Permissions</h2>
+    <p>Bots are subject to the same permission system as regular users. Being a member of a server is not enough — the bot's roles must grant the required permissions for each action. Channel permission overrides (allow/deny per role or member) are also applied.</p>
+    <p>Required permissions per endpoint:</p>
+    <table>
+        <tr><th>Endpoint</th><th>Required permissions</th></tr>
+        <tr><td>GET /channels/:id</td><td><code>VIEW_CHANNEL</code></td></tr>
+        <tr><td>GET /channels/:id/messages</td><td><code>VIEW_CHANNEL</code>, <code>READ_MESSAGE_HISTORY</code></td></tr>
+        <tr><td>POST /channels/:id/messages</td><td><code>VIEW_CHANNEL</code>, <code>SEND_MESSAGES</code></td></tr>
+        <tr><td>PATCH /channels/:id/messages/:id</td><td><code>VIEW_CHANNEL</code> (must be bot's own message)</td></tr>
+        <tr><td>DELETE /channels/:id/messages/:id</td><td><code>VIEW_CHANNEL</code> (must be bot's own message)</td></tr>
+        <tr><td>PUT .../reactions/:emoji/@me</td><td><code>VIEW_CHANNEL</code>, <code>ADD_REACTIONS</code></td></tr>
+        <tr><td>DELETE .../reactions/:emoji/@me</td><td><code>VIEW_CHANNEL</code></td></tr>
+        <tr><td>GET /guilds/:id and sub-resources</td><td>Bot must be a member of the guild</td></tr>
+    </table>
+    <p>Bots with the <strong>Administrator</strong> permission bypass all channel-level checks.</p>
+    <p>Missing permission errors return <code>403</code> with code <code>50013</code> (Missing Permissions) or <code>50001</code> (Missing Access / VIEW_CHANNEL denied).</p>
 
     <!-- Quickstart -->
     <h2 id="quickstart">Quickstart</h2>

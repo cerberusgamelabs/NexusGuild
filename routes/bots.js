@@ -8,6 +8,9 @@ const router = Router();
 // Public bot info (for invite page — no auth required)
 router.get('/:botId/public', BotController.getPublicBot);
 
+// Returns only servers where the user is owner or has ADMINISTRATOR — used by bot invite page
+router.get('/eligible-servers', requireAuth, BotController.getEligibleServers);
+
 // Bot CRUD (dev portal)
 router.post('/',                                           requireAuth, BotController.createBot);
 router.get('/',                                            requireAuth, BotController.listBots);

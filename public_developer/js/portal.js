@@ -4,6 +4,47 @@ let currentUser = null;
 let currentBot  = null;
 let userServers = [];
 
+// Permission definitions for the picker
+const PORTAL_PERMS = [
+    { label: 'Administrator',        bit: 8n },
+    { label: 'Manage Server',        bit: 32n },
+    { label: 'Manage Channels',      bit: 16n },
+    { label: 'Manage Roles',         bit: 268435456n },
+    { label: 'Kick Members',         bit: 2n },
+    { label: 'Ban Members',          bit: 4n },
+    { label: 'Moderate Members',     bit: 1099511627776n },
+    { label: 'Manage Webhooks',      bit: 536870912n },
+    { label: 'View Channels',        bit: 1024n },
+    { label: 'Send Messages',        bit: 2048n },
+    { label: 'Manage Messages',      bit: 8192n },
+    { label: 'Embed Links',          bit: 16384n },
+    { label: 'Attach Files',         bit: 32768n },
+    { label: 'Read Message History', bit: 65536n },
+    { label: 'Mention @everyone',    bit: 131072n },
+    { label: 'Add Reactions',        bit: 64n },
+];
+
+function renderPermPicker(currentPerms) {
+    const bits = BigInt(currentPerms || 0);
+    const el = document.getElementById('permPickerList');
+    if (!el) return;
+    el.innerHTML = PORTAL_PERMS.map(p => `
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#b5bac1;cursor:pointer;padding:3px 0;">
+            <input type="checkbox" data-perm-bit="${p.bit}" ${(bits & p.bit) === p.bit ? 'checked' : ''}
+                   style="accent-color:#5865f2;cursor:pointer;">
+            ${escHtml(p.label)}
+        </label>
+    `).join('');
+}
+
+function getPickedPermissions() {
+    let result = 0n;
+    document.querySelectorAll('#permPickerList input[type=checkbox]:checked').forEach(cb => {
+        result |= BigInt(cb.dataset.permBit);
+    });
+    return result;
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 async function init() {
@@ -78,6 +119,7 @@ async function selectBot(botId) {
     document.getElementById('editBotName').value = bot.name;
     document.getElementById('editBotDesc').value = bot.description || '';
     document.getElementById('editBotCallback').value = bot.callback_url || '';
+    renderPermPicker(bot.default_permissions);
 
     switchTab('overview', document.querySelector('.tab[data-tab="overview"]'));
     loadBotToken(botId);
@@ -131,20 +173,22 @@ async function createBot() {
 
 async function saveBot() {
     if (!currentBot) return;
-    const name        = document.getElementById('editBotName').value.trim();
-    const description = document.getElementById('editBotDesc').value.trim();
-    const callbackUrl = document.getElementById('editBotCallback').value.trim();
-    const msgEl       = document.getElementById('overviewMsg');
+    const name               = document.getElementById('editBotName').value.trim();
+    const description        = document.getElementById('editBotDesc').value.trim();
+    const callbackUrl        = document.getElementById('editBotCallback').value.trim();
+    const defaultPermissions = getPickedPermissions().toString();
+    const msgEl              = document.getElementById('overviewMsg');
 
     const res = await fetch(`${API}/api/bots/${currentBot.id}`, {
         method: 'PATCH',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, description, callbackUrl }),
+        body: JSON.stringify({ name, description, callbackUrl, defaultPermissions }),
     });
     if (!res.ok) { const d = await res.json(); showError(msgEl, d.error || 'Save failed.'); return; }
 
     currentBot.name = name;
+    currentBot.default_permissions = defaultPermissions;
     document.getElementById('botName').textContent = name;
     document.querySelectorAll(`.bot-item[data-id="${currentBot.id}"] span`).forEach(el => el.textContent = name);
     showSuccess(msgEl, 'Changes saved.');
@@ -243,7 +287,10 @@ async function addBotToServer() {
     if (!serverId || !currentBot) return;
 
     const res = await fetch(`${API}/api/bots/${currentBot.id}/servers/${serverId}`, {
-        method: 'PUT', credentials: 'include'
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ permissions: currentBot.default_permissions ?? '0' }),
     });
     const data = await res.json();
     if (!res.ok) { showError(msgEl, data.error || 'Failed to add bot.'); return; }

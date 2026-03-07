@@ -14,7 +14,7 @@ export default class BotController {
     static async getPublicBot(req, res) {
         const { botId } = req.params;
         const result = await db.query(
-            `SELECT b.id, u.username AS name, u.avatar, b.description
+            `SELECT b.id, u.username AS name, u.avatar, b.description, b.default_permissions
              FROM bots b JOIN users u ON u.id = b.id
              WHERE b.id = $1`,
             [botId]
@@ -79,7 +79,7 @@ export default class BotController {
         const { botId } = req.params;
         const result = await db.query(
             `SELECT b.id, u.username AS name, u.avatar, b.description,
-                    b.public_bot, b.callback_url, b.created_at
+                    b.public_bot, b.callback_url, b.default_permissions, b.created_at
              FROM bots b JOIN users u ON u.id = b.id
              WHERE b.id = $1 AND b.owner_id = $2`,
             [botId, ownerId]
@@ -91,13 +91,21 @@ export default class BotController {
     static async updateBot(req, res) {
         const ownerId = req.session.user.id;
         const { botId } = req.params;
-        const { name, description, callbackUrl, publicBot } = req.body;
+        const { name, description, callbackUrl, publicBot, defaultPermissions } = req.body;
 
         const existing = await db.query(
             `SELECT b.id FROM bots b WHERE b.id = $1 AND b.owner_id = $2`,
             [botId, ownerId]
         );
         if (!existing.rows.length) return res.status(404).json({ error: 'Bot not found' });
+
+        // Validate defaultPermissions if provided
+        let permsValue = null;
+        if (defaultPermissions !== undefined) {
+            try { permsValue = BigInt(defaultPermissions).toString(); } catch {
+                return res.status(400).json({ error: 'Invalid permissions value' });
+            }
+        }
 
         const client = await db.pool.connect();
         try {
@@ -107,11 +115,12 @@ export default class BotController {
             }
             await client.query(
                 `UPDATE bots SET
-                    description  = COALESCE($1, description),
-                    callback_url = COALESCE($2, callback_url),
-                    public_bot   = COALESCE($3, public_bot)
-                 WHERE id = $4`,
-                [description ?? null, callbackUrl ?? null, publicBot ?? null, botId]
+                    description          = COALESCE($1, description),
+                    callback_url         = COALESCE($2, callback_url),
+                    public_bot           = COALESCE($3, public_bot),
+                    default_permissions  = COALESCE($4::bigint, default_permissions)
+                 WHERE id = $5`,
+                [description ?? null, callbackUrl ?? null, publicBot ?? null, permsValue, botId]
             );
             await client.query('COMMIT');
             res.json({ success: true });
@@ -159,17 +168,42 @@ export default class BotController {
         res.json({ token: result.rows[0].token });
     }
 
+    // Returns servers where the user is owner or has ADMINISTRATOR — for bot invite page
+    static async getEligibleServers(req, res) {
+        const userId = req.session.user.id;
+        const result = await db.query(
+            `SELECT s.id, s.name, s.icon, s.owner_id,
+                    COALESCE(bit_or(r.permissions::bigint), 0)::text AS my_permissions
+             FROM servers s
+             JOIN server_members sm ON sm.server_id = s.id AND sm.user_id = $1
+             LEFT JOIN user_roles ur ON ur.user_id = $1 AND ur.server_id = s.id
+             LEFT JOIN roles r ON r.id = ur.role_id
+             GROUP BY s.id, s.name, s.icon, s.owner_id`,
+            [userId]
+        );
+        const eligible = result.rows.filter(s => {
+            if (s.owner_id === userId) return true;
+            const perms = BigInt(s.my_permissions);
+            return (perms & 8n) === 8n; // ADMINISTRATOR
+        });
+        res.json({ servers: eligible });
+    }
+
     // ── Server install / remove ───────────────────────────────────────────
 
     static async addBotToServer(req, res) {
         const userId = req.session.user.id;
         const { botId, serverId } = req.params;
+        const { permissions } = req.body || {};
 
         // Bot must exist
-        const bot = await db.query(`SELECT id FROM bots WHERE id = $1`, [botId]);
+        const bot = await db.query(
+            `SELECT b.id, u.username AS name FROM bots b JOIN users u ON u.id = b.id WHERE b.id = $1`,
+            [botId]
+        );
         if (!bot.rows.length) return res.status(404).json({ error: 'Bot not found' });
 
-        // Invoking user must be server owner or have MANAGE_GUILD on the target server
+        // Invoking user must be server owner or have ADMINISTRATOR on the target server
         const server = await db.query(`SELECT owner_id FROM servers WHERE id = $1`, [serverId]);
         if (!server.rows.length) return res.status(404).json({ error: 'Server not found' });
 
@@ -181,18 +215,51 @@ export default class BotController {
                 [userId, serverId]
             );
             const perms = BigInt(perm.rows[0]?.perms ?? 0);
-            if (!(perms & 8n) && !(perms & 32n)) {
-                return res.status(403).json({ error: 'You need Manage Server permission to add bots' });
+            const isAdmin = (perms & 8n) === 8n;
+            if (!isAdmin) {
+                return res.status(403).json({ error: 'Only server owners and administrators can add bots' });
             }
         }
 
-        const memberId = generateSnowflake();
-        await db.query(
-            `INSERT INTO server_members (id, server_id, user_id) VALUES ($1, $2, $3)
-             ON CONFLICT (server_id, user_id) DO NOTHING`,
-            [memberId, serverId, botId]
-        );
-        res.json({ success: true });
+        // Parse approved permissions (0 = no special role)
+        let approvedPerms = 0n;
+        try { approvedPerms = BigInt(permissions ?? 0); } catch { approvedPerms = 0n; }
+
+        const client = await db.pool.connect();
+        try {
+            await client.query('BEGIN');
+
+            // Add bot as server member
+            const memberId = generateSnowflake();
+            const inserted = await client.query(
+                `INSERT INTO server_members (id, server_id, user_id) VALUES ($1, $2, $3)
+                 ON CONFLICT (server_id, user_id) DO NOTHING RETURNING id`,
+                [memberId, serverId, botId]
+            );
+
+            // Create a named bot role with the approved permissions (only if permissions > 0 and bot is newly added)
+            if (approvedPerms > 0n && inserted.rows.length > 0) {
+                const roleId = generateSnowflake();
+                await client.query(
+                    `INSERT INTO roles (id, server_id, name, color, permissions, position)
+                     VALUES ($1, $2, $3, $4, $5, 1)`,
+                    [roleId, serverId, bot.rows[0].name, '#5865f2', approvedPerms.toString()]
+                );
+                await client.query(
+                    `INSERT INTO user_roles (user_id, role_id, server_id) VALUES ($1, $2, $3)
+                     ON CONFLICT DO NOTHING`,
+                    [botId, roleId, serverId]
+                );
+            }
+
+            await client.query('COMMIT');
+            res.json({ success: true });
+        } catch (err) {
+            await client.query('ROLLBACK');
+            throw err;
+        } finally {
+            client.release();
+        }
     }
 
     static async removeBotFromServer(req, res) {

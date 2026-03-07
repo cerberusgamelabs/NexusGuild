@@ -4,6 +4,8 @@
 import db from '../config/database.js';
 import { generateSnowflake } from '#utils/functions';
 import { log, tags } from '#utils/logging';
+import { resolveChannelPerms } from '../utils/channelPerms.js';
+import { PERMISSIONS, PermissionHandler } from '../config/permissions.js';
 
 const CHANNEL_TYPE = {
     text: 0, voice: 2, category: 4, announcement: 5,
@@ -107,6 +109,10 @@ export default class V1Controller {
             const serverId = await botInChannelServer(req.botUser.id, channelId);
             if (!serverId) return res.status(403).json({ code: 50001, message: 'Missing Access' });
 
+            const perms = await resolveChannelPerms(req.botUser.id, serverId, channelId);
+            if (!PermissionHandler.hasPermission(perms, PERMISSIONS.VIEW_CHANNEL))
+                return res.status(403).json({ code: 50001, message: 'Missing Access' });
+
             const r = await db.query('SELECT * FROM channels WHERE id = $1', [channelId]);
             if (!r.rows.length) return res.status(404).json({ code: 10003, message: 'Unknown Channel' });
             res.json(fmtChannel(r.rows[0]));
@@ -124,6 +130,12 @@ export default class V1Controller {
 
             const serverId = await botInChannelServer(req.botUser.id, channelId);
             if (!serverId) return res.status(403).json({ code: 50001, message: 'Missing Access' });
+
+            const perms = await resolveChannelPerms(req.botUser.id, serverId, channelId);
+            if (!PermissionHandler.hasPermission(perms, PERMISSIONS.VIEW_CHANNEL))
+                return res.status(403).json({ code: 50001, message: 'Missing Access' });
+            if (!PermissionHandler.hasPermission(perms, PERMISSIONS.READ_MESSAGE_HISTORY))
+                return res.status(403).json({ code: 50013, message: 'Missing Permissions' });
 
             const cap = Math.min(parseInt(limit) || 50, 100);
             let query = `
@@ -160,6 +172,12 @@ export default class V1Controller {
 
             const serverId = await botInChannelServer(bot.id, channelId);
             if (!serverId) return res.status(403).json({ code: 50001, message: 'Missing Access' });
+
+            const perms = await resolveChannelPerms(bot.id, serverId, channelId);
+            if (!PermissionHandler.hasPermission(perms, PERMISSIONS.VIEW_CHANNEL))
+                return res.status(403).json({ code: 50001, message: 'Missing Access' });
+            if (!PermissionHandler.hasPermission(perms, PERMISSIONS.SEND_MESSAGES))
+                return res.status(403).json({ code: 50013, message: 'Missing Permissions' });
 
             const id = generateSnowflake();
             const result = await db.query(
@@ -207,6 +225,10 @@ export default class V1Controller {
             const serverId = await botInChannelServer(bot.id, channelId);
             if (!serverId) return res.status(403).json({ code: 50001, message: 'Missing Access' });
 
+            const perms = await resolveChannelPerms(bot.id, serverId, channelId);
+            if (!PermissionHandler.hasPermission(perms, PERMISSIONS.VIEW_CHANNEL))
+                return res.status(403).json({ code: 50001, message: 'Missing Access' });
+
             const existing = await db.query(
                 'SELECT user_id FROM messages WHERE id = $1 AND channel_id = $2', [messageId, channelId]
             );
@@ -238,6 +260,10 @@ export default class V1Controller {
             const serverId = await botInChannelServer(bot.id, channelId);
             if (!serverId) return res.status(403).json({ code: 50001, message: 'Missing Access' });
 
+            const perms = await resolveChannelPerms(bot.id, serverId, channelId);
+            if (!PermissionHandler.hasPermission(perms, PERMISSIONS.VIEW_CHANNEL))
+                return res.status(403).json({ code: 50001, message: 'Missing Access' });
+
             const existing = await db.query(
                 'SELECT user_id FROM messages WHERE id = $1 AND channel_id = $2', [messageId, channelId]
             );
@@ -264,6 +290,12 @@ export default class V1Controller {
 
             const serverId = await botInChannelServer(bot.id, channelId);
             if (!serverId) return res.status(403).json({ code: 50001, message: 'Missing Access' });
+
+            const perms = await resolveChannelPerms(bot.id, serverId, channelId);
+            if (!PermissionHandler.hasPermission(perms, PERMISSIONS.VIEW_CHANNEL))
+                return res.status(403).json({ code: 50001, message: 'Missing Access' });
+            if (!PermissionHandler.hasPermission(perms, PERMISSIONS.ADD_REACTIONS))
+                return res.status(403).json({ code: 50013, message: 'Missing Permissions' });
 
             const msg = await db.query('SELECT id FROM messages WHERE id = $1', [messageId]);
             if (!msg.rows.length) return res.status(404).json({ code: 10008, message: 'Unknown Message' });

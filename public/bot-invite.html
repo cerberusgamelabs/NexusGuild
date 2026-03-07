@@ -67,6 +67,15 @@
         .login-prompt p { color: #949ba4; margin-bottom: 16px; }
         .not-found { text-align: center; }
         .not-found p { color: #949ba4; margin-top: 8px; }
+        .perms-section { margin-bottom: 20px; }
+        .perms-label { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #b5bac1; margin-bottom: 8px; }
+        .perms-list { background: #1e1f22; border-radius: 4px; padding: 4px 0; max-height: 240px; overflow-y: auto; }
+        .perm-item { display: flex; align-items: center; gap: 10px; padding: 7px 12px; cursor: pointer; }
+        .perm-item:hover { background: #2b2d31; }
+        .perm-item input[type=checkbox] { accent-color: #5865f2; width: 15px; height: 15px; flex-shrink: 0; cursor: pointer; }
+        .perm-item label { font-size: 13px; color: #dbdee1; cursor: pointer; flex: 1; }
+        .perm-group-header { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #949ba4; padding: 8px 12px 4px; }
+        .perm-none { padding: 12px; text-align: center; color: #949ba4; font-size: 13px; }
     </style>
 </head>
 <body>
@@ -76,6 +85,28 @@
 <script>
 const API = '';
 const botId = location.pathname.split('/').pop();
+
+// Permission definitions shown on the invite page
+const INVITE_PERMS = [
+    { group: 'General' },
+    { label: 'Administrator',        bit: 8n },
+    { label: 'Manage Server',        bit: 32n },
+    { label: 'Manage Channels',      bit: 16n },
+    { label: 'Manage Roles',         bit: 268435456n },
+    { label: 'Kick Members',         bit: 2n },
+    { label: 'Ban Members',          bit: 4n },
+    { label: 'Moderate Members',     bit: 1099511627776n },
+    { label: 'Manage Webhooks',      bit: 536870912n },
+    { group: 'Text' },
+    { label: 'View Channels',        bit: 1024n },
+    { label: 'Send Messages',        bit: 2048n },
+    { label: 'Manage Messages',      bit: 8192n },
+    { label: 'Embed Links',          bit: 16384n },
+    { label: 'Attach Files',         bit: 32768n },
+    { label: 'Read Message History', bit: 65536n },
+    { label: 'Mention @everyone',    bit: 131072n },
+    { label: 'Add Reactions',        bit: 64n },
+];
 
 async function init() {
     // Load bot info (public)
@@ -88,8 +119,8 @@ async function init() {
     if (!meRes || !meRes.ok) { showLogin(bot); return; }
     const me = await meRes.json();
 
-    // Load user's servers
-    const srvRes = await fetch(`${API}/api/servers`, { credentials: 'include' }).catch(() => null);
+    // Load only servers where the user can add bots (owner or administrator)
+    const srvRes = await fetch(`${API}/api/bots/eligible-servers`, { credentials: 'include' }).catch(() => null);
     const servers = srvRes?.ok ? (await srvRes.json()).servers || [] : [];
 
     showInvite(bot, servers);
@@ -121,10 +152,37 @@ function showLogin(bot) {
         </div>`;
 }
 
+function buildPermChecklist(defaultPerms) {
+    const bits = BigInt(defaultPerms || 0);
+    // Only render permissions the bot actually requests
+    const requested = INVITE_PERMS.filter(p => p.group || (bits & p.bit) === p.bit);
+    if (requested.filter(p => !p.group).length === 0) {
+        return `<div class="perm-none">This bot requests no special permissions.</div>`;
+    }
+    return requested.map(p => {
+        if (p.group) return `<div class="perm-group-header">${p.group}</div>`;
+        return `<div class="perm-item">
+            <input type="checkbox" id="perm_${p.bit}" data-bit="${p.bit}" checked>
+            <label for="perm_${p.bit}">${p.label}</label>
+        </div>`;
+    }).join('');
+}
+
+function getApprovedPermissions() {
+    let result = 0n;
+    document.querySelectorAll('.perm-item input[type=checkbox]:checked').forEach(cb => {
+        result |= BigInt(cb.dataset.bit);
+    });
+    return result;
+}
+
 function showInvite(bot, servers) {
     const opts = servers.length
         ? servers.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('')
-        : '<option value="" disabled>No servers available</option>';
+        : '<option value="" disabled>No eligible servers (must be owner or administrator)</option>';
+
+    const defaultPerms = BigInt(bot.default_permissions || 0);
+    const hasPerms = defaultPerms > 0n;
 
     document.getElementById('card').innerHTML = `
         <div class="bot-header">
@@ -136,7 +194,13 @@ function showInvite(bot, servers) {
         </div>
         ${bot.description ? `<p class="bot-desc">${esc(bot.description)}</p>` : ''}
         <label>Add to server</label>
-        <select id="serverSelect">${opts}</select>
+        <select id="serverSelect" style="margin-bottom:20px;">${opts}</select>
+        ${hasPerms ? `
+        <div class="perms-section">
+            <div class="perms-label">Permissions requested</div>
+            <p style="font-size:12px;color:#949ba4;margin-bottom:8px;">Uncheck any permissions you don't want to grant.</p>
+            <div class="perms-list">${buildPermChecklist(bot.default_permissions)}</div>
+        </div>` : ''}
         <div class="actions">
             <a href="/" class="btn btn-secondary">Cancel</a>
             <button class="btn btn-primary" onclick="addBot()">Authorize</button>
@@ -149,8 +213,13 @@ async function addBot() {
     const msgEl = document.getElementById('msg');
     if (!serverId) { msgEl.className = 'msg error'; msgEl.textContent = 'Select a server.'; return; }
 
+    const approvedPermissions = getApprovedPermissions().toString();
+
     const res = await fetch(`${API}/api/bots/${botId}/servers/${serverId}`, {
-        method: 'PUT', credentials: 'include'
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ permissions: approvedPermissions }),
     });
     const data = await res.json();
     if (!res.ok) {
