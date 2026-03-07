@@ -224,11 +224,16 @@ function showApp() {
     if (state.currentUser) {
         document.getElementById('currentUsername').textContent = state.currentUser.username;
         const uaEl = document.getElementById('userAvatar');
+        uaEl.dataset.userId   = state.currentUser.id;
+        uaEl.dataset.username = state.currentUser.username;
         if (state.currentUser.avatar) {
             uaEl.innerHTML = `<img src="${state.currentUser.avatar}" alt="" style="width:100%;height:100%;border-radius:inherit;object-fit:cover;">`;
         } else {
             uaEl.textContent = state.currentUser.username.substring(0, 2).toUpperCase();
         }
+        const unEl = document.getElementById('currentUsername');
+        unEl.dataset.userId   = state.currentUser.id;
+        unEl.dataset.username = state.currentUser.username;
         renderUserStatus();
     }
     if (typeof initProfileView === 'function') initProfileView();

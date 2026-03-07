@@ -151,9 +151,27 @@ const ctxMenu = (() => {
         menuEl.style.display = 'none';
         document.body.appendChild(menuEl);
 
-        // Close on any click outside
+        // Close on any left-click outside
         document.addEventListener('click', () => hide());
-        document.addEventListener('contextmenu', () => hide());
+
+        // Global right-click: suppress browser menu everywhere except inputs/textareas,
+        // and show user context menu when right-clicking any [data-user-id] element.
+        document.addEventListener('contextmenu', (e) => {
+            const tag = e.target.tagName;
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || e.target.isContentEditable) {
+                hide();
+                return; // allow browser default for text editing
+            }
+            e.preventDefault();
+
+            const userEl = e.target.closest('[data-user-id]');
+            if (userEl?.dataset.userId) {
+                showUserContextMenu(userEl.dataset.userId, e.clientX, e.clientY);
+                return;
+            }
+
+            hide();
+        });
     }
 
     function show(x, y, items) {
@@ -240,6 +258,11 @@ function attachMessageContextMenu(el, message) {
         items.push('divider');
         items.push({ label: 'Copy Text', action: 'copyText' });
 
+        if (!isOwner) {
+            items.push('divider');
+            items.push({ label: '🚩 Report Message', action: 'reportMsg' });
+        }
+
         const inThreadPanel = !!el.closest('#threadSidePanel');
         ctxMenu._handlers.reply = () => {
             if (inThreadPanel) {
@@ -257,6 +280,7 @@ function attachMessageContextMenu(el, message) {
         ctxMenu._handlers.copyText = () => navigator.clipboard.writeText(message.content);
         ctxMenu._handlers.suppressEmbed = () => suppressEmbed(message.id);
         ctxMenu._handlers.createThread = () => promptCreateThread(message.id);
+        ctxMenu._handlers.reportMsg = () => openReportModal('message', message.user_id, message.id, message.content);
 
         ctxMenu.show(e.clientX, e.clientY, items);
     });
@@ -409,66 +433,84 @@ function attachServerContextMenu(el, server) {
     });
 }
 
-// ── Attach right-click to a member ───────────────────────────────────────────
+// ── Shared user context menu (called from delegation and explicit attachments) ─
+function showUserContextMenu(userId, x, y) {
+    // Prefer live member data; fall back to what the DOM element recorded
+    const member = (state.members || []).find(m => m.id === userId);
+    const domEl  = document.querySelector(`[data-user-id="${CSS.escape(userId)}"]`);
+    const username = member?.username || domEl?.dataset.username || userId;
+    const displayName = member?.nickname || username;
+
+    const isSelf        = state.currentUser && userId === state.currentUser.id;
+    const isTargetOwner = state.currentServer && userId === state.currentServer.owner_id;
+    const memberObj     = member || { id: userId, username };
+
+    const items = [];
+
+    items.push({ label: 'View Profile', action: 'viewProfile' });
+    if (isSelf) items.push({ label: 'Edit Profile', action: 'editProfile' });
+    items.push('divider');
+
+    if (!isSelf) {
+        items.push({ label: 'Message', action: 'dmUser' });
+        if (state.currentServer) items.push({ label: '@Mention', action: 'mentionUser' });
+        items.push('divider');
+    }
+
+    if (isSelf) {
+        items.push({ label: 'Change Nickname', action: 'changeNickname' });
+        items.push({ label: 'Change Avatar', action: 'changeAvatar' });
+        items.push('divider');
+    }
+
+    if (state.currentServer && !isSelf && clientHasPermission(CLIENT_PERMS.MANAGE_NICKNAMES)) {
+        items.push({ label: 'Set Nickname', action: 'setNickname' });
+    }
+    if (state.currentServer && clientHasPermission(CLIENT_PERMS.MANAGE_ROLES)) {
+        items.push({ label: 'Manage Roles', action: 'manageRoles' });
+    }
+
+    items.push({ label: 'Copy Username', action: 'copyUsername' });
+    items.push({ label: 'Copy User ID', action: 'copyUserId' });
+
+    if (!isSelf && !isTargetOwner && state.currentServer) {
+        const canKick = clientHasPermission(CLIENT_PERMS.KICK_MEMBERS);
+        const canBan  = clientHasPermission(CLIENT_PERMS.BAN_MEMBERS);
+        if (canKick || canBan) {
+            items.push('divider');
+            if (canKick) items.push({ label: 'Kick Member', action: 'kickMember', danger: true });
+            if (canBan)  items.push({ label: 'Ban Member',  action: 'banMember',  danger: true });
+        }
+    }
+
+    if (!isSelf) {
+        items.push('divider');
+        items.push({ label: '🚩 Report User', action: 'reportUser' });
+    }
+
+    ctxMenu._handlers.viewProfile    = () => openProfileModal(userId);
+    ctxMenu._handlers.editProfile    = () => openUserSettings('profile');
+    ctxMenu._handlers.dmUser         = () => startDMWithUser(userId, username);
+    ctxMenu._handlers.mentionUser    = () => ctxMentionUser(displayName);
+    ctxMenu._handlers.changeNickname = () => openChangeNicknameModal();
+    ctxMenu._handlers.changeAvatar   = () => document.getElementById('avatarFileInput')?.click();
+    ctxMenu._handlers.setNickname    = () => ctxSetNicknameForMember(memberObj);
+    ctxMenu._handlers.manageRoles    = () => ctxOpenRoleAssignMenu(memberObj);
+    ctxMenu._handlers.copyUsername   = () => navigator.clipboard.writeText(username);
+    ctxMenu._handlers.copyUserId     = () => navigator.clipboard.writeText(userId);
+    ctxMenu._handlers.kickMember     = () => ctxKickMember(memberObj);
+    ctxMenu._handlers.banMember      = () => ctxBanMember(memberObj);
+    ctxMenu._handlers.reportUser     = () => openReportModal('user', userId, null, null);
+
+    ctxMenu.show(x, y, items);
+}
+
+// ── Attach right-click to a member element (thin wrapper for explicit attachment) ─
 function attachMemberContextMenu(el, member) {
     el.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         e.stopPropagation();
-
-        const isSelf = state.currentUser && member.id === state.currentUser.id;
-        const isTargetOwner = state.currentServer && member.id === state.currentServer.owner_id;
-        const items = [];
-
-        items.push({ label: 'View Profile', action: 'viewProfile' });
-        if (isSelf) items.push({ label: 'Edit Profile', action: 'editProfile' });
-        items.push('divider');
-
-        if (!isSelf) {
-            items.push({ label: 'Message', action: 'dmUser' });
-            items.push({ label: '@Mention', action: 'mentionUser' });
-            items.push('divider');
-        }
-
-        if (isSelf) {
-            items.push({ label: 'Change Nickname', action: 'changeNickname' });
-            items.push({ label: 'Change Avatar', action: 'changeAvatar' });
-            items.push('divider');
-        }
-
-        if (!isSelf && clientHasPermission(CLIENT_PERMS.MANAGE_NICKNAMES)) {
-            items.push({ label: 'Set Nickname', action: 'setNickname' });
-        }
-        if (clientHasPermission(CLIENT_PERMS.MANAGE_ROLES)) {
-            items.push({ label: 'Manage Roles', action: 'manageRoles' });
-        }
-
-        items.push({ label: 'Copy Username', action: 'copyUsername' });
-        items.push({ label: 'Copy User ID', action: 'copyUserId' });
-
-        if (!isSelf && !isTargetOwner) {
-            const canKick = clientHasPermission(CLIENT_PERMS.KICK_MEMBERS);
-            const canBan  = clientHasPermission(CLIENT_PERMS.BAN_MEMBERS);
-            if (canKick || canBan) {
-                items.push('divider');
-                if (canKick) items.push({ label: 'Kick Member', action: 'kickMember', danger: true });
-                if (canBan)  items.push({ label: 'Ban Member',  action: 'banMember',  danger: true });
-            }
-        }
-
-        ctxMenu._handlers.viewProfile   = () => openProfileModal(member.id);
-        ctxMenu._handlers.editProfile   = () => openUserSettings('profile');
-        ctxMenu._handlers.dmUser        = () => startDMWithUser(member.id, member.username);
-        ctxMenu._handlers.mentionUser    = () => ctxMentionUser(member.nickname || member.username);
-        ctxMenu._handlers.changeNickname = () => openChangeNicknameModal();
-        ctxMenu._handlers.changeAvatar   = () => document.getElementById('avatarFileInput')?.click();
-        ctxMenu._handlers.setNickname    = () => ctxSetNicknameForMember(member);
-        ctxMenu._handlers.manageRoles    = () => ctxOpenRoleAssignMenu(member);
-        ctxMenu._handlers.copyUsername   = () => navigator.clipboard.writeText(member.username);
-        ctxMenu._handlers.copyUserId     = () => navigator.clipboard.writeText(member.id);
-        ctxMenu._handlers.kickMember     = () => ctxKickMember(member);
-        ctxMenu._handlers.banMember      = () => ctxBanMember(member);
-
-        ctxMenu.show(e.clientX, e.clientY, items);
+        showUserContextMenu(member.id, e.clientX, e.clientY);
     });
 }
 
@@ -1068,6 +1110,127 @@ function promptLeaveServer(server) {
             }
         ]
     });
+}
+
+// ── Report modal ─────────────────────────────────────────────────────────────
+
+const REPORT_REASONS = [
+    'Spam',
+    'Harassment',
+    'Hate speech',
+    'NSFW content',
+    'Misinformation',
+    'Threats / violence',
+    'Impersonation',
+    'Other',
+];
+
+function openReportModal(type, reportedUserId, messageId, messageContent) {
+    const inServer = !!state.currentServer;
+
+    function buildFormHTML(scope) {
+        const showAnon = scope === 'server' && inServer;
+        return `
+            <div style="display:flex;flex-direction:column;gap:10px;margin-top:4px;">
+                ${inServer ? `
+                <div style="display:flex;gap:8px;margin-bottom:2px;">
+                    <button type="button" class="btn-${scope==='server'?'primary':'secondary'}" style="flex:1;padding:6px;" id="rScope_server">Server</button>
+                    <button type="button" class="btn-${scope==='global'?'primary':'secondary'}" style="flex:1;padding:6px;" id="rScope_global">Global</button>
+                </div>
+                <p style="margin:0;font-size:12px;color:#b5bac1;">${scope==='server'?'Reported to server moderators.':'Reported to NexusGuild staff.'}</p>
+                ` : `<p style="margin:0;font-size:12px;color:#b5bac1;">This report will be sent to NexusGuild staff.</p>`}
+                <select id="rReason" style="width:100%;padding:8px;background:#1e1f22;border:1px solid #3f4147;border-radius:4px;color:#dbdee1;">
+                    <option value="">— Select a reason —</option>
+                    ${REPORT_REASONS.map(r => `<option value="${r}">${r}</option>`).join('')}
+                </select>
+                <textarea id="rDetails" placeholder="Additional details (optional)" style="width:100%;padding:8px;background:#1e1f22;border:1px solid #3f4147;border-radius:4px;color:#dbdee1;resize:vertical;min-height:72px;box-sizing:border-box;font-family:inherit;font-size:14px;"></textarea>
+                ${showAnon ? `
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;color:#b5bac1;font-size:13px;">
+                    <input type="checkbox" id="rAnon"> Submit anonymously
+                </label>` : ''}
+            </div>
+        `;
+    }
+
+    // Default scope: server if in a server, else global
+    const defaultScope = inServer ? 'server' : 'global';
+
+    async function doSubmit() {
+        const scopeEl = document.getElementById('rScope_server');
+        // determine scope from button active state, or default
+        let scope = defaultScope;
+        if (inServer && scopeEl) {
+            const serverBtn = document.getElementById('rScope_server');
+            const globalBtn = document.getElementById('rScope_global');
+            scope = serverBtn?.classList.contains('btn-primary') ? 'server' : 'global';
+        }
+
+        const reason = document.getElementById('rReason')?.value;
+        const details = document.getElementById('rDetails')?.value.trim();
+        const isAnonymous = document.getElementById('rAnon')?.checked || false;
+
+        if (!reason) { showModalError('Please select a reason.'); return; }
+
+        const body = {
+            type,
+            scope,
+            reportedUserId,
+            messageId: messageId || undefined,
+            messageContent: messageContent || undefined,
+            serverId: state.currentServer?.id || undefined,
+            reason,
+            details: details || undefined,
+            isAnonymous,
+        };
+
+        const res = await fetch('/api/reports', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(body),
+        });
+
+        if (res.ok) {
+            closeModal();
+            showToast('Report submitted.');
+        } else {
+            const d = await res.json().catch(() => ({}));
+            showModalError(d.error || 'Failed to submit report.');
+        }
+    }
+
+    showModal({
+        title: type === 'message' ? 'Report Message' : 'Report User',
+        customHTML: buildFormHTML(defaultScope),
+        buttons: [
+            { text: 'Cancel', style: 'secondary', action: closeModal },
+            { text: 'Submit Report', style: 'danger', action: doSubmit },
+        ],
+    });
+
+    // Wire up scope toggle buttons after modal renders
+    if (inServer) {
+        setTimeout(() => {
+            const serverBtn = document.getElementById('rScope_server');
+            const globalBtn = document.getElementById('rScope_global');
+            const descEl = serverBtn?.closest('[style]')?.querySelector('p');
+            if (!serverBtn || !globalBtn) return;
+
+            function setScope(s) {
+                serverBtn.className = s === 'server' ? 'btn-primary' : 'btn-secondary';
+                globalBtn.className = s === 'global' ? 'btn-primary' : 'btn-secondary';
+                // Update description text
+                const p = serverBtn.parentElement.nextElementSibling;
+                if (p) p.textContent = s === 'server' ? 'Reported to server moderators.' : 'Reported to NexusGuild staff.';
+                // Toggle anon checkbox
+                const anonLabel = document.querySelector('#rAnon')?.parentElement;
+                if (anonLabel) anonLabel.style.display = s === 'server' ? '' : 'none';
+            }
+
+            serverBtn.addEventListener('click', () => setScope('server'));
+            globalBtn.addEventListener('click', () => setScope('global'));
+        }, 50);
+    }
 }
 
 // Init on DOM ready

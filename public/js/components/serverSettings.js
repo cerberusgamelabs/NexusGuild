@@ -130,6 +130,7 @@ function switchSettingsTab(tab) {
         case 'ascension':  renderAscensionTab(content);   break;
         case 'audit':      renderAuditTab(content);       break;
         case 'webhooks':   renderWebhooksTab(content);    break;
+        case 'reports':    renderReportsTab(content);     break;
         case 'danger':     renderDangerZoneTab(content);  break;
     }
 }
@@ -1347,4 +1348,129 @@ async function _deleteWebhook(webhookId) {
 
 function _copyWebhookUrl(url) {
     navigator.clipboard.writeText(url).then(() => showToast('Webhook URL copied!'));
+}
+
+// ── Reports Tab ───────────────────────────────────────────────────────────────
+
+async function renderReportsTab(container) {
+    const serverId = _settingsServerId;
+    container.innerHTML = `<div class="settings-loading">Loading reports…</div>`;
+
+    let reports = [];
+    try {
+        const res = await fetch(`/api/reports/servers/${serverId}`, { credentials: 'include' });
+        if (!res.ok) { container.innerHTML = `<p class="settings-error">Failed to load reports.</p>`; return; }
+        const data = await res.json();
+        reports = data.reports || [];
+    } catch {
+        container.innerHTML = `<p class="settings-error">Failed to load reports.</p>`;
+        return;
+    }
+
+    const statusColors = { open: '#ed4245', reviewed: '#5865f2', dismissed: '#4f545c', escalated: '#f0b232' };
+    const statusBadge = (s) =>
+        `<span class="report-status-badge" style="background:${statusColors[s]||'#4f545c'}">${escHtml(s)}</span>`;
+    const typeBadge = (t) =>
+        `<span class="report-type-badge">${t === 'message' ? '💬 Message' : '👤 User'}</span>`;
+
+    const cards = reports.length ? reports.map(r => `
+        <div class="report-card">
+            <div class="report-card-header">
+                <div class="report-card-tags">
+                    ${statusBadge(r.status)}
+                    ${typeBadge(r.type)}
+                    <span class="report-reason">${escHtml(r.reason)}</span>
+                </div>
+                <span class="report-date">${new Date(r.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+            </div>
+
+            <div class="report-card-who">
+                <div class="report-who-item">
+                    <span class="report-who-label">Against</span>
+                    <span class="report-who-value">${escHtml(r.reported_username || 'Unknown')}</span>
+                </div>
+                <div class="report-who-sep">·</div>
+                <div class="report-who-item">
+                    <span class="report-who-label">Filed by</span>
+                    <span class="report-who-value">${
+                        r.is_anonymous ? '<em>Anonymous</em>'
+                        : r.reporter_username ? escHtml(r.reporter_username)
+                        : '—'
+                    }</span>
+                </div>
+                ${r.status === 'escalated' ? `<div class="report-who-sep">·</div><div class="report-who-item"><span class="report-who-label" style="color:#f0b232;">Escalated to staff</span></div>` : ''}
+            </div>
+
+            ${r.message_content ? `
+            <div class="report-message-preview">
+                <span class="report-message-label">Reported message</span>
+                <p class="report-message-text">${escHtml(r.message_content.slice(0, 400))}${r.message_content.length > 400 ? '…' : ''}</p>
+            </div>` : ''}
+
+            ${r.details ? `
+            <div class="report-details">
+                <span class="report-who-label">Additional details</span>
+                <p style="margin:3px 0 0;font-size:13px;color:#b5bac1;">${escHtml(r.details)}</p>
+            </div>` : ''}
+
+            ${r.status === 'open' ? `
+            <div class="report-card-actions">
+                <button class="btn-secondary report-action-btn" onclick="_markReportReviewed('${r.id}', '${serverId}')">Mark Reviewed</button>
+                <button class="btn-secondary report-action-btn" onclick="_dismissReport('${r.id}', '${serverId}')">Dismiss</button>
+                <button class="btn-secondary report-action-btn report-escalate-btn" onclick="_escalateReport('${r.id}', '${serverId}')">↑ Escalate to Staff</button>
+            </div>` : ''}
+        </div>
+    `).join('') : `<div class="report-empty">No reports filed in this server yet.</div>`;
+
+    container.innerHTML = `
+        <h2>Reports</h2>
+        <p style="color:#b5bac1;font-size:14px;margin-bottom:20px;">Reports submitted by members of this server.</p>
+        <div class="report-card-list">${cards}</div>
+    `;
+}
+
+async function _dismissReport(reportId, serverId) {
+    const res = await fetch(`/api/reports/servers/${serverId}/${reportId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ status: 'dismissed' }),
+    });
+    if (res.ok) {
+        showToast('Report dismissed.');
+        renderReportsTab(document.getElementById('settingsContent'));
+    } else {
+        const d = await res.json().catch(() => ({}));
+        showToast(d.error || 'Failed to dismiss report.', true);
+    }
+}
+
+async function _markReportReviewed(reportId, serverId) {
+    const res = await fetch(`/api/reports/servers/${serverId}/${reportId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ status: 'reviewed' }),
+    });
+    if (res.ok) {
+        showToast('Report marked as reviewed.');
+        renderReportsTab(document.getElementById('settingsContent'));
+    } else {
+        const d = await res.json().catch(() => ({}));
+        showToast(d.error || 'Failed to update report.', true);
+    }
+}
+
+async function _escalateReport(reportId, serverId) {
+    const res = await fetch(`/api/reports/servers/${serverId}/${reportId}/escalate`, {
+        method: 'POST',
+        credentials: 'include',
+    });
+    if (res.ok) {
+        showToast('Report escalated to NexusGuild staff.');
+        renderReportsTab(document.getElementById('settingsContent'));
+    } else {
+        const d = await res.json().catch(() => ({}));
+        showToast(d.error || 'Failed to escalate report.', true);
+    }
 }

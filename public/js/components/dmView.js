@@ -224,6 +224,8 @@ function renderDMConversationList() {
         return `
             <div class="dm-conversation-item ${isActive ? 'active' : ''}"
                  data-dm-id="${conv.id}"
+                 data-user-id="${conv.partner_id}"
+                 data-username="${escapeHtmlDM(conv.partner_username)}"
                  onclick="selectDMConversation('${conv.id}')">
                 <div class="dm-conv-avatar-wrap">
                     <div class="dm-conv-avatar">${dmAvatarHtml(conv.partner_avatar, conv.partner_username)}</div>

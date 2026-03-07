@@ -241,8 +241,8 @@ function buildMessageHTML(message, prevMessage, { roleColorMap = {}, nicknameMap
     const authorColor = roleColorMap[message.user_id] ? ` style="color:${roleColorMap[message.user_id]}"` : '';
     const authorName = nicknameMap[message.user_id] || message.username;
     const authorAvatar = avatarMap[message.user_id]
-        ? `<img src="${avatarMap[message.user_id]}" alt="${authorName}" class="message-av-img" onclick="openProfileModal('${message.user_id}')" style="cursor:pointer">`
-        : `<div class="message-avatar" onclick="openProfileModal('${message.user_id}')" style="cursor:pointer">${getInitials(authorName)}</div>`;
+        ? `<img src="${avatarMap[message.user_id]}" alt="${authorName}" class="message-av-img" data-user-id="${message.user_id}" data-username="${_esc(message.username)}" onclick="openProfileModal('${message.user_id}')" style="cursor:pointer">`
+        : `<div class="message-avatar" data-user-id="${message.user_id}" data-username="${_esc(message.username)}" onclick="openProfileModal('${message.user_id}')" style="cursor:pointer">${getInitials(authorName)}</div>`;
 
     if (showHeader) {
         return `
@@ -250,7 +250,7 @@ function buildMessageHTML(message, prevMessage, { roleColorMap = {}, nicknameMap
           ${replyRef}
           <div class="message-header">
             ${authorAvatar}
-            <span class="message-author"${authorColor} onclick="openProfileModal('${message.user_id}')" style="cursor:pointer">${authorName}</span>
+            <span class="message-author"${authorColor} data-user-id="${message.user_id}" data-username="${_esc(message.username)}" onclick="openProfileModal('${message.user_id}')" style="cursor:pointer">${authorName}</span>
             <span class="message-timestamp">${formatTimestamp(message.created_at)}${pinIcon}</span>
           </div>
           <div class="message-content" data-content-id="${message.id}">${messageContent}${editedTag}</div>
@@ -410,7 +410,8 @@ function patchMessageDOM(message) {
 
     const idx = state.messages.findIndex(m => m.id === message.id);
     if (idx !== -1) state.messages[idx] = message;
-    if (!el) return;
+    // Forum messages are handled by onForumMessageUpdated — skip to avoid replacing with wrong HTML
+    if (!el || el.classList.contains('fv-thread-msg')) return;
 
     const prevMessage = idx > 0 ? state.messages[idx - 1] : null;
     const lookups = buildMemberLookups();
@@ -967,8 +968,10 @@ async function submitInlineEdit(messageId) {
 
         if (res.ok) {
             const data = await res.json();
+            const updatedMessage = { ...original, ...data.data };
             cancelInlineEdit();
-            patchMessageDOM({ ...original, ...data.data });
+            if (typeof onForumMessageUpdated === 'function') onForumMessageUpdated(updatedMessage);
+            patchMessageDOM(updatedMessage);
         } else {
             const data = await res.json();
             textarea.disabled = false;

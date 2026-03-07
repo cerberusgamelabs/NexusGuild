@@ -25,7 +25,9 @@ function initializeSocket() {
     });
 
     state.socket.on('message_updated', (message) => {
+        if (typeof onForumMessageUpdated === 'function') onForumMessageUpdated(message);
         patchMessageDOM(message);
+        if (typeof onThreadMessageUpdated === 'function') onThreadMessageUpdated(message);
     });
 
     state.socket.on('message_deleted', (data) => {
@@ -197,6 +199,12 @@ function initializeSocket() {
 
     state.socket.on('server_emojis_updated', (data) => {
         if (typeof loadServerEmojis === 'function') loadServerEmojis(data.serverId);
+    });
+
+    state.socket.on('server_report', (data) => {
+        if (!clientHasPermission(CLIENT_PERMS.MANAGE_GUILD)) return;
+        const who = data.isAnonymous ? 'Anonymous' : (data.reporterUsername || 'Someone');
+        showToast(`🚩 New report filed: ${data.reason} (${data.type})`);
     });
 
     state.socket.on('custom_status_update', (data) => {

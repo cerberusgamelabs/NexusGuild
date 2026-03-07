@@ -3151,6 +3151,126 @@ a.msg-image-link {
     flex-direction: column;
     gap: 2px;
 }
+/* ── Report Cards (Server Settings) ─────────────────────────────────────── */
+.report-card-list { display: flex; flex-direction: column; gap: 12px; }
+
+.report-card {
+    background: #2b2d31;
+    border: 1px solid #3f4147;
+    border-radius: 8px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.report-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+
+.report-card-tags {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    flex-wrap: wrap;
+}
+
+.report-status-badge {
+    color: #fff;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .4px;
+}
+
+.report-type-badge {
+    background: #383a40;
+    color: #b5bac1;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.report-reason {
+    font-size: 14px;
+    font-weight: 600;
+    color: #f2f3f5;
+}
+
+.report-date {
+    font-size: 11px;
+    color: #6d6f78;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.report-card-who {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.report-who-item { display: flex; align-items: baseline; gap: 4px; }
+.report-who-label { font-size: 11px; color: #6d6f78; text-transform: uppercase; letter-spacing: .3px; }
+.report-who-value { font-size: 13px; color: #dbdee1; font-weight: 500; }
+.report-who-sep { color: #4f545c; font-size: 13px; }
+
+.report-message-preview {
+    background: #1e1f22;
+    border-left: 3px solid #4f545c;
+    border-radius: 0 4px 4px 0;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.report-message-label {
+    font-size: 11px;
+    color: #6d6f78;
+    text-transform: uppercase;
+    letter-spacing: .3px;
+}
+
+.report-message-text {
+    margin: 0;
+    font-size: 13px;
+    color: #b5bac1;
+    line-height: 1.5;
+    word-break: break-word;
+}
+
+.report-details {
+    padding: 6px 10px;
+    background: #1e1f22;
+    border-radius: 4px;
+}
+
+.report-card-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding-top: 4px;
+    border-top: 1px solid #3f4147;
+}
+
+.report-action-btn { font-size: 12px !important; padding: 4px 12px !important; }
+.report-escalate-btn { color: #f0b232 !important; }
+
+.report-empty {
+    color: #6d6f78;
+    font-size: 14px;
+    padding: 32px 0;
+    text-align: center;
+}
+
 .audit-entry {
     display: flex;
     align-items: flex-start;

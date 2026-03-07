@@ -205,6 +205,7 @@ const TAB_RENDERERS = {
     ascension: () => renderAscension(),
     audit:     () => renderAudit(1),
     inbox:     () => renderInbox(1),
+    reports:   () => renderReports(1),
     cors:      () => renderCors(),
     staff:     () => renderStaff()
 };
@@ -943,6 +944,92 @@ function deleteEmail(id, fromDetail = false) {
         toast('Email deleted.');
         renderInbox(1);
     });
+}
+
+/* ─── Reports ───────────────────────────────────────────────────────────── */
+
+async function renderReports(page = 1, statusFilter = '', typeFilter = '') {
+    let qs = `page=${page}`;
+    if (statusFilter) qs += `&status=${encodeURIComponent(statusFilter)}`;
+    if (typeFilter)   qs += `&type=${encodeURIComponent(typeFilter)}`;
+
+    const data = await api('GET', `/reports?${qs}`);
+    if (!data?.ok) { setContent('<p class="error">Failed to load reports.</p>'); return; }
+
+    const reports = data.data?.reports || [];
+    const total   = data.data?.total   || 0;
+    const limit   = data.data?.limit   || 30;
+
+    // Use single-quoted strings so they're safe inside double-quoted HTML attributes
+    const sf = statusFilter.replace(/'/g, "\\'");
+    const tf = typeFilter.replace(/'/g, "\\'");
+    const pagFn = `function(p){ renderReports(p, '${sf}', '${tf}') }`;
+
+    const statusBadge = (s) => {
+        const colors = { open: '#ed4245', reviewed: '#5865f2', dismissed: '#4f545c', escalated: '#f0b232' };
+        return `<span class="role-badge" style="background:${colors[s]||'#4f545c'};color:#fff;">${escHtml(s)}</span>`;
+    };
+
+    const rows = reports.length ? reports.map(r => `
+        <tr>
+            <td>${statusBadge(r.status)}</td>
+            <td>${escHtml(r.type)}</td>
+            <td>${escHtml(r.reason)}</td>
+            <td>${escHtml(r.reported_username || '—')}</td>
+            <td>${r.reporter_username ? escHtml(r.reporter_username) : r.is_anonymous ? '<em>anonymous</em>' : '—'}</td>
+            <td>${r.server_name ? escHtml(r.server_name) : '—'}</td>
+            <td style="font-size:12px">${fmtDate(r.created_at)}</td>
+            <td style="display:flex;gap:4px;flex-wrap:wrap;">
+                ${r.status === 'open' || r.status === 'escalated' ? `
+                <button class="btn btn-primary" style="font-size:11px;padding:3px 8px;" onclick="staffReviewReport('${r.id}', 'reviewed', '${sf}', '${tf}')">Reviewed</button>
+                <button class="btn btn-danger" style="font-size:11px;padding:3px 8px;" onclick="staffReviewReport('${r.id}', 'dismissed', '${sf}', '${tf}')">Dismiss</button>
+                ` : ''}
+                ${r.message_content ? `<button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;" data-content="${escHtml(r.message_content)}" onclick="staffShowReportContent(this.dataset.content)">View</button>` : ''}
+            </td>
+        </tr>
+    `).join('') : `<tr><td colspan="8" style="text-align:center;color:#6d6f78;padding:24px">No reports found.</td></tr>`;
+
+    setContent(`
+        <h2>Reports</h2>
+        <div style="margin-bottom:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <select onchange="renderReports(1, this.value, '${tf}')" style="padding:6px;background:#1e1f22;border:1px solid #3f4147;border-radius:4px;color:#dbdee1;">
+                <option value="" ${!statusFilter?'selected':''}>All statuses</option>
+                <option value="open" ${statusFilter==='open'?'selected':''}>Open</option>
+                <option value="reviewed" ${statusFilter==='reviewed'?'selected':''}>Reviewed</option>
+                <option value="dismissed" ${statusFilter==='dismissed'?'selected':''}>Dismissed</option>
+                <option value="escalated" ${statusFilter==='escalated'?'selected':''}>Escalated</option>
+            </select>
+            <select onchange="renderReports(1, '${sf}', this.value)" style="padding:6px;background:#1e1f22;border:1px solid #3f4147;border-radius:4px;color:#dbdee1;">
+                <option value="" ${!typeFilter?'selected':''}>All types</option>
+                <option value="message" ${typeFilter==='message'?'selected':''}>Message</option>
+                <option value="user" ${typeFilter==='user'?'selected':''}>User</option>
+            </select>
+            <span style="color:#b5bac1;font-size:13px;">${total} total</span>
+        </div>
+        <table class="data-table">
+            <thead><tr>
+                <th>Status</th><th>Type</th><th>Reason</th><th>Reported</th><th>Reporter</th><th>Server</th><th>Date</th><th>Actions</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+        </table>
+        ${paginationHtml(page, total, limit, pagFn)}
+    `);
+}
+
+async function staffReviewReport(id, status, statusFilter, typeFilter) {
+    const res = await api('PATCH', `/reports/${id}`, { status });
+    if (!res?.ok) { toast(res?.data?.error || 'Failed to update report.', true); return; }
+    toast(status === 'dismissed' ? 'Report dismissed.' : 'Report marked as reviewed.');
+    renderReports(1, statusFilter, typeFilter);
+}
+
+function staffShowReportContent(content) {
+    document.getElementById('modalTitle').textContent = 'Reported Message Content';
+    document.getElementById('modalBody').innerHTML =
+        `<pre style="white-space:pre-wrap;word-break:break-word;color:#dbdee1;font-size:13px;max-height:300px;overflow-y:auto;">${escHtml(content)}</pre>`;
+    document.getElementById('modalFooter').innerHTML =
+        `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`;
+    openModal();
 }
 
 /* ─── Role check ────────────────────────────────────────────────────────── */

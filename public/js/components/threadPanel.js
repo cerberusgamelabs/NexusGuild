@@ -175,6 +175,28 @@ function onThreadMessageDeleted(messageId) {
     _updateThreadIndicator(threadState.parentMessageId, threadState.replyCount);
 }
 
+// Called from socket.js message_updated handler
+function onThreadMessageUpdated(message) {
+    if (!threadState.isOpen) return;
+    const body = document.getElementById('threadPanelBody');
+    const el = body?.querySelector(`[data-message-id="${message.id}"]`);
+    if (!el) return;
+    const idx = threadState.messages.findIndex(m => m.id === message.id);
+    if (idx !== -1) threadState.messages[idx] = message;
+    const lookups = typeof buildMemberLookups === 'function' ? buildMemberLookups() : {};
+    const prev = idx > 0 ? threadState.messages[idx - 1] : null;
+    const html = buildMessageHTML(message, prev, lookups);
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    const newEl = tmp.firstElementChild;
+    // Preserve loaded embed content so iframes don't reload
+    const oldSlot = el.querySelector('[data-embed-id]');
+    const newSlot = newEl?.querySelector('[data-embed-id]');
+    if (oldSlot && newSlot) newSlot.innerHTML = oldSlot.innerHTML;
+    el.replaceWith(newEl);
+    if (typeof attachMessageContextMenu === 'function') attachMessageContextMenu(newEl, message);
+}
+
 // Called from socket.js message_created handler
 function onThreadMessageCreated(message) {
     const msgChannelId = message.channel_id ?? message.channelId;

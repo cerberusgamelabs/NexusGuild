@@ -487,6 +487,9 @@ const initDB = async () => {
             )
         `);
 
+        // Idempotent: bot permissions
+        await client.query(`ALTER TABLE bots ADD COLUMN IF NOT EXISTS default_permissions BIGINT DEFAULT 0`);
+
         // Idempotent: replies + threads
         await client.query(`ALTER TABLE messages  ADD COLUMN IF NOT EXISTS reply_to_id        VARCHAR(20) REFERENCES messages(id)  ON DELETE SET NULL`);
         await client.query(`ALTER TABLE channels  ADD COLUMN IF NOT EXISTS parent_message_id  VARCHAR(20) REFERENCES messages(id)  ON DELETE CASCADE`);
@@ -520,6 +523,30 @@ const initDB = async () => {
                 user_id    VARCHAR(20) REFERENCES users(id) ON DELETE CASCADE,
                 expires_at TIMESTAMP NOT NULL,
                 used       BOOLEAN DEFAULT FALSE
+            )
+        `);
+
+        // ── Reports ───────────────────────────────────────────────────────────
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS reports (
+                id               VARCHAR(20) PRIMARY KEY,
+                type             VARCHAR(10)  NOT NULL CHECK (type IN ('message','user')),
+                scope            VARCHAR(10)  NOT NULL CHECK (scope IN ('server','global')),
+                reporter_id      VARCHAR(20)  REFERENCES users(id) ON DELETE SET NULL,
+                reported_user_id VARCHAR(20)  REFERENCES users(id) ON DELETE SET NULL,
+                message_id       VARCHAR(20)  REFERENCES messages(id) ON DELETE SET NULL,
+                message_content  TEXT,
+                server_id        VARCHAR(20)  REFERENCES servers(id) ON DELETE CASCADE,
+                reason           VARCHAR(50)  NOT NULL,
+                details          TEXT,
+                is_anonymous     BOOLEAN DEFAULT FALSE,
+                status           VARCHAR(20)  NOT NULL DEFAULT 'open'
+                                     CHECK (status IN ('open','reviewed','dismissed','escalated')),
+                reviewed_by      VARCHAR(20)  REFERENCES users(id) ON DELETE SET NULL,
+                reviewed_at      TIMESTAMP,
+                escalated_at     TIMESTAMP,
+                created_at       TIMESTAMP DEFAULT NOW()
             )
         `);
 

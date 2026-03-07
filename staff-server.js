@@ -814,6 +814,72 @@ app.delete('/api/staff/inbox/:id', requireStaff('superadmin'), async (req, res) 
     }
 });
 
+// ── Reports ───────────────────────────────────────────────────────────────────
+
+// GET /api/staff/reports?page=&status=&type=
+app.get('/api/staff/reports', requireStaff('moderator'), async (req, res) => {
+    try {
+        const page  = Math.max(1, parseInt(req.query.page)  || 1);
+        const limit = 30;
+        const offset = (page - 1) * limit;
+
+        const conditions = [`r.scope = 'global'`];
+        const params = [];
+
+        if (req.query.status) { params.push(req.query.status); conditions.push(`r.status = $${params.length}`); }
+        if (req.query.type)   { params.push(req.query.type);   conditions.push(`r.type = $${params.length}`); }
+
+        params.push(limit, offset);
+        const result = await db.query(
+            `SELECT
+                r.*,
+                ru.username  AS reporter_username,
+                rpu.username AS reported_username,
+                s.name       AS server_name
+             FROM reports r
+             LEFT JOIN users u   ON u.id   = r.reporter_id
+             LEFT JOIN users ru  ON ru.id  = r.reporter_id
+             LEFT JOIN users rpu ON rpu.id = r.reported_user_id
+             LEFT JOIN servers s ON s.id   = r.server_id
+             WHERE ${conditions.join(' AND ')}
+             ORDER BY r.created_at DESC
+             LIMIT $${params.length - 1} OFFSET $${params.length}`,
+            params
+        );
+
+        const countRes = await db.query(
+            `SELECT COUNT(*) FROM reports r WHERE ${conditions.slice(0, conditions.length).join(' AND ')}`,
+            params.slice(0, params.length - 2)
+        );
+
+        res.json({ reports: result.rows, total: parseInt(countRes.rows[0].count), page, limit });
+    } catch (err) {
+        console.error('[staff] reports list error:', err);
+        res.status(500).json({ error: 'Failed to load reports.' });
+    }
+});
+
+// PATCH /api/staff/reports/:id  — update status (reviewed/dismissed)
+app.patch('/api/staff/reports/:id', requireStaff('moderator'), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status } = req.body;
+        if (!['reviewed', 'dismissed'].includes(status)) {
+            return res.status(400).json({ error: 'Status must be reviewed or dismissed.' });
+        }
+        const result = await db.query(
+            `UPDATE reports SET status=$1, reviewed_by=$2, reviewed_at=NOW()
+             WHERE id=$3 AND scope='global' RETURNING id`,
+            [status, req.session.user.id, id]
+        );
+        if (!result.rows.length) return res.status(404).json({ error: 'Report not found.' });
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('[staff] reports update error:', err);
+        res.status(500).json({ error: 'Failed to update report.' });
+    }
+});
+
 // ── SPA fallback ──────────────────────────────────────────────────────────────
 
 app.get('*', (req, res) => {

@@ -183,7 +183,15 @@ function _fvRenderThread(container, post) {
         </div>` : ''}`;
 
     const threadEl = document.getElementById('fvThreadMessages');
-    if (threadEl) threadEl.scrollTop = threadEl.scrollHeight;
+    if (threadEl) {
+        threadEl.scrollTop = threadEl.scrollHeight;
+        if (typeof attachMessageContextMenu === 'function') {
+            _fvPostMessages.forEach(msg => {
+                const el = threadEl.querySelector(`[data-message-id="${msg.id}"]`);
+                if (el) attachMessageContextMenu(el, msg);
+            });
+        }
+    }
 }
 
 function _fvMakeMessage(msg, isOpener) {
@@ -208,7 +216,7 @@ function _fvMakeMessage(msg, isOpener) {
     }
 
     return `
-        <div class="fv-thread-msg${isOpener ? ' fv-opener' : ''}">
+        <div class="fv-thread-msg${isOpener ? ' fv-opener' : ''}" data-message-id="${msg.id}" data-user-id="${msg.user_id || ''}" data-username="${escapeHtml(msg.username || '')}">
             <div class="fv-msg-av">${av}</div>
             <div class="fv-msg-body">
                 <div class="fv-msg-header">
@@ -216,7 +224,8 @@ function _fvMakeMessage(msg, isOpener) {
                     <span class="fv-msg-time">${date}</span>
                     ${isOpener ? '<span class="fv-opener-badge">Original Post</span>' : ''}
                 </div>
-                <div class="fv-msg-content">${msg.content ? parseMarkdown(msg.content) : ''}</div>
+                <div class="fv-msg-content" data-content-id="${msg.id}">${msg.content ? parseMarkdown(msg.content) : ''}</div>
+                <div data-edit-id="${msg.id}" style="display:none;"></div>
                 ${attachHtml}
             </div>
         </div>`;
@@ -377,6 +386,17 @@ function _fvCancelNewPost() {
 }
 
 // ── Socket event callbacks (called from socket.js) ────────────────────────────
+
+function onForumMessageUpdated(message) {
+    if (!_fvViewingPostId) return;
+    const idx = _fvPostMessages.findIndex(m => m.id === message.id);
+    if (idx === -1) return;
+    _fvPostMessages[idx] = message;
+    const el = document.querySelector(`#fvThreadMessages [data-message-id="${message.id}"]`);
+    if (!el) return;
+    const contentEl = el.querySelector('.fv-msg-content');
+    if (contentEl) contentEl.innerHTML = message.content ? parseMarkdown(message.content) : '';
+}
 
 function onForumPostCreated(data) {
     if (!_fvChannel || data.channelId !== _fvChannel.id) return;
