@@ -12,4 +12,8 @@ router.post('/login', validateLogin, AuthController.login);
 router.post('/logout', requireAuth, AuthController.logout);
 router.get('/me', requireAuth, AuthController.getCurrentUser);
 
+router.patch('/password', requireAuth, AuthController.changePassword);
+router.post('/reset-password/request', AuthController.requestPasswordReset);
+router.post('/reset-password/confirm', AuthController.confirmPasswordReset);
+
 export default router;

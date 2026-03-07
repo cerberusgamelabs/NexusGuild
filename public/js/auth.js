@@ -170,6 +170,26 @@ async function register() {
     }
 }
 
+function showForgotPassword() {
+    const form = document.getElementById('forgot-password-form');
+    if (form) form.style.display = form.style.display === 'none' ? 'block' : 'none';
+}
+
+async function requestPasswordReset() {
+    const email = document.getElementById('forgot-email')?.value?.trim();
+    const msgEl = document.getElementById('forgot-msg');
+    if (!email) { msgEl.textContent = 'Enter your email address.'; msgEl.style.color = '#da373c'; return; }
+
+    const res = await fetch('/api/auth/reset-password/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+    });
+    const data = await res.json();
+    msgEl.style.color = res.ok ? '#23a559' : '#da373c';
+    msgEl.textContent = data.message || data.error || 'Something went wrong.';
+}
+
 async function logout() {
     try {
         const response = await fetch('/api/auth/logout', {

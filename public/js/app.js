@@ -213,6 +213,8 @@ function setupDragAndDrop() {
 function showAuth() {
     document.getElementById('auth-screen').style.display = 'flex';
     document.getElementById('app-screen').style.display = 'none';
+    const userSettings = document.getElementById('userSettingsOverlay');
+    if (userSettings) userSettings.style.display = 'none';
 }
 
 function showApp() {

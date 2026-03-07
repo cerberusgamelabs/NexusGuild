@@ -24,6 +24,12 @@
                 <input type="password" id="login-password" placeholder="Password" required>
                 <button onclick="login()">Login</button>
                 <p>Don't have an account? <a href="#" onclick="showRegister()">Register</a></p>
+                <p><a href="#" onclick="showForgotPassword()">Forgot your password?</a></p>
+                <div id="forgot-password-form" style="display:none;margin-top:12px;">
+                    <input type="email" id="forgot-email" placeholder="Enter your email">
+                    <button onclick="requestPasswordReset()" style="margin-top:8px;">Send Reset Link</button>
+                    <div id="forgot-msg" style="font-size:13px;margin-top:8px;"></div>
+                </div>
             </div>
 
             <div id="register-form" class="auth-form" style="display:none;">

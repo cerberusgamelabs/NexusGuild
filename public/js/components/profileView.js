@@ -247,8 +247,54 @@ function renderUserAccountTab(content) {
                 <button class="btn-secondary" onclick="document.getElementById('avatarFileInput').click()">Change Avatar</button>
             </div>
         </div>
-        <p style="color:#72767d;font-size:13px;margin-top:16px;">More account settings coming soon.</p>
+
+        <div class="settings-divider"></div>
+        <h3 class="settings-section-title" style="font-size:15px;">Change Password</h3>
+        <div class="settings-field">
+            <label class="settings-label">Current Password</label>
+            <input type="password" id="acct-cur-pw" class="modal-input" placeholder="Enter current password">
+        </div>
+        <div class="settings-field">
+            <label class="settings-label">New Password</label>
+            <input type="password" id="acct-new-pw" class="modal-input" placeholder="At least 8 characters">
+        </div>
+        <div class="settings-field">
+            <label class="settings-label">Confirm New Password</label>
+            <input type="password" id="acct-confirm-pw" class="modal-input" placeholder="Repeat new password">
+        </div>
+        <div class="settings-actions">
+            <div id="acct-pw-msg" class="modal-error" style="display:none;"></div>
+            <button class="btn-primary" onclick="saveNewPassword()">Update Password</button>
+        </div>
     `;
+}
+
+async function saveNewPassword() {
+    const cur = document.getElementById('acct-cur-pw')?.value;
+    const pw1 = document.getElementById('acct-new-pw')?.value;
+    const pw2 = document.getElementById('acct-confirm-pw')?.value;
+    const msgEl = document.getElementById('acct-pw-msg');
+
+    const showErr = (msg) => { msgEl.textContent = msg; msgEl.style.color = '#da373c'; msgEl.style.display = 'block'; };
+    const showOk  = (msg) => { msgEl.textContent = msg; msgEl.style.color = '#23a559'; msgEl.style.display = 'block'; };
+
+    if (!cur || !pw1 || !pw2) return showErr('All fields are required.');
+    if (pw1.length < 8) return showErr('New password must be at least 8 characters.');
+    if (pw1 !== pw2) return showErr('Passwords do not match.');
+
+    const res = await fetch('/api/auth/password', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ currentPassword: cur, newPassword: pw1 }),
+    });
+    const data = await res.json();
+    if (!res.ok) return showErr(data.error || 'Failed to update password.');
+
+    showOk('Password updated successfully.');
+    document.getElementById('acct-cur-pw').value = '';
+    document.getElementById('acct-new-pw').value = '';
+    document.getElementById('acct-confirm-pw').value = '';
 }
 
 // Shims so gear button + profile modal "Edit Profile" still work
