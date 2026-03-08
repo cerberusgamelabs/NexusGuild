@@ -5,7 +5,7 @@ import db from "../config/database.js";
 import { generateSnowflake } from "#utils/functions";
 import { log, tags } from "#utils/logging";
 import { PermissionHandler, PERMISSIONS } from "../config/permissions.js";
-import { batchResolveChannelPerms } from "../utils/channelPerms.js";
+import { batchResolveChannelPerms, permissionCache } from "../utils/channelPerms.js";
 import { logAuditEvent } from "../utils/audit.js";
 
 // Resolve channelId → serverId and check if userId holds the given permission.
@@ -14,20 +14,17 @@ async function checkChannelPerm(userId, channelId, permission) {
     const chanRes = await db.query('SELECT server_id FROM channels WHERE id = $1', [channelId]);
     if (chanRes.rows.length === 0) return null;
     const serverId = chanRes.rows[0].server_id;
-    const ownerRes = await db.query('SELECT owner_id FROM servers WHERE id = $1', [serverId]);
-    if (ownerRes.rows[0]?.owner_id === userId) return { serverId, allowed: true };
-    const [rolesRes, everyoneRes] = await Promise.all([
-        db.query(
-            `SELECT COALESCE(bit_or(r.permissions::bigint), 0)::text AS perms
-             FROM roles r JOIN user_roles ur ON r.id = ur.role_id
-             WHERE ur.user_id = $1 AND ur.server_id = $2`,
-            [userId, serverId]
-        ),
-        db.query(`SELECT permissions FROM roles WHERE server_id = $1 AND name = '@everyone'`, [serverId]),
-    ]);
-    let perms = BigInt(rolesRes.rows[0]?.perms || '0');
-    if (everyoneRes.rows[0]) perms |= BigInt(everyoneRes.rows[0].permissions);
-    return { serverId, allowed: PermissionHandler.hasPermission(perms, permission) };
+
+    // Get permission base from cache
+    const base = await permissionCache.getPermissionBase(userId, serverId);
+    if (!base) return { serverId, allowed: false }; // server exists but user has no access?
+
+    if (base.isOwner) return { serverId, allowed: true };
+
+    return {
+        serverId,
+        allowed: PermissionHandler.hasPermission(base.basePerms, permission)
+    };
 }
 
 class ChannelController {

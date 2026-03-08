@@ -3,6 +3,7 @@
 
 import db from "../config/database.js";
 import { PermissionHandler, PERMISSIONS } from "../config/permissions.js";
+import { permissionCache } from "../utils/permissionCache.js";
 
 const checkPermission = (permission) => {
     return async (req, res, next) => {
@@ -11,40 +12,19 @@ const checkPermission = (permission) => {
             const { serverId, channelId } = req.params;
             const resolvedServerId = serverId || channelId;
 
-            // Server owners have implicit administrator ? bypass permission check
-            const ownerCheck = await db.query(
-                'SELECT owner_id FROM servers WHERE id = $1',
-                [resolvedServerId]
-            );
-            if (ownerCheck.rows.length > 0 && ownerCheck.rows[0].owner_id === userId) {
-                return next();
+            // Get permission base from cache (replaces 3 queries with 0-1)
+            const base = await permissionCache.getPermissionBase(userId, resolvedServerId);
+            if (!base) {
+                return res.status(404).json({ error: 'Server not found' });
             }
 
-            // Get user's roles in the server
-            const rolesResult = await db.query(`
-                SELECT r.permissions
-                FROM roles r
-                JOIN user_roles ur ON r.id = ur.role_id
-                WHERE ur.user_id = $1 AND ur.server_id = $2
-            `, [userId, resolvedServerId]);
+            // Owner bypass (already in cache)
+            if (base.isOwner) return next();
 
-            // Always include @everyone permissions
-            const everyoneResult = await db.query(`
-                SELECT permissions FROM roles
-                WHERE server_id = $1 AND name = '@everyone'
-            `, [resolvedServerId]);
-
-            // Calculate combined permissions
-            let userPermissions = 0n;
-            for (const role of rolesResult.rows) {
-                userPermissions = userPermissions | BigInt(role.permissions);
-            }
-            if (everyoneResult.rows.length > 0) {
-                userPermissions = userPermissions | BigInt(everyoneResult.rows[0].permissions);
-            }
-
-            // Check if user has the required permission
-            if (PermissionHandler.hasPermission(userPermissions, permission)) {
+            // Check permission using aggregated server-level perms
+            // Note: This middleware checks server-level permissions only.
+            // Channel-level overrides are checked separately in controllers.
+            if (PermissionHandler.hasPermission(base.basePerms, permission)) {
                 next();
             } else {
                 res.status(403).json({ error: 'Insufficient permissions' });

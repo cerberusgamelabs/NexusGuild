@@ -3,32 +3,17 @@
 
 import db from '../config/database.js';
 import { PermissionHandler, PERMISSIONS } from '../config/permissions.js';
+import { permissionCache } from './permissionCache.js';
 
 // Resolve effective perms for one user in one channel.
 export async function resolveChannelPerms(userId, serverId, channelId) {
-    // 1. Owner bypass
-    const ownerRes = await db.query('SELECT owner_id FROM servers WHERE id = $1', [serverId]);
-    const isOwner = ownerRes.rows[0]?.owner_id === userId;
-    if (isOwner) return ~0n; // all perms
+    // Get permission base from cache (reduces 5 queries → 2)
+    const base = await permissionCache.getPermissionBase(userId, serverId);
+    if (!base) return 0n; // server doesn't exist
 
-    const [rolesRes, everyoneRes] = await Promise.all([
-        db.query(
-            `SELECT COALESCE(bit_or(r.permissions::bigint), 0)::text AS perms
-             FROM roles r JOIN user_roles ur ON r.id = ur.role_id
-             WHERE ur.user_id = $1 AND ur.server_id = $2`,
-            [userId, serverId]
-        ),
-        db.query(`SELECT id, permissions FROM roles WHERE server_id = $1 AND name = '@everyone'`, [serverId]),
-    ]);
+    if (base.isOwner || base.hasAdmin) return ~0n; // all perms
 
-    let base = BigInt(rolesRes.rows[0]?.perms || '0');
-    const everyoneRoleId = everyoneRes.rows[0]?.id;
-    if (everyoneRes.rows[0]) base |= BigInt(everyoneRes.rows[0].permissions);
-
-    // 2. ADMINISTRATOR bypass
-    if (PermissionHandler.hasPermission(base, PERMISSIONS.ADMINISTRATOR)) return ~0n;
-
-    // 3. Fetch all overrides for this channel
+    // Fetch channel overrides (only needed query)
     const overridesRes = await db.query(
         `SELECT cpo.target_id, cpo.target_type, cpo.allow, cpo.deny
          FROM channel_permission_overrides cpo
@@ -37,26 +22,19 @@ export async function resolveChannelPerms(userId, serverId, channelId) {
         [channelId, userId]
     );
 
-    // Get user's role IDs
-    const userRolesRes = await db.query(
-        `SELECT role_id FROM user_roles WHERE user_id = $1 AND server_id = $2`,
-        [userId, serverId]
-    );
-    const userRoleIds = new Set(userRolesRes.rows.map(r => r.role_id));
+    let perms = base.basePerms;
 
-    let perms = base;
-
-    // 3. @everyone channel override
-    const everyoneOverride = overridesRes.rows.find(o => o.target_id === everyoneRoleId);
+    // @everyone override
+    const everyoneOverride = overridesRes.rows.find(o => o.target_id === base.everyoneRoleId);
     if (everyoneOverride) {
         perms &= ~BigInt(everyoneOverride.deny);
         perms |= BigInt(everyoneOverride.allow);
     }
 
-    // 4. Role overrides
+    // Role overrides
     let roleAllow = 0n, roleDeny = 0n;
     for (const o of overridesRes.rows) {
-        if (o.target_type === 'role' && o.target_id !== everyoneRoleId && userRoleIds.has(o.target_id)) {
+        if (o.target_type === 'role' && o.target_id !== base.everyoneRoleId && base.userRoleIds.has(o.target_id)) {
             roleAllow |= BigInt(o.allow);
             roleDeny  |= BigInt(o.deny);
         }
@@ -64,7 +42,7 @@ export async function resolveChannelPerms(userId, serverId, channelId) {
     perms &= ~roleDeny;
     perms |= roleAllow;
 
-    // 5. Member override
+    // Member override
     const memberOverride = overridesRes.rows.find(o => o.target_type === 'member' && o.target_id === userId);
     if (memberOverride) {
         perms &= ~BigInt(memberOverride.deny);
@@ -79,37 +57,23 @@ export async function resolveChannelPerms(userId, serverId, channelId) {
 export async function batchResolveChannelPerms(userId, serverId, channelIds) {
     if (channelIds.length === 0) return {};
 
-    const ownerRes = await db.query('SELECT owner_id FROM servers WHERE id = $1', [serverId]);
-    if (ownerRes.rows[0]?.owner_id === userId) {
+    // Get permission base (cached after first call)
+    const base = await permissionCache.getPermissionBase(userId, serverId);
+    if (!base) return {}; // server doesn't exist
+
+    if (base.isOwner || base.hasAdmin) {
         const result = {};
         channelIds.forEach(id => { result[id] = ~0n; });
         return result;
     }
 
-    const [rolesRes, everyoneRes, userRolesRes, overridesRes] = await Promise.all([
-        db.query(
-            `SELECT COALESCE(bit_or(r.permissions::bigint), 0)::text AS perms
-             FROM roles r JOIN user_roles ur ON r.id = ur.role_id
-             WHERE ur.user_id = $1 AND ur.server_id = $2`,
-            [userId, serverId]
-        ),
-        db.query(`SELECT id, permissions FROM roles WHERE server_id = $1 AND name = '@everyone'`, [serverId]),
-        db.query(`SELECT role_id FROM user_roles WHERE user_id = $1 AND server_id = $2`, [userId, serverId]),
-        db.query(
-            `SELECT channel_id, target_id, target_type, allow, deny
-             FROM channel_permission_overrides
-             WHERE channel_id = ANY($1::varchar[])`,
-            [channelIds]
-        ),
-    ]);
-
-    let base = BigInt(rolesRes.rows[0]?.perms || '0');
-    const everyoneRow = everyoneRes.rows[0];
-    const everyoneRoleId = everyoneRow?.id;
-    if (everyoneRow) base |= BigInt(everyoneRow.permissions);
-
-    const isAdmin = PermissionHandler.hasPermission(base, PERMISSIONS.ADMINISTRATOR);
-    const userRoleIds = new Set(userRolesRes.rows.map(r => r.role_id));
+    // Fetch all channel overrides in one query (only query needed besides base)
+    const overridesRes = await db.query(
+        `SELECT channel_id, target_id, target_type, allow, deny
+         FROM channel_permission_overrides
+         WHERE channel_id = ANY($1::varchar[])`,
+        [channelIds]
+    );
 
     // Group overrides by channel
     const byChannel = {};
@@ -120,19 +84,17 @@ export async function batchResolveChannelPerms(userId, serverId, channelIds) {
 
     const result = {};
     for (const channelId of channelIds) {
-        if (isAdmin) { result[channelId] = ~0n; continue; }
-
-        let perms = base;
+        let perms = base.basePerms;
         const overrides = byChannel[channelId] || [];
 
         // @everyone override
-        const eo = overrides.find(o => o.target_id === everyoneRoleId);
+        const eo = overrides.find(o => o.target_id === base.everyoneRoleId);
         if (eo) { perms &= ~BigInt(eo.deny); perms |= BigInt(eo.allow); }
 
         // Role overrides
         let roleAllow = 0n, roleDeny = 0n;
         for (const o of overrides) {
-            if (o.target_type === 'role' && o.target_id !== everyoneRoleId && userRoleIds.has(o.target_id)) {
+            if (o.target_type === 'role' && o.target_id !== base.everyoneRoleId && base.userRoleIds.has(o.target_id)) {
                 roleAllow |= BigInt(o.allow);
                 roleDeny  |= BigInt(o.deny);
             }

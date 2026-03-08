@@ -8,7 +8,7 @@ import db from "../config/database.js";
 import { generateSnowflake } from "#utils/functions";
 import { log, tags } from "#utils/logging";
 import { PermissionHandler, PERMISSIONS } from "../config/permissions.js";
-import { resolveChannelPerms } from "../utils/channelPerms.js";
+import { resolveChannelPerms, permissionCache } from "../utils/channelPerms.js";
 import { logAuditEvent } from "../utils/audit.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -16,20 +16,10 @@ const __dirname = path.dirname(__filename);
 
 // Returns true if userId is the server owner or holds the given permission.
 async function hasServerPerm(userId, serverId, permission) {
-    const ownerRes = await db.query('SELECT owner_id FROM servers WHERE id = $1', [serverId]);
-    if (ownerRes.rows[0]?.owner_id === userId) return true;
-    const [rolesRes, everyoneRes] = await Promise.all([
-        db.query(
-            `SELECT COALESCE(bit_or(r.permissions::bigint), 0)::text AS perms
-             FROM roles r JOIN user_roles ur ON r.id = ur.role_id
-             WHERE ur.user_id = $1 AND ur.server_id = $2`,
-            [userId, serverId]
-        ),
-        db.query(`SELECT permissions FROM roles WHERE server_id = $1 AND name = '@everyone'`, [serverId]),
-    ]);
-    let perms = BigInt(rolesRes.rows[0]?.perms || '0');
-    if (everyoneRes.rows[0]) perms |= BigInt(everyoneRes.rows[0].permissions);
-    return PermissionHandler.hasPermission(perms, permission);
+    const base = await permissionCache.getPermissionBase(userId, serverId);
+    if (!base) return false;
+    if (base.isOwner) return true;
+    return PermissionHandler.hasPermission(base.basePerms, permission);
 }
 
 class MessageController {
