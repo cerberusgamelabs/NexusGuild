@@ -69,13 +69,14 @@ export default class InteractionController {
         const interactionId    = generateSnowflake();
         const interactionToken = crypto.randomBytes(24).toString('hex');
 
-        // Store pending interaction (3 second TTL for initial response)
+        // Store pending interaction (3 second TTL for initial response; deferred extends to 15 min)
         pendingInteractions.set(interactionId, {
             token:     interactionToken,
             channelId,
             serverId,
             botId:     cmd.bot_id,
             botName:   cmd.bot_name,
+            deferred:  false,
             expiresAt: Date.now() + 3000,
         });
 
@@ -133,9 +134,10 @@ export default class InteractionController {
 
     // POST /api/interactions/:interactionId/:token/callback
     // Called by the bot to respond to an interaction (no bot auth needed — token IS the auth)
+    // type 4 = immediate reply (default), type 5 = deferred (extends TTL to 15 min, no message yet)
     static async callback(req, res) {
         const { interactionId, token } = req.params;
-        const { content } = req.body;
+        const { type = 4, content } = req.body;
 
         const interaction = pendingInteractions.get(interactionId);
         if (!interaction) return res.status(404).json({ error: 'Unknown or expired interaction' });
@@ -143,6 +145,13 @@ export default class InteractionController {
         if (Date.now() > interaction.expiresAt) {
             pendingInteractions.delete(interactionId);
             return res.status(400).json({ error: 'Interaction token expired' });
+        }
+
+        // Deferred response — keep interaction alive for 15 minutes so bot can follow up
+        if (type === 5) {
+            interaction.deferred = true;
+            interaction.expiresAt = Date.now() + 15 * 60 * 1000;
+            return res.json({ success: true });
         }
 
         pendingInteractions.delete(interactionId);
@@ -157,6 +166,35 @@ export default class InteractionController {
                 content
             );
         }
+
+        res.json({ success: true });
+    }
+
+    // POST /api/interactions/:interactionId/:token/followup
+    // Bot posts a followup message after a deferred response (within 15 min window)
+    static async followup(req, res) {
+        const { interactionId, token } = req.params;
+        const { content } = req.body;
+
+        const interaction = pendingInteractions.get(interactionId);
+        if (!interaction) return res.status(404).json({ error: 'Unknown or expired interaction' });
+        if (interaction.token !== token) return res.status(401).json({ error: 'Invalid interaction token' });
+        if (Date.now() > interaction.expiresAt) {
+            pendingInteractions.delete(interactionId);
+            return res.status(400).json({ error: 'Interaction token expired' });
+        }
+        if (!content?.trim()) return res.status(400).json({ error: 'content is required' });
+
+        pendingInteractions.delete(interactionId);
+
+        await InteractionController._postBotMessage(
+            req,
+            interaction.botId,
+            interaction.botName,
+            interaction.channelId,
+            interaction.serverId,
+            content
+        );
 
         res.json({ success: true });
     }

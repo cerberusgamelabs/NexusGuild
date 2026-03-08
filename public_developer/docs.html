@@ -129,7 +129,9 @@
         <a class="nav-item" href="#rest">REST API</a>
         <a class="nav-item" href="#users">— Users</a>
         <a class="nav-item" href="#channels">— Channels</a>
+        <a class="nav-item" href="#pins">— Pins</a>
         <a class="nav-item" href="#guilds">— Guilds</a>
+        <a class="nav-item" href="#roles">— Roles</a>
         <a class="nav-item" href="#interactions">— Interactions</a>
         <a class="nav-item" href="#permissions">— Permissions</a>
         <a class="nav-item" href="#quickstart">Quickstart</a>
@@ -195,24 +197,39 @@ const gateway = io('https://www.nexusguild.gg/bot-gateway', {
             <td><code>bot.id</code>, <code>bot.name</code></td>
         </tr>
         <tr>
+            <td><span class="event-name">GUILD_CREATE</span></td>
+            <td>One per server, sent right after READY</td>
+            <td><code>id</code>, <code>name</code>, <code>owner_id</code>, <code>channels[]</code>, <code>roles[]</code>, <code>members[]</code></td>
+        </tr>
+        <tr>
             <td><span class="event-name">MESSAGE_CREATE</span></td>
             <td>A message is sent in any channel the bot can see</td>
-            <td><code>id</code>, <code>channel_id</code>, <code>user_id</code>, <code>username</code>, <code>content</code>, <code>created_at</code></td>
+            <td><code>id</code>, <code>channel_id</code>, <code>author</code>, <code>content</code>, <code>timestamp</code></td>
         </tr>
         <tr>
             <td><span class="event-name">MESSAGE_UPDATE</span></td>
             <td>A message is edited</td>
-            <td><code>id</code>, <code>channel_id</code>, <code>content</code></td>
+            <td><code>id</code>, <code>channel_id</code>, <code>author</code>, <code>content</code>, <code>edited_timestamp</code></td>
         </tr>
         <tr>
             <td><span class="event-name">MESSAGE_DELETE</span></td>
             <td>A message is deleted</td>
-            <td><code>messageId</code>, <code>channelId</code></td>
+            <td><code>id</code>, <code>channel_id</code>, <code>guild_id</code></td>
         </tr>
         <tr>
             <td><span class="event-name">INTERACTION_CREATE</span></td>
             <td>A user invokes a slash command registered to this bot</td>
-            <td><code>id</code>, <code>token</code>, <code>channel_id</code>, <code>guild_id</code>, <code>user</code>, <code>data.name</code>, <code>data.options</code></td>
+            <td><code>id</code>, <code>token</code>, <code>channel_id</code>, <code>guild_id</code>, <code>member</code>, <code>data.name</code>, <code>data.options</code></td>
+        </tr>
+        <tr>
+            <td><span class="event-name">GUILD_MEMBER_UPDATE</span></td>
+            <td>A member's roles change in a server the bot is in</td>
+            <td><code>guild_id</code>, <code>user</code>, <code>nick</code>, <code>roles[]</code></td>
+        </tr>
+        <tr>
+            <td><span class="event-name">ROLE_UPDATE</span></td>
+            <td>A role is created, edited, or deleted</td>
+            <td><code>id</code>, <code>name</code>, <code>color</code>, <code>permissions</code>, <code>position</code> (or <code>deleted: true</code>)</td>
         </tr>
         <tr>
             <td><span class="event-name">MEMBER_JOIN</span></td>
@@ -225,6 +242,15 @@ const gateway = io('https://www.nexusguild.gg/bot-gateway', {
             <td><code>userId</code>, <code>serverId</code></td>
         </tr>
     </table>
+
+    <h3>GUILD_CREATE payload</h3>
+    <p>After <span class="event-name">READY</span>, the gateway emits one <span class="event-name">GUILD_CREATE</span> for each server the bot is in. Use this to build an in-memory cache of guild state instead of polling the REST API on startup.</p>
+    <pre>gateway.on('GUILD_CREATE', (guild) => {
+  console.log('Guild:', guild.name);
+  // guild.channels  — array of channel objects
+  // guild.roles     — array of role objects
+  // guild.members   — array of member objects (up to 1000)
+});</pre>
 
     <h3>Handling Slash Commands</h3>
     <pre>gateway.on('INTERACTION_CREATE', async (interaction) => {
@@ -242,7 +268,7 @@ const gateway = io('https://www.nexusguild.gg/bot-gateway', {
   }
 });</pre>
 
-    <div class="note"><strong>Note:</strong> Interactions expire after 3 seconds. Respond to the callback URL within that window or the response will be ignored.</div>
+    <div class="note"><strong>Note:</strong> Interactions expire after 3 seconds. Respond to the callback URL within that window or the response will be ignored. Use a deferred response (see below) if your bot needs more time.</div>
 
     <!-- ── REST ───────────────────────────────────────────────────────────── -->
     <h2 id="rest">REST API</h2>
@@ -340,6 +366,37 @@ const gateway = io('https://www.nexusguild.gg/bot-gateway', {
     </div>
     <p>Remove the bot's reaction from a message. Returns <code>204</code>.</p>
 
+    <div class="endpoint">
+        <span class="method delete">DELETE</span>
+        <span class="endpoint-path">/channels/{channel.id}/messages/bulk-delete</span>
+    </div>
+    <p>Delete multiple messages in one request. Only the bot's own messages are deleted (IDs belonging to other users are silently skipped). Returns <code>204</code>. Requires <code>VIEW_CHANNEL</code>.</p>
+    <table>
+        <tr><th>Body field</th><th>Type</th><th>Description</th></tr>
+        <tr><td>messages</td><td>snowflake[]</td><td>Array of message IDs to delete (1–100)</td></tr>
+    </table>
+
+    <!-- Pins -->
+    <h2 id="pins">Pins</h2>
+
+    <div class="endpoint">
+        <span class="method get">GET</span>
+        <span class="endpoint-path">/channels/{channel.id}/pins</span>
+    </div>
+    <p>Returns all pinned messages in the channel as an array of message objects. Requires <code>VIEW_CHANNEL</code>.</p>
+
+    <div class="endpoint">
+        <span class="method put">PUT</span>
+        <span class="endpoint-path">/channels/{channel.id}/pins/{message.id}</span>
+    </div>
+    <p>Pin a message. Requires <code>VIEW_CHANNEL</code> and <code>MANAGE_MESSAGES</code>. Returns <code>204</code>.</p>
+
+    <div class="endpoint">
+        <span class="method delete">DELETE</span>
+        <span class="endpoint-path">/channels/{channel.id}/pins/{message.id}</span>
+    </div>
+    <p>Unpin a message. Requires <code>VIEW_CHANNEL</code> and <code>MANAGE_MESSAGES</code>. Returns <code>204</code>.</p>
+
     <!-- Guilds -->
     <h2 id="guilds">Guilds</h2>
     <p>In NexusGuild, <em>guilds</em> are called <em>servers</em> — the IDs and concepts are identical.</p>
@@ -386,6 +443,64 @@ const gateway = io('https://www.nexusguild.gg/bot-gateway', {
     </div>
     <p>Returns a single member object.</p>
 
+    <!-- Roles -->
+    <h2 id="roles">Roles</h2>
+    <p>All role mutation endpoints require the bot to have the <code>MANAGE_ROLES</code> permission in the guild.</p>
+
+    <div class="endpoint">
+        <span class="method get">GET</span>
+        <span class="endpoint-path">/guilds/{guild.id}/roles</span>
+    </div>
+    <p>Returns all roles in the guild as an array.</p>
+    <pre>{
+  "id": "...",
+  "name": "Moderator",
+  "color": 5793266,
+  "permissions": "268435456",
+  "position": 2,
+  "mentionable": false,
+  "hoist": false
+}</pre>
+    <p><code>color</code> is an integer (e.g. <code>0x5865f2</code> = <code>5793266</code>). <code>permissions</code> is a string-encoded integer bitmask.</p>
+
+    <div class="endpoint">
+        <span class="method post">POST</span>
+        <span class="endpoint-path">/guilds/{guild.id}/roles</span>
+    </div>
+    <p>Create a new role. Returns the created role object.</p>
+    <table>
+        <tr><th>Body field</th><th>Type</th><th>Description</th></tr>
+        <tr><td>name</td><td>string</td><td>Role name (required)</td></tr>
+        <tr><td>color</td><td>integer</td><td class="opt">RGB color integer (e.g. <code>0x5865f2</code>)</td></tr>
+        <tr><td>permissions</td><td>string</td><td class="opt">Permission bitmask as a string</td></tr>
+        <tr><td>position</td><td>integer</td><td class="opt">Role hierarchy position (higher = higher)</td></tr>
+        <tr><td>mentionable</td><td>boolean</td><td class="opt">Whether users can @mention this role</td></tr>
+    </table>
+
+    <div class="endpoint">
+        <span class="method patch">PATCH</span>
+        <span class="endpoint-path">/guilds/{guild.id}/roles/{role.id}</span>
+    </div>
+    <p>Edit an existing role. All body fields are optional — only provided fields are updated. Returns the updated role object.</p>
+
+    <div class="endpoint">
+        <span class="method delete">DELETE</span>
+        <span class="endpoint-path">/guilds/{guild.id}/roles/{role.id}</span>
+    </div>
+    <p>Delete a role. Returns <code>204</code>.</p>
+
+    <div class="endpoint">
+        <span class="method put">PUT</span>
+        <span class="endpoint-path">/guilds/{guild.id}/members/{user.id}/roles/{role.id}</span>
+    </div>
+    <p>Assign a role to a member. Returns <code>204</code>. Fires a <span class="event-name">GUILD_MEMBER_UPDATE</span> gateway event.</p>
+
+    <div class="endpoint">
+        <span class="method delete">DELETE</span>
+        <span class="endpoint-path">/guilds/{guild.id}/members/{user.id}/roles/{role.id}</span>
+    </div>
+    <p>Remove a role from a member. Returns <code>204</code>. Fires a <span class="event-name">GUILD_MEMBER_UPDATE</span> gateway event.</p>
+
     <!-- Interactions -->
     <h2 id="interactions">Interactions</h2>
     <p>When a user runs a slash command registered to your bot, an <span class="event-name">INTERACTION_CREATE</span> event is dispatched via the gateway. Respond by POSTing to the callback URL within 3 seconds.</p>
@@ -397,7 +512,35 @@ const gateway = io('https://www.nexusguild.gg/bot-gateway', {
     <div class="note"><strong>Note:</strong> This endpoint does <em>not</em> use the <code>/api/v1</code> prefix and does not require the <code>Authorization</code> header — the interaction token serves as authentication.</div>
     <table>
         <tr><th>Body field</th><th>Type</th><th>Description</th></tr>
-        <tr><td>content</td><td>string</td><td>The reply text to post in the channel</td></tr>
+        <tr><td>type</td><td>integer</td><td class="opt"><code>4</code> = immediate reply (default), <code>5</code> = deferred</td></tr>
+        <tr><td>content</td><td>string</td><td>The reply text (required for type 4, omitted for type 5)</td></tr>
+    </table>
+
+    <h3>Deferred Responses</h3>
+    <p>If your bot needs more than 3 seconds to produce a reply (e.g. calling an external API), respond with <code>type: 5</code> first. This extends the interaction window to <strong>15 minutes</strong>. Then send the actual message using the followup endpoint.</p>
+    <pre>// Step 1 — acknowledge within 3 seconds
+await fetch(`https://www.nexusguild.gg/api/interactions/${id}/${token}/callback`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ type: 5 }),
+});
+
+// Step 2 — send the real reply within 15 minutes
+const result = await doSomethingSlow();
+await fetch(`https://www.nexusguild.gg/api/interactions/${id}/${token}/followup`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ content: result }),
+});</pre>
+
+    <div class="endpoint">
+        <span class="method post">POST</span>
+        <span class="endpoint-path">/api/interactions/{interaction.id}/{interaction.token}/followup</span>
+    </div>
+    <p>Posts the follow-up message for a deferred interaction. The interaction must have been acknowledged with <code>type: 5</code> first. Expires after 15 minutes from the original dispatch.</p>
+    <table>
+        <tr><th>Body field</th><th>Type</th><th>Description</th></tr>
+        <tr><td>content</td><td>string</td><td>The message text to post (required)</td></tr>
     </table>
 
     <h3>Registering Slash Commands</h3>
@@ -414,9 +557,15 @@ const gateway = io('https://www.nexusguild.gg/bot-gateway', {
         <tr><td>POST /channels/:id/messages</td><td><code>VIEW_CHANNEL</code>, <code>SEND_MESSAGES</code></td></tr>
         <tr><td>PATCH /channels/:id/messages/:id</td><td><code>VIEW_CHANNEL</code> (must be bot's own message)</td></tr>
         <tr><td>DELETE /channels/:id/messages/:id</td><td><code>VIEW_CHANNEL</code> (must be bot's own message)</td></tr>
+        <tr><td>DELETE /channels/:id/messages/bulk-delete</td><td><code>VIEW_CHANNEL</code> (only bot's own messages deleted)</td></tr>
         <tr><td>PUT .../reactions/:emoji/@me</td><td><code>VIEW_CHANNEL</code>, <code>ADD_REACTIONS</code></td></tr>
         <tr><td>DELETE .../reactions/:emoji/@me</td><td><code>VIEW_CHANNEL</code></td></tr>
-        <tr><td>GET /guilds/:id and sub-resources</td><td>Bot must be a member of the guild</td></tr>
+        <tr><td>GET /channels/:id/pins</td><td><code>VIEW_CHANNEL</code></td></tr>
+        <tr><td>PUT /channels/:id/pins/:id</td><td><code>VIEW_CHANNEL</code>, <code>MANAGE_MESSAGES</code></td></tr>
+        <tr><td>DELETE /channels/:id/pins/:id</td><td><code>VIEW_CHANNEL</code>, <code>MANAGE_MESSAGES</code></td></tr>
+        <tr><td>GET /guilds/:id and read sub-resources</td><td>Bot must be a member of the guild</td></tr>
+        <tr><td>POST/PATCH/DELETE /guilds/:id/roles</td><td><code>MANAGE_ROLES</code></td></tr>
+        <tr><td>PUT/DELETE /guilds/:id/members/:id/roles/:id</td><td><code>MANAGE_ROLES</code></td></tr>
     </table>
     <p>Bots with the <strong>Administrator</strong> permission bypass all channel-level checks.</p>
     <p>Missing permission errors return <code>403</code> with code <code>50013</code> (Missing Permissions) or <code>50001</code> (Missing Access / VIEW_CHANNEL denied).</p>

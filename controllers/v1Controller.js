@@ -70,6 +70,18 @@ function fmtMember(row) {
     };
 }
 
+function fmtRole(row) {
+    return {
+        id: row.id,
+        name: row.name,
+        color: row.color ? parseInt(row.color.replace('#', ''), 16) : 0,
+        permissions: (row.permissions || 0).toString(),
+        position: row.position || 0,
+        mentionable: row.mentionable || false,
+        hoist: row.hoist || false,
+    };
+}
+
 // Verify bot is a member of the server that owns the channel. Returns server_id or null.
 async function botInChannelServer(botId, channelId) {
     const r = await db.query('SELECT server_id FROM channels WHERE id = $1', [channelId]);
@@ -88,6 +100,19 @@ async function botInGuild(botId, guildId) {
         [guildId, botId]
     );
     return r.rows.length > 0;
+}
+
+// Returns bot's effective permission bitmask in a guild (owner gets all perms).
+async function botServerPerms(botId, guildId) {
+    const own = await db.query('SELECT owner_id FROM servers WHERE id = $1', [guildId]);
+    if (own.rows[0]?.owner_id === botId) return ~0n;
+    const r = await db.query(
+        `SELECT COALESCE(bit_or(r.permissions::bigint), 0) AS perms
+         FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+         WHERE ur.user_id = $1 AND ur.server_id = $2`,
+        [botId, guildId]
+    );
+    return BigInt(r.rows[0]?.perms || 0);
 }
 
 export default class V1Controller {
@@ -243,6 +268,8 @@ export default class V1Controller {
 
             const io = req.app.get('io');
             if (io) io.to(`channel:${channelId}`).emit('message_updated', { ...r.rows[0], username: bot.username, avatar: bot.avatar });
+            const botGateway = req.app.get('botGateway');
+            if (botGateway) botGateway.emit(serverId, 'MESSAGE_UPDATE', updated);
 
             res.json(updated);
         } catch (err) {
@@ -274,6 +301,8 @@ export default class V1Controller {
 
             const io = req.app.get('io');
             if (io) io.to(`channel:${channelId}`).emit('message_deleted', { messageId, channelId });
+            const botGateway = req.app.get('botGateway');
+            if (botGateway) botGateway.emit(serverId, 'MESSAGE_DELETE', { id: messageId, channel_id: channelId, guild_id: serverId });
 
             res.status(204).send();
         } catch (err) {
@@ -442,6 +471,339 @@ export default class V1Controller {
             res.json(fmtMember(r.rows[0]));
         } catch (err) {
             log(tags.error, 'v1 getGuildMember:', err);
+            res.status(500).json({ code: 0, message: 'Internal server error' });
+        }
+    }
+
+    // DELETE /channels/:channelId/messages/bulk-delete
+    static async bulkDeleteMessages(req, res) {
+        try {
+            const { channelId } = req.params;
+            const { messages: ids } = req.body;
+            const bot = req.botUser;
+
+            if (!Array.isArray(ids) || ids.length === 0 || ids.length > 100)
+                return res.status(400).json({ code: 50016, message: 'Provide 1–100 message IDs' });
+
+            const serverId = await botInChannelServer(bot.id, channelId);
+            if (!serverId) return res.status(403).json({ code: 50001, message: 'Missing Access' });
+
+            const perms = await resolveChannelPerms(bot.id, serverId, channelId);
+            if (!PermissionHandler.hasPermission(perms, PERMISSIONS.VIEW_CHANNEL))
+                return res.status(403).json({ code: 50001, message: 'Missing Access' });
+
+            // Only delete the bot's own messages
+            const r = await db.query(
+                `DELETE FROM messages WHERE id = ANY($1::varchar[]) AND channel_id = $2 AND user_id = $3 RETURNING id`,
+                [ids, channelId, bot.id]
+            );
+            const deleted = r.rows.map(row => row.id);
+
+            const io = req.app.get('io');
+            const botGateway = req.app.get('botGateway');
+            for (const messageId of deleted) {
+                if (io) io.to(`channel:${channelId}`).emit('message_deleted', { messageId, channelId });
+                if (botGateway) botGateway.emit(serverId, 'MESSAGE_DELETE', { id: messageId, channel_id: channelId, guild_id: serverId });
+            }
+
+            res.status(204).send();
+        } catch (err) {
+            log(tags.error, 'v1 bulkDeleteMessages:', err);
+            res.status(500).json({ code: 0, message: 'Internal server error' });
+        }
+    }
+
+    // GET /channels/:channelId/pins
+    static async getPins(req, res) {
+        try {
+            const { channelId } = req.params;
+            const serverId = await botInChannelServer(req.botUser.id, channelId);
+            if (!serverId) return res.status(403).json({ code: 50001, message: 'Missing Access' });
+
+            const perms = await resolveChannelPerms(req.botUser.id, serverId, channelId);
+            if (!PermissionHandler.hasPermission(perms, PERMISSIONS.VIEW_CHANNEL))
+                return res.status(403).json({ code: 50001, message: 'Missing Access' });
+
+            const r = await db.query(
+                `SELECT m.*, COALESCE(m.display_name, u.username) AS username,
+                        COALESCE(m.display_avatar, u.avatar) AS avatar, u.is_bot, TRUE AS is_pinned
+                 FROM pinned_messages pm
+                 JOIN messages m ON m.id = pm.message_id
+                 LEFT JOIN users u ON u.id = m.user_id
+                 WHERE pm.channel_id = $1
+                 ORDER BY pm.pinned_at DESC`,
+                [channelId]
+            );
+            res.json(r.rows.map(fmtMessage));
+        } catch (err) {
+            log(tags.error, 'v1 getPins:', err);
+            res.status(500).json({ code: 0, message: 'Internal server error' });
+        }
+    }
+
+    // PUT /channels/:channelId/pins/:messageId
+    static async addPin(req, res) {
+        try {
+            const { channelId, messageId } = req.params;
+            const bot = req.botUser;
+
+            const serverId = await botInChannelServer(bot.id, channelId);
+            if (!serverId) return res.status(403).json({ code: 50001, message: 'Missing Access' });
+
+            const perms = await resolveChannelPerms(bot.id, serverId, channelId);
+            if (!PermissionHandler.hasPermission(perms, PERMISSIONS.VIEW_CHANNEL))
+                return res.status(403).json({ code: 50001, message: 'Missing Access' });
+            if (!PermissionHandler.hasPermission(perms, PERMISSIONS.MANAGE_MESSAGES))
+                return res.status(403).json({ code: 50013, message: 'Missing Permissions' });
+
+            const msg = await db.query('SELECT id FROM messages WHERE id = $1 AND channel_id = $2', [messageId, channelId]);
+            if (!msg.rows.length) return res.status(404).json({ code: 10008, message: 'Unknown Message' });
+
+            await db.query(
+                `INSERT INTO pinned_messages (channel_id, message_id, pinned_by) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+                [channelId, messageId, bot.id]
+            );
+
+            const io = req.app.get('io');
+            if (io) io.to(`channel:${channelId}`).emit('message_pinned', { messageId, channelId });
+
+            res.status(204).send();
+        } catch (err) {
+            log(tags.error, 'v1 addPin:', err);
+            res.status(500).json({ code: 0, message: 'Internal server error' });
+        }
+    }
+
+    // DELETE /channels/:channelId/pins/:messageId
+    static async removePin(req, res) {
+        try {
+            const { channelId, messageId } = req.params;
+            const bot = req.botUser;
+
+            const serverId = await botInChannelServer(bot.id, channelId);
+            if (!serverId) return res.status(403).json({ code: 50001, message: 'Missing Access' });
+
+            const perms = await resolveChannelPerms(bot.id, serverId, channelId);
+            if (!PermissionHandler.hasPermission(perms, PERMISSIONS.VIEW_CHANNEL))
+                return res.status(403).json({ code: 50001, message: 'Missing Access' });
+            if (!PermissionHandler.hasPermission(perms, PERMISSIONS.MANAGE_MESSAGES))
+                return res.status(403).json({ code: 50013, message: 'Missing Permissions' });
+
+            await db.query(
+                'DELETE FROM pinned_messages WHERE channel_id = $1 AND message_id = $2',
+                [channelId, messageId]
+            );
+
+            const io = req.app.get('io');
+            if (io) io.to(`channel:${channelId}`).emit('message_unpinned', { messageId, channelId });
+
+            res.status(204).send();
+        } catch (err) {
+            log(tags.error, 'v1 removePin:', err);
+            res.status(500).json({ code: 0, message: 'Internal server error' });
+        }
+    }
+
+    // GET /guilds/:guildId/roles
+    static async getGuildRoles(req, res) {
+        try {
+            const { guildId } = req.params;
+            if (!await botInGuild(req.botUser.id, guildId)) return res.status(403).json({ code: 50001, message: 'Missing Access' });
+
+            const r = await db.query(
+                'SELECT * FROM roles WHERE server_id = $1 ORDER BY position DESC, created_at ASC',
+                [guildId]
+            );
+            res.json(r.rows.map(fmtRole));
+        } catch (err) {
+            log(tags.error, 'v1 getGuildRoles:', err);
+            res.status(500).json({ code: 0, message: 'Internal server error' });
+        }
+    }
+
+    // POST /guilds/:guildId/roles
+    static async createGuildRole(req, res) {
+        try {
+            const { guildId } = req.params;
+            const { name, color, permissions, position, mentionable, hoist } = req.body;
+            const bot = req.botUser;
+
+            if (!await botInGuild(bot.id, guildId)) return res.status(403).json({ code: 50001, message: 'Missing Access' });
+            const perms = await botServerPerms(bot.id, guildId);
+            if (!PermissionHandler.hasPermission(perms, PERMISSIONS.MANAGE_ROLES))
+                return res.status(403).json({ code: 50013, message: 'Missing Permissions' });
+
+            if (!name?.trim()) return res.status(400).json({ code: 50035, message: 'name is required' });
+
+            const colorHex = typeof color === 'number' ? `#${color.toString(16).padStart(6, '0')}` : (color || '#99AAB5');
+            const id = generateSnowflake();
+            const r = await db.query(
+                `INSERT INTO roles (id, server_id, name, color, permissions, position, mentionable)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+                [id, guildId, name.trim(), colorHex,
+                 permissions ? BigInt(permissions) : 0n,
+                 position || 0,
+                 mentionable || false]
+            );
+
+            const io = req.app.get('io');
+            if (io) io.to(`server:${guildId}`).emit('role_created', r.rows[0]);
+            const botGateway = req.app.get('botGateway');
+            if (botGateway) botGateway.emit(guildId, 'ROLE_UPDATE', fmtRole(r.rows[0]));
+
+            res.status(200).json(fmtRole(r.rows[0]));
+        } catch (err) {
+            log(tags.error, 'v1 createGuildRole:', err);
+            res.status(500).json({ code: 0, message: 'Internal server error' });
+        }
+    }
+
+    // PATCH /guilds/:guildId/roles/:roleId
+    static async editGuildRole(req, res) {
+        try {
+            const { guildId, roleId } = req.params;
+            const { name, color, permissions, position, mentionable, hoist } = req.body;
+            const bot = req.botUser;
+
+            if (!await botInGuild(bot.id, guildId)) return res.status(403).json({ code: 50001, message: 'Missing Access' });
+            const perms = await botServerPerms(bot.id, guildId);
+            if (!PermissionHandler.hasPermission(perms, PERMISSIONS.MANAGE_ROLES))
+                return res.status(403).json({ code: 50013, message: 'Missing Permissions' });
+
+            const existing = await db.query('SELECT * FROM roles WHERE id = $1 AND server_id = $2', [roleId, guildId]);
+            if (!existing.rows.length) return res.status(404).json({ code: 10011, message: 'Unknown Role' });
+
+            const curr = existing.rows[0];
+            const colorHex = typeof color === 'number' ? `#${color.toString(16).padStart(6, '0')}` : (color ?? curr.color);
+            const r = await db.query(
+                `UPDATE roles SET name=$1, color=$2, permissions=$3, position=$4, mentionable=$5
+                 WHERE id=$6 RETURNING *`,
+                [
+                    name?.trim() ?? curr.name,
+                    colorHex,
+                    permissions != null ? BigInt(permissions) : curr.permissions,
+                    position ?? curr.position,
+                    mentionable ?? curr.mentionable,
+                    roleId,
+                ]
+            );
+
+            const io = req.app.get('io');
+            if (io) io.to(`server:${guildId}`).emit('role_updated', r.rows[0]);
+            const botGateway = req.app.get('botGateway');
+            if (botGateway) botGateway.emit(guildId, 'ROLE_UPDATE', fmtRole(r.rows[0]));
+
+            res.json(fmtRole(r.rows[0]));
+        } catch (err) {
+            log(tags.error, 'v1 editGuildRole:', err);
+            res.status(500).json({ code: 0, message: 'Internal server error' });
+        }
+    }
+
+    // DELETE /guilds/:guildId/roles/:roleId
+    static async deleteGuildRole(req, res) {
+        try {
+            const { guildId, roleId } = req.params;
+            const bot = req.botUser;
+
+            if (!await botInGuild(bot.id, guildId)) return res.status(403).json({ code: 50001, message: 'Missing Access' });
+            const perms = await botServerPerms(bot.id, guildId);
+            if (!PermissionHandler.hasPermission(perms, PERMISSIONS.MANAGE_ROLES))
+                return res.status(403).json({ code: 50013, message: 'Missing Permissions' });
+
+            const existing = await db.query('SELECT id FROM roles WHERE id = $1 AND server_id = $2', [roleId, guildId]);
+            if (!existing.rows.length) return res.status(404).json({ code: 10011, message: 'Unknown Role' });
+
+            await db.query('DELETE FROM roles WHERE id = $1', [roleId]);
+
+            const io = req.app.get('io');
+            if (io) io.to(`server:${guildId}`).emit('role_deleted', { roleId, serverId: guildId });
+            const botGateway = req.app.get('botGateway');
+            if (botGateway) botGateway.emit(guildId, 'ROLE_UPDATE', { deleted: true, id: roleId, guild_id: guildId });
+
+            res.status(204).send();
+        } catch (err) {
+            log(tags.error, 'v1 deleteGuildRole:', err);
+            res.status(500).json({ code: 0, message: 'Internal server error' });
+        }
+    }
+
+    // PUT /guilds/:guildId/members/:userId/roles/:roleId
+    static async addMemberRole(req, res) {
+        try {
+            const { guildId, userId, roleId } = req.params;
+            const bot = req.botUser;
+
+            if (!await botInGuild(bot.id, guildId)) return res.status(403).json({ code: 50001, message: 'Missing Access' });
+            const perms = await botServerPerms(bot.id, guildId);
+            if (!PermissionHandler.hasPermission(perms, PERMISSIONS.MANAGE_ROLES))
+                return res.status(403).json({ code: 50013, message: 'Missing Permissions' });
+
+            const [role, member] = await Promise.all([
+                db.query('SELECT id FROM roles WHERE id = $1 AND server_id = $2', [roleId, guildId]),
+                db.query('SELECT 1 FROM server_members WHERE server_id = $1 AND user_id = $2', [guildId, userId]),
+            ]);
+            if (!role.rows.length) return res.status(404).json({ code: 10011, message: 'Unknown Role' });
+            if (!member.rows.length) return res.status(404).json({ code: 10007, message: 'Unknown Member' });
+
+            await db.query(
+                `INSERT INTO user_roles (user_id, role_id, server_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+                [userId, roleId, guildId]
+            );
+
+            // Emit GUILD_MEMBER_UPDATE
+            const memberRow = await db.query(
+                `SELECT u.id, u.username, u.avatar, u.is_bot, sm.nickname, sm.joined_at,
+                        ARRAY_AGG(ur.role_id) FILTER (WHERE ur.role_id IS NOT NULL) AS role_ids
+                 FROM server_members sm JOIN users u ON u.id = sm.user_id
+                 LEFT JOIN user_roles ur ON ur.user_id = sm.user_id AND ur.server_id = sm.server_id
+                 WHERE sm.server_id = $1 AND sm.user_id = $2
+                 GROUP BY u.id, u.username, u.avatar, u.is_bot, sm.nickname, sm.joined_at`,
+                [guildId, userId]
+            );
+            const botGateway = req.app.get('botGateway');
+            if (botGateway && memberRow.rows.length)
+                botGateway.emit(guildId, 'GUILD_MEMBER_UPDATE', { guild_id: guildId, ...fmtMember(memberRow.rows[0]) });
+
+            res.status(204).send();
+        } catch (err) {
+            log(tags.error, 'v1 addMemberRole:', err);
+            res.status(500).json({ code: 0, message: 'Internal server error' });
+        }
+    }
+
+    // DELETE /guilds/:guildId/members/:userId/roles/:roleId
+    static async removeMemberRole(req, res) {
+        try {
+            const { guildId, userId, roleId } = req.params;
+            const bot = req.botUser;
+
+            if (!await botInGuild(bot.id, guildId)) return res.status(403).json({ code: 50001, message: 'Missing Access' });
+            const perms = await botServerPerms(bot.id, guildId);
+            if (!PermissionHandler.hasPermission(perms, PERMISSIONS.MANAGE_ROLES))
+                return res.status(403).json({ code: 50013, message: 'Missing Permissions' });
+
+            await db.query(
+                'DELETE FROM user_roles WHERE user_id = $1 AND role_id = $2 AND server_id = $3',
+                [userId, roleId, guildId]
+            );
+
+            const memberRow = await db.query(
+                `SELECT u.id, u.username, u.avatar, u.is_bot, sm.nickname, sm.joined_at,
+                        ARRAY_AGG(ur.role_id) FILTER (WHERE ur.role_id IS NOT NULL) AS role_ids
+                 FROM server_members sm JOIN users u ON u.id = sm.user_id
+                 LEFT JOIN user_roles ur ON ur.user_id = sm.user_id AND ur.server_id = sm.server_id
+                 WHERE sm.server_id = $1 AND sm.user_id = $2
+                 GROUP BY u.id, u.username, u.avatar, u.is_bot, sm.nickname, sm.joined_at`,
+                [guildId, userId]
+            );
+            const botGateway = req.app.get('botGateway');
+            if (botGateway && memberRow.rows.length)
+                botGateway.emit(guildId, 'GUILD_MEMBER_UPDATE', { guild_id: guildId, ...fmtMember(memberRow.rows[0]) });
+
+            res.status(204).send();
+        } catch (err) {
+            log(tags.error, 'v1 removeMemberRole:', err);
             res.status(500).json({ code: 0, message: 'Internal server error' });
         }
     }
