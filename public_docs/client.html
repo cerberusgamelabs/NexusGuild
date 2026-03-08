@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Client Guide — NexusGuild Docs</title>
+    <link rel="stylesheet" href="/css/docs.css">
+</head>
+<body>
+
+<header class="site-header">
+    <a class="logo" href="/">
+        <div class="logo-icon">N</div>
+        NexusGuild Docs
+    </a>
+    <nav>
+        <a href="/">Overview</a>
+        <a href="/bot-api.html">Bot API</a>
+        <a href="/gateway.html">Gateway</a>
+        <a href="/client.html" class="active">Client Guide</a>
+        <a href="/permissions.html">Permissions</a>
+    </nav>
+</header>
+
+<div class="layout">
+    <aside class="sidebar">
+        <div class="sidebar-section">
+            <div class="sidebar-label">Getting Started</div>
+            <a href="#overview">Overview</a>
+            <a href="#auth">Authentication</a>
+            <a href="#session">Session Flow</a>
+        </div>
+        <div class="sidebar-section">
+            <div class="sidebar-label">Real-time (Socket.io)</div>
+            <a href="#socket-connect">Connecting</a>
+            <a href="#socket-servers">Server Rooms</a>
+            <a href="#socket-channels">Channel Rooms</a>
+            <a href="#socket-messages">Messages</a>
+            <a href="#socket-typing">Typing</a>
+            <a href="#socket-voice">Voice</a>
+            <a href="#socket-dm">Direct Messages</a>
+            <a href="#socket-broadcast">Broadcast Events</a>
+        </div>
+        <div class="sidebar-section">
+            <div class="sidebar-label">REST API</div>
+            <a href="#rest-auth">Auth</a>
+            <a href="#rest-servers">Servers</a>
+            <a href="#rest-channels">Channels</a>
+            <a href="#rest-messages">Messages</a>
+            <a href="#rest-reactions">Reactions</a>
+            <a href="#rest-users">Users</a>
+            <a href="#rest-dm">DMs</a>
+            <a href="#rest-voice">Voice</a>
+        </div>
+        <div class="sidebar-section">
+            <div class="sidebar-label">Data Formats</div>
+            <a href="#message-object">Message Object</a>
+            <a href="#channel-types">Channel Types</a>
+            <a href="#permissions-client">Permissions</a>
+        </div>
+    </aside>
+
+    <main class="content">
+        <h1>Client Development Guide</h1>
+        <p class="page-intro">
+            This guide covers everything needed to build a first-party NexusGuild client application —
+            from authentication and session management through real-time socket events and the full REST API.
+        </p>
+
+        <h2 id="overview">Overview</h2>
+
+        <p>A NexusGuild client communicates with the server through two channels:</p>
+        <ul>
+            <li><strong>REST API</strong> (<code>/api/*</code>) — CRUD operations, fetching data</li>
+            <li><strong>Socket.io</strong> — real-time messaging, presence, typing indicators, voice state</li>
+        </ul>
+
+        <p>Authentication uses server-side sessions via HTTP cookies (<code>express-session</code>).
+        There is no API key or token — log in once and the session cookie is sent automatically with every request.</p>
+
+        <h2 id="auth">Authentication</h2>
+
+        <h3>Register</h3>
+        <div class="endpoint-block">
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <span class="endpoint-path">/api/auth/register</span>
+            </div>
+            <h4>Body</h4>
+            <pre><code>{ <span class="key">"username"</span>: <span class="str">"Alice"</span>, <span class="key">"email"</span>: <span class="str">"alice@example.com"</span>, <span class="key">"password"</span>: <span class="str">"password123"</span> }</code></pre>
+            <p>Constraints: username 2–32 chars, valid email, password 8+ chars.</p>
+            <h4>Response — User Object</h4>
+            <pre><code>{ <span class="key">"id"</span>: <span class="str">"snowflake"</span>, <span class="key">"username"</span>: <span class="str">"Alice"</span>, <span class="key">"email"</span>: <span class="str">"alice@example.com"</span>, <span class="key">"avatar"</span>: <span class="kw">null</span>, <span class="key">"created_at"</span>: <span class="str">"..."</span> }</code></pre>
+        </div>
+
+        <h3>Login</h3>
+        <div class="endpoint-block">
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <span class="endpoint-path">/api/auth/login</span>
+            </div>
+            <h4>Body</h4>
+            <pre><code>{ <span class="key">"email"</span>: <span class="str">"alice@example.com"</span>, <span class="key">"password"</span>: <span class="str">"password123"</span> }</code></pre>
+            <h4>Response — User Object</h4>
+            <p>Sets the session cookie. All subsequent requests include it automatically.</p>
+        </div>
+
+        <h3>Logout</h3>
+        <div class="endpoint-block">
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <span class="endpoint-path">/api/auth/logout</span>
+            </div>
+            <p class="desc">Destroys the session. No body required.</p>
+        </div>
+
+        <h3>Check Session</h3>
+        <div class="endpoint-block">
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <span class="endpoint-path">/api/auth/me</span>
+            </div>
+            <p class="desc">Returns the current user if a valid session exists, otherwise <code>401</code>.
+            Call this on page load to restore the session.</p>
+        </div>
+
+        <h2 id="session">Session Flow</h2>
+
+        <pre><code><span class="comment">// Recommended startup sequence</span>
+<span class="kw">async function</span> <span class="fn">init</span>() {
+  <span class="comment">// 1. Check existing session</span>
+  <span class="kw">const</span> res = <span class="kw">await</span> <span class="fn">fetch</span>(<span class="str">'/api/auth/me'</span>);
+  <span class="kw">if</span> (!res.ok) { <span class="fn">showLoginScreen</span>(); <span class="kw">return</span>; }
+
+  <span class="kw">const</span> user = <span class="kw">await</span> res.<span class="fn">json</span>();
+
+  <span class="comment">// 2. Load servers</span>
+  <span class="kw">const</span> servers = <span class="kw">await</span> <span class="fn">fetch</span>(<span class="str">'/api/servers'</span>).<span class="fn">then</span>(r => r.<span class="fn">json</span>());
+
+  <span class="comment">// 3. Connect socket</span>
+  <span class="kw">const</span> socket = <span class="fn">io</span>(<span class="str">'/'</span>, { withCredentials: <span class="kw">true</span> });
+  socket.<span class="fn">on</span>(<span class="str">'connect'</span>, () => {
+    <span class="comment">// Join all servers</span>
+    <span class="kw">for</span> (<span class="kw">const</span> server <span class="kw">of</span> servers) {
+      socket.<span class="fn">emit</span>(<span class="str">'join_server'</span>, server.id);
+    }
+  });
+
+  <span class="comment">// 4. Render UI</span>
+  <span class="fn">renderApp</span>(user, servers, socket);
+}</code></pre>
+
+        <!-- ── Socket ── -->
+        <h2 id="socket-connect">Socket.io Connection</h2>
+
+        <p>Connect to the main Socket.io namespace with <code>withCredentials: true</code> so the
+        session cookie is included:</p>
+
+        <pre><code><span class="kw">import</span> { io } <span class="kw">from</span> <span class="str">'socket.io-client'</span>;
+
+<span class="kw">const</span> socket = <span class="fn">io</span>(<span class="str">'https://nexusguild.gg'</span>, {
+  withCredentials: <span class="kw">true</span>,
+  transports: [<span class="str">'websocket'</span>],
+});</code></pre>
+
+        <p>On connection, the server automatically adds the user to their personal room
+        (<code>user:{userId}</code>) for DM delivery.</p>
+
+        <h2 id="socket-servers">Server Rooms</h2>
+
+        <p>Join a server room to receive server-wide events (member joins, role changes, channel updates):</p>
+
+        <pre><code>socket.<span class="fn">emit</span>(<span class="str">'join_server'</span>, serverId);
+socket.<span class="fn">emit</span>(<span class="str">'leave_server'</span>, serverId);</code></pre>
+
+        <div class="callout info">
+            <span class="callout-icon">ℹ️</span>
+            <div>Join <em>all</em> of the user's servers on <code>connect</code>, not just the currently viewed one.
+            This ensures you receive notification pips for messages in other servers.</div>
+        </div>
+
+        <h2 id="socket-channels">Channel Rooms</h2>
+
+        <p>Join a channel room to receive messages and typing indicators for that channel.
+        Leave the previous channel when switching:</p>
+
+        <pre><code>socket.<span class="fn">emit</span>(<span class="str">'leave_channel'</span>, prevChannelId);  <span class="comment">// leave previous</span>
+socket.<span class="fn">emit</span>(<span class="str">'join_channel'</span>, channelId);       <span class="comment">// enter new</span></code></pre>
+
+        <h2 id="socket-messages">Receiving Messages</h2>
+
+        <p>Listen for new, edited, and deleted messages while in a channel room:</p>
+
+        <pre><code>socket.<span class="fn">on</span>(<span class="str">'message_created'</span>, (message) => {
+  <span class="fn">appendMessage</span>(message);
+});
+
+socket.<span class="fn">on</span>(<span class="str">'message_updated'</span>, (message) => {
+  <span class="fn">updateMessage</span>(message.id, message);
+});
+
+socket.<span class="fn">on</span>(<span class="str">'message_deleted'</span>, ({ messageId, channelId }) => {
+  <span class="fn">removeMessage</span>(messageId);
+});
+
+socket.<span class="fn">on</span>(<span class="str">'message_pinned'</span>, ({ messageId, channelId }) => {
+  <span class="fn">markPinned</span>(messageId, <span class="kw">true</span>);
+});
+
+socket.<span class="fn">on</span>(<span class="str">'message_unpinned'</span>, ({ messageId, channelId }) => {
+  <span class="fn">markPinned</span>(messageId, <span class="kw">false</span>);
+});</code></pre>
+
+        <h3>Unread Notifications</h3>
+        <p>The server emits <code>channel_notification</code> to the server room for every message sent.
+        Use this to track unread pips across channels:</p>
+
+        <pre><code>socket.<span class="fn">on</span>(<span class="str">'channel_notification'</span>, ({ channelId, serverId, messageId, username, content }) => {
+  <span class="kw">if</span> (channelId !== currentChannelId) {
+    <span class="fn">incrementUnread</span>(channelId, serverId);
+  }
+});</code></pre>
+
+        <h3>Reactions</h3>
+        <pre><code>socket.<span class="fn">on</span>(<span class="str">'reaction_updated'</span>, ({ messageId, reactions }) => {
+  <span class="fn">updateReactionDisplay</span>(messageId, reactions);
+  <span class="comment">// reactions: [{ emoji: "👍", count: "3" }, ...]</span>
+});</code></pre>
+
+        <h2 id="socket-typing">Typing Indicators</h2>
+
+        <pre><code><span class="comment">// Send typing event (debounce to ~1 second)</span>
+socket.<span class="fn">emit</span>(<span class="str">'start_typing'</span>, channelId);
+socket.<span class="fn">emit</span>(<span class="str">'stop_typing'</span>, channelId);
+
+<span class="comment">// Receive from others in same channel</span>
+socket.<span class="fn">on</span>(<span class="str">'user_typing'</span>, ({ userId, username, channelId }) => {
+  <span class="fn">showTypingIndicator</span>(username);
+});
+
+socket.<span class="fn">on</span>(<span class="str">'user_stop_typing'</span>, ({ userId, channelId }) => {
+  <span class="fn">hideTypingIndicator</span>(userId);
+});</code></pre>
+
+        <h2 id="socket-voice">Voice State</h2>
+
+        <pre><code><span class="comment">// Join a voice channel</span>
+socket.<span class="fn">emit</span>(<span class="str">'join_voice'</span>, { channelId, serverId });
+
+<span class="comment">// Leave a voice channel</span>
+socket.<span class="fn">emit</span>(<span class="str">'leave_voice'</span>, { channelId, serverId });
+
+<span class="comment">// Update mute/deafen state</span>
+socket.<span class="fn">emit</span>(<span class="str">'voice_state_change'</span>, { muted: <span class="kw">true</span>, deafened: <span class="kw">false</span> });
+
+<span class="comment">// Receive voice state updates from others in the server</span>
+socket.<span class="fn">on</span>(<span class="str">'voice_state_update'</span>, ({ userId, username, channelId, muted, deafened, joined }) => {
+  <span class="comment">// joined=true: user entered; joined=false: user left</span>
+  <span class="fn">updateVoiceState</span>(userId, channelId, joined);
+});</code></pre>
+
+        <p>Actual audio is handled via <strong>LiveKit Cloud</strong> — the socket events track
+        <em>presence</em> (who is in which voice channel), while LiveKit manages the WebRTC streams.
+        Fetch a LiveKit token from <code>GET /api/voice/token/:channelId</code> and use the
+        LiveKit client SDK to connect.</p>
+
+        <h2 id="socket-dm">Direct Messages</h2>
+
+        <pre><code><span class="comment">// Join a DM conversation room</span>
+socket.<span class="fn">emit</span>(<span class="str">'join_dm'</span>, dmId);
+socket.<span class="fn">emit</span>(<span class="str">'leave_dm'</span>, dmId);
+
+<span class="comment">// DM typing</span>
+socket.<span class="fn">emit</span>(<span class="str">'dm_typing'</span>, dmId);
+socket.<span class="fn">emit</span>(<span class="str">'dm_stop_typing'</span>, dmId);
+
+<span class="comment">// Receive DM events via personal room (user:{userId})</span>
+socket.<span class="fn">on</span>(<span class="str">'dm_message_created'</span>, (message) => { ... });
+socket.<span class="fn">on</span>(<span class="str">'dm_message_updated'</span>, (message) => { ... });
+socket.<span class="fn">on</span>(<span class="str">'dm_message_deleted'</span>, ({ messageId, dmId }) => { ... });
+socket.<span class="fn">on</span>(<span class="str">'dm_reaction_added'</span>,   ({ messageId, emoji, userId, dmId }) => { ... });
+socket.<span class="fn">on</span>(<span class="str">'dm_reaction_removed'</span>,  ({ messageId, emoji, userId, dmId }) => { ... });</code></pre>
+
+        <h2 id="socket-broadcast">Broadcast Events (Server Room)</h2>
+
+        <p>These events are emitted to all clients in a server room (<code>server:{serverId}</code>):</p>
+
+        <table>
+            <thead><tr><th>Event</th><th>Payload</th><th>Description</th></tr></thead>
+            <tbody>
+                <tr><td><code>presence_update</code></td><td><code>{userId, username, status}</code></td><td>User online/offline status change</td></tr>
+                <tr><td><code>channel_notification</code></td><td><code>{channelId, serverId, messageId, username, content}</code></td><td>New message in any channel</td></tr>
+                <tr><td><code>role_created</code></td><td>Role object</td><td>New role created</td></tr>
+                <tr><td><code>role_updated</code></td><td>Role object</td><td>Role modified</td></tr>
+                <tr><td><code>role_deleted</code></td><td><code>{roleId, serverId}</code></td><td>Role deleted</td></tr>
+                <tr><td><code>member_role_updated</code></td><td><code>{userId, serverId, roleIds}</code></td><td>User's roles changed</td></tr>
+                <tr><td><code>member_banned</code></td><td><code>{userId, serverId}</code></td><td>User banned</td></tr>
+                <tr><td><code>server_emojis_updated</code></td><td><code>{serverId}</code></td><td>Custom emoji added/removed</td></tr>
+                <tr><td><code>channel_created</code></td><td>Channel object</td><td>New channel in server</td></tr>
+                <tr><td><code>channel_updated</code></td><td>Channel object</td><td>Channel name/topic changed</td></tr>
+                <tr><td><code>channel_deleted</code></td><td><code>{channelId}</code></td><td>Channel removed</td></tr>
+                <tr><td><code>voice_state_update</code></td><td><code>{userId, channelId, joined, muted, deafened}</code></td><td>Voice presence change</td></tr>
+            </tbody>
+        </table>
+
+        <!-- ── REST API ── -->
+        <h2 id="rest-auth">REST — Auth</h2>
+        <table>
+            <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
+            <tbody>
+                <tr><td><span class="method post" style="font-size:11px;padding:2px 6px">POST</span></td><td><code>/api/auth/register</code></td><td>Create account</td></tr>
+                <tr><td><span class="method post" style="font-size:11px;padding:2px 6px">POST</span></td><td><code>/api/auth/login</code></td><td>Start session</td></tr>
+                <tr><td><span class="method post" style="font-size:11px;padding:2px 6px">POST</span></td><td><code>/api/auth/logout</code></td><td>Destroy session</td></tr>
+                <tr><td><span class="method get" style="font-size:11px;padding:2px 6px">GET</span></td><td><code>/api/auth/me</code></td><td>Current user</td></tr>
+            </tbody>
+        </table>
+
+        <h2 id="rest-servers">REST — Servers</h2>
+        <table>
+            <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
+            <tbody>
+                <tr><td><span class="method get" style="font-size:11px;padding:2px 6px">GET</span></td><td><code>/api/servers</code></td><td>List joined servers</td></tr>
+                <tr><td><span class="method post" style="font-size:11px;padding:2px 6px">POST</span></td><td><code>/api/servers</code></td><td>Create server <code>{name}</code></td></tr>
+                <tr><td><span class="method get" style="font-size:11px;padding:2px 6px">GET</span></td><td><code>/api/servers/:id</code></td><td>Get server details</td></tr>
+                <tr><td><span class="method patch" style="font-size:11px;padding:2px 6px">PATCH</span></td><td><code>/api/servers/:id</code></td><td>Update server (name, icon)</td></tr>
+                <tr><td><span class="method delete" style="font-size:11px;padding:2px 6px">DELETE</span></td><td><code>/api/servers/:id</code></td><td>Delete server (owner only)</td></tr>
+                <tr><td><span class="method post" style="font-size:11px;padding:2px 6px">POST</span></td><td><code>/api/servers/join</code></td><td>Join via invite code <code>{code}</code></td></tr>
+                <tr><td><span class="method post" style="font-size:11px;padding:2px 6px">POST</span></td><td><code>/api/servers/:id/leave</code></td><td>Leave server</td></tr>
+                <tr><td><span class="method get" style="font-size:11px;padding:2px 6px">GET</span></td><td><code>/api/servers/:id/members</code></td><td>List members + your permissions</td></tr>
+                <tr><td><span class="method get" style="font-size:11px;padding:2px 6px">GET</span></td><td><code>/api/servers/:id/invites</code></td><td>List active invites</td></tr>
+                <tr><td><span class="method post" style="font-size:11px;padding:2px 6px">POST</span></td><td><code>/api/servers/:id/invites</code></td><td>Create invite</td></tr>
+                <tr><td><span class="method delete" style="font-size:11px;padding:2px 6px">DELETE</span></td><td><code>/api/servers/:id/members/:userId</code></td><td>Kick member (KICK_MEMBERS)</td></tr>
+                <tr><td><span class="method post" style="font-size:11px;padding:2px 6px">POST</span></td><td><code>/api/servers/:id/bans/:userId</code></td><td>Ban member (BAN_MEMBERS)</td></tr>
+                <tr><td><span class="method delete" style="font-size:11px;padding:2px 6px">DELETE</span></td><td><code>/api/servers/:id/bans/:userId</code></td><td>Unban member</td></tr>
+                <tr><td><span class="method get" style="font-size:11px;padding:2px 6px">GET</span></td><td><code>/api/servers/:id/roles</code></td><td>List roles</td></tr>
+                <tr><td><span class="method post" style="font-size:11px;padding:2px 6px">POST</span></td><td><code>/api/servers/:id/roles</code></td><td>Create role</td></tr>
+                <tr><td><span class="method patch" style="font-size:11px;padding:2px 6px">PATCH</span></td><td><code>/api/servers/:id/roles/:roleId</code></td><td>Update role</td></tr>
+                <tr><td><span class="method delete" style="font-size:11px;padding:2px 6px">DELETE</span></td><td><code>/api/servers/:id/roles/:roleId</code></td><td>Delete role</td></tr>
+                <tr><td><span class="method put" style="font-size:11px;padding:2px 6px">PUT</span></td><td><code>/api/servers/:id/members/:userId/roles/:roleId</code></td><td>Assign role to member</td></tr>
+                <tr><td><span class="method delete" style="font-size:11px;padding:2px 6px">DELETE</span></td><td><code>/api/servers/:id/members/:userId/roles/:roleId</code></td><td>Remove role from member</td></tr>
+            </tbody>
+        </table>
+
+        <h2 id="rest-channels">REST — Channels</h2>
+        <table>
+            <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
+            <tbody>
+                <tr><td><span class="method get" style="font-size:11px;padding:2px 6px">GET</span></td><td><code>/api/channels/:serverId</code></td><td>List channels in server</td></tr>
+                <tr><td><span class="method post" style="font-size:11px;padding:2px 6px">POST</span></td><td><code>/api/channels/:serverId</code></td><td>Create channel (MANAGE_CHANNELS)</td></tr>
+                <tr><td><span class="method patch" style="font-size:11px;padding:2px 6px">PATCH</span></td><td><code>/api/channels/:channelId</code></td><td>Update channel</td></tr>
+                <tr><td><span class="method delete" style="font-size:11px;padding:2px 6px">DELETE</span></td><td><code>/api/channels/:channelId</code></td><td>Delete channel</td></tr>
+                <tr><td><span class="method patch" style="font-size:11px;padding:2px 6px">PATCH</span></td><td><code>/api/channels/:serverId/reorder</code></td><td>Reorder channels</td></tr>
+                <tr><td><span class="method patch" style="font-size:11px;padding:2px 6px">PATCH</span></td><td><code>/api/channels/:channelId/read</code></td><td>Mark channel as read</td></tr>
+                <tr><td><span class="method get" style="font-size:11px;padding:2px 6px">GET</span></td><td><code>/api/messages/channels/:channelId/pins</code></td><td>Get pinned messages</td></tr>
+            </tbody>
+        </table>
+
+        <h2 id="rest-messages">REST — Messages</h2>
+        <table>
+            <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
+            <tbody>
+                <tr><td><span class="method get" style="font-size:11px;padding:2px 6px">GET</span></td><td><code>/api/messages/:channelId</code></td><td>Get messages (paginated)</td></tr>
+                <tr><td><span class="method post" style="font-size:11px;padding:2px 6px">POST</span></td><td><code>/api/messages/:channelId</code></td><td>Send message (multipart/form-data)</td></tr>
+                <tr><td><span class="method patch" style="font-size:11px;padding:2px 6px">PATCH</span></td><td><code>/api/messages/:messageId</code></td><td>Edit message</td></tr>
+                <tr><td><span class="method delete" style="font-size:11px;padding:2px 6px">DELETE</span></td><td><code>/api/messages/:messageId</code></td><td>Delete message (own or MANAGE_MESSAGES)</td></tr>
+                <tr><td><span class="method put" style="font-size:11px;padding:2px 6px">PUT</span></td><td><code>/api/messages/:messageId/pin</code></td><td>Pin message (MANAGE_MESSAGES)</td></tr>
+                <tr><td><span class="method delete" style="font-size:11px;padding:2px 6px">DELETE</span></td><td><code>/api/messages/:messageId/pin</code></td><td>Unpin message (MANAGE_MESSAGES)</td></tr>
+            </tbody>
+        </table>
+
+        <h3>Sending Messages (multipart/form-data)</h3>
+        <p>Messages use <code>multipart/form-data</code> so file attachments can be included:</p>
+        <pre><code><span class="kw">const</span> form = <span class="kw">new</span> <span class="fn">FormData</span>();
+form.<span class="fn">append</span>(<span class="str">'content'</span>, <span class="str">'Hello!'</span>);
+form.<span class="fn">append</span>(<span class="str">'replyTo'</span>, messageId);      <span class="comment">// optional: reply thread</span>
+form.<span class="fn">append</span>(<span class="str">'file'</span>, fileObject);        <span class="comment">// optional: attachment</span>
+
+<span class="fn">fetch</span>(<span class="str">`/api/messages/${channelId}`</span>, { method: <span class="str">'POST'</span>, body: form });</code></pre>
+
+        <h3>Paginating Messages</h3>
+        <pre><code><span class="comment">// Initial load: get latest 50 messages</span>
+GET /api/messages/:channelId?limit=50
+
+<span class="comment">// Load older messages (scroll up)</span>
+GET /api/messages/:channelId?before={oldestMessageId}&limit=50</code></pre>
+
+        <h2 id="rest-reactions">REST — Reactions</h2>
+        <table>
+            <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
+            <tbody>
+                <tr><td><span class="method get" style="font-size:11px;padding:2px 6px">GET</span></td><td><code>/api/reactions/:messageId</code></td><td>Get all reactions on a message</td></tr>
+                <tr><td><span class="method post" style="font-size:11px;padding:2px 6px">POST</span></td><td><code>/api/reactions/:messageId</code></td><td>Add reaction <code>{emoji}</code></td></tr>
+                <tr><td><span class="method delete" style="font-size:11px;padding:2px 6px">DELETE</span></td><td><code>/api/reactions/:messageId/:emoji</code></td><td>Remove your reaction</td></tr>
+                <tr><td><span class="method get" style="font-size:11px;padding:2px 6px">GET</span></td><td><code>/api/servers/:serverId/emojis</code></td><td>List server custom emojis</td></tr>
+                <tr><td><span class="method post" style="font-size:11px;padding:2px 6px">POST</span></td><td><code>/api/servers/:serverId/emojis</code></td><td>Upload custom emoji (MANAGE_GUILD_EXPRESSIONS)</td></tr>
+                <tr><td><span class="method delete" style="font-size:11px;padding:2px 6px">DELETE</span></td><td><code>/api/servers/:serverId/emojis/:emojiId</code></td><td>Delete custom emoji</td></tr>
+            </tbody>
+        </table>
+
+        <h2 id="rest-users">REST — Users</h2>
+        <table>
+            <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
+            <tbody>
+                <tr><td><span class="method post" style="font-size:11px;padding:2px 6px">POST</span></td><td><code>/api/users/me/avatar</code></td><td>Upload avatar (multipart, field: <code>file</code>)</td></tr>
+                <tr><td><span class="method patch" style="font-size:11px;padding:2px 6px">PATCH</span></td><td><code>/api/users/me/status</code></td><td>Set custom status <code>{status}</code></td></tr>
+                <tr><td><span class="method patch" style="font-size:11px;padding:2px 6px">PATCH</span></td><td><code>/api/users/me/password</code></td><td>Change password <code>{currentPassword, newPassword}</code></td></tr>
+                <tr><td><span class="method patch" style="font-size:11px;padding:2px 6px">PATCH</span></td><td><code>/api/users/me/nickname/:serverId</code></td><td>Set nickname in server</td></tr>
+            </tbody>
+        </table>
+
+        <h2 id="rest-dm">REST — Direct Messages</h2>
+        <table>
+            <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
+            <tbody>
+                <tr><td><span class="method get" style="font-size:11px;padding:2px 6px">GET</span></td><td><code>/api/dm</code></td><td>List all DM conversations</td></tr>
+                <tr><td><span class="method post" style="font-size:11px;padding:2px 6px">POST</span></td><td><code>/api/dm</code></td><td>Open DM with user <code>{recipientId}</code></td></tr>
+                <tr><td><span class="method get" style="font-size:11px;padding:2px 6px">GET</span></td><td><code>/api/dm/:dmId/messages</code></td><td>Get DM messages (paginated)</td></tr>
+                <tr><td><span class="method post" style="font-size:11px;padding:2px 6px">POST</span></td><td><code>/api/dm/:dmId/messages</code></td><td>Send DM (multipart/form-data)</td></tr>
+                <tr><td><span class="method patch" style="font-size:11px;padding:2px 6px">PATCH</span></td><td><code>/api/dm/:dmId/messages/:msgId</code></td><td>Edit DM message</td></tr>
+                <tr><td><span class="method delete" style="font-size:11px;padding:2px 6px">DELETE</span></td><td><code>/api/dm/:dmId/messages/:msgId</code></td><td>Delete DM message</td></tr>
+                <tr><td><span class="method post" style="font-size:11px;padding:2px 6px">POST</span></td><td><code>/api/group-dm</code></td><td>Create group DM <code>{name, memberIds[]}</code></td></tr>
+            </tbody>
+        </table>
+
+        <h2 id="rest-voice">REST — Voice</h2>
+        <table>
+            <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
+            <tbody>
+                <tr><td><span class="method get" style="font-size:11px;padding:2px 6px">GET</span></td><td><code>/api/voice/token/:channelId</code></td><td>Get LiveKit token for a voice channel</td></tr>
+                <tr><td><span class="method get" style="font-size:11px;padding:2px 6px">GET</span></td><td><code>/api/voice/dm-token/:dmId</code></td><td>Get LiveKit token for a DM voice call</td></tr>
+            </tbody>
+        </table>
+
+        <!-- ── Data formats ── -->
+        <h2 id="message-object">Message Object</h2>
+
+        <p>The full message object returned by the REST API and emitted by socket events:</p>
+
+        <pre><code>{
+  <span class="key">"id"</span>:                <span class="str">"snowflake"</span>,
+  <span class="key">"channel_id"</span>:        <span class="str">"snowflake"</span>,
+  <span class="key">"user_id"</span>:           <span class="str">"snowflake"</span>,
+  <span class="key">"username"</span>:          <span class="str">"Alice"</span>,
+  <span class="key">"display_name"</span>:      <span class="kw">null</span>,            <span class="comment">// server nickname override</span>
+  <span class="key">"avatar"</span>:            <span class="str">"/uploads/avatars/alice.png"</span>,
+  <span class="key">"content"</span>:           <span class="str">"Hello, world!"</span>,
+  <span class="key">"attachments"</span>:       [],               <span class="comment">// [{url, filename, size}]</span>
+  <span class="key">"created_at"</span>:        <span class="str">"2026-03-07T12:00:00.000Z"</span>,
+  <span class="key">"updated_at"</span>:        <span class="kw">null</span>,            <span class="comment">// set when edited</span>
+  <span class="key">"is_pinned"</span>:         <span class="kw">false</span>,
+  <span class="key">"reply_to_id"</span>:       <span class="kw">null</span>,            <span class="comment">// ID of replied-to message</span>
+  <span class="key">"reply_to_content"</span>:  <span class="kw">null</span>,
+  <span class="key">"reply_to_username"</span>: <span class="kw">null</span>,
+  <span class="key">"thread_channel_id"</span>: <span class="kw">null</span>,            <span class="comment">// thread created from this message</span>
+  <span class="key">"thread_reply_count"</span>: <span class="num">0</span>
+}</code></pre>
+
+        <h2 id="channel-types">Channel Types</h2>
+
+        <table>
+            <thead><tr><th>Type string</th><th>Int</th><th>Description</th></tr></thead>
+            <tbody>
+                <tr><td><code>text</code></td><td>0</td><td>Standard text channel</td></tr>
+                <tr><td><code>voice</code></td><td>2</td><td>Voice channel (LiveKit)</td></tr>
+                <tr><td><code>category</code></td><td>4</td><td>Category (container, no messages)</td></tr>
+                <tr><td><code>announcement</code></td><td>5</td><td>Announcement channel (text with 📢)</td></tr>
+                <tr><td><code>forum</code> / <code>media</code></td><td>15</td><td>Forum / media channel (thread-based)</td></tr>
+                <tr><td><code>thread</code> / <code>public_thread</code></td><td>11</td><td>Thread inside a forum</td></tr>
+                <tr><td><code>private_thread</code></td><td>12</td><td>Private thread</td></tr>
+            </tbody>
+        </table>
+
+        <h2 id="permissions-client">Permissions</h2>
+
+        <p>
+            Fetch the current user's effective permission bitmask for a server from
+            <code>GET /api/servers/:serverId/members</code> — the response includes a
+            <code>myPermissions</code> field (a BigInt-serialized string).
+        </p>
+
+        <pre><code><span class="kw">const</span> { members, myPermissions } = <span class="kw">await</span> <span class="fn">fetch</span>(<span class="str">`/api/servers/${id}/members`</span>)
+  .<span class="fn">then</span>(r => r.<span class="fn">json</span>());
+
+<span class="kw">const</span> perms = <span class="fn">BigInt</span>(myPermissions);
+
+<span class="kw">function</span> <span class="fn">hasPermission</span>(perms, flag) {
+  <span class="kw">if</span> (perms & <span class="fn">BigInt</span>(<span class="num">8</span>)) <span class="kw">return true</span>;   <span class="comment">// ADMINISTRATOR</span>
+  <span class="kw">return</span> (perms & flag) === flag;
+}
+
+<span class="kw">const</span> SEND_MESSAGES = <span class="fn">BigInt</span>(<span class="num">2048</span>);
+<span class="kw">if</span> (<span class="fn">hasPermission</span>(perms, SEND_MESSAGES)) {
+  <span class="fn">showMessageInput</span>();
+}</code></pre>
+
+        <p>See <a href="/permissions.html">the full permissions reference</a> for all flag values.</p>
+
+        <div class="callout success">
+            <span class="callout-icon">✅</span>
+            <div>Server owners have all permissions by default and bypass every permission check.
+            The <code>myPermissions</code> value accounts for this automatically.</div>
+        </div>
+    </main>
+</div>
+
+</body>
+</html>

@@ -57,6 +57,9 @@ const PERMISSIONS = {
 
     // ── Moderation ─────────────────────────────────────────────────────────
     MODERATE_MEMBERS:           1n << 40n,  // 1099511627776  (timeouts)
+
+    // ── VTT (NexusGuild-specific — no Discord equivalent) ──────────────────
+    VTT_GM:                     1n << 50n,  // 1125899906842624  (control maps/tokens/fog/encounters)
 };
 
 // Default permissions for @everyone role

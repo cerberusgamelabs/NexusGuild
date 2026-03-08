@@ -14,17 +14,32 @@ const __dirname = dirname(__filename);
 
 const app = express();
 const PORT = 3005;
-const MAIN_APP_URL = process.env.MAIN_APP_URL || 'http://localhost:1985';
 const POLL_INTERVAL_MS = 60 * 1000; // 60 seconds
 const FETCH_TIMEOUT_MS = 5000;
 
+const SERVICE_URLS = {
+    main:      process.env.MAIN_APP_URL    || 'http://localhost:1985',
+    developer: process.env.DEV_URL         || 'http://localhost:3001',
+    tos:       process.env.TOS_URL         || 'http://localhost:3002',
+    privacy:   process.env.PRIVACY_URL     || 'http://localhost:3003',
+    reporting: process.env.REPORTING_URL   || 'http://localhost:3004',
+    staff:     process.env.STAFF_URL       || 'http://localhost:3006',
+    docs:      process.env.DOCS_URL        || 'http://localhost:3007',
+};
+
 const SUBSYSTEMS = [
-    { key: 'api',       name: 'API',              endpoint: '/api/health' },
-    { key: 'auth',      name: 'Authentication',   endpoint: '/api/health/auth' },
-    { key: 'messaging', name: 'Messaging',        endpoint: '/api/health/messaging' },
-    { key: 'realtime',  name: 'Real-time',        endpoint: '/api/health/realtime' },
-    { key: 'media',     name: 'Media & Uploads',  endpoint: '/api/health/media' },
-    { key: 'dm',        name: 'Direct Messages',  endpoint: '/api/health/dm' },
+    { key: 'api',       name: 'API',              endpoint: '/api/health',          baseUrl: SERVICE_URLS.main },
+    { key: 'auth',      name: 'Authentication',   endpoint: '/api/health/auth',     baseUrl: SERVICE_URLS.main },
+    { key: 'messaging', name: 'Messaging',        endpoint: '/api/health/messaging',baseUrl: SERVICE_URLS.main },
+    { key: 'realtime',  name: 'Real-time',        endpoint: '/api/health/realtime', baseUrl: SERVICE_URLS.main },
+    { key: 'media',     name: 'Media & Uploads',  endpoint: '/api/health/media',    baseUrl: SERVICE_URLS.main },
+    { key: 'dm',        name: 'Direct Messages',  endpoint: '/api/health/dm',       baseUrl: SERVICE_URLS.main },
+    { key: 'developer', name: 'Developer Portal', endpoint: '/',                    baseUrl: SERVICE_URLS.developer },
+    { key: 'tos',       name: 'Terms of Service', endpoint: '/',                    baseUrl: SERVICE_URLS.tos },
+    { key: 'privacy',   name: 'Privacy Policy',   endpoint: '/',                    baseUrl: SERVICE_URLS.privacy },
+    { key: 'reporting', name: 'Report Center',    endpoint: '/',                    baseUrl: SERVICE_URLS.reporting },
+    { key: 'staff',     name: 'Staff Portal',     endpoint: '/',                    baseUrl: SERVICE_URLS.staff },
+    { key: 'docs',      name: 'Developer Docs',   endpoint: '/',                    baseUrl: SERVICE_URLS.docs },
 ];
 
 function classifyStatus(ok, responseMs) {
@@ -42,7 +57,7 @@ async function pollSubsystem(subsystem) {
     let responseMs = null;
 
     try {
-        const res = await fetch(`${MAIN_APP_URL}${subsystem.endpoint}`, {
+        const res = await fetch(`${subsystem.baseUrl}${subsystem.endpoint}`, {
             signal: controller.signal
         });
         responseMs = Date.now() - start;

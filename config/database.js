@@ -12,9 +12,9 @@ const pool = new Pool({
     database: process.env.DB_NAME || 'postgres',
     user: process.env.DB_USER || 'postgres',
     password: process.env.DB_PASS,
-    max: 20,
+    max: 10,
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 2000,
+    connectionTimeoutMillis: 5000,
 });
 
 pool.on('connect', () => {
@@ -23,7 +23,6 @@ pool.on('connect', () => {
 
 pool.on('error', (err) => {
     log(tags.error, 'Unexpected error on idle client', err);
-    process.exit(-1);
 });
 
 const initDB = async () => {
@@ -550,6 +549,64 @@ const initDB = async () => {
             )
         `);
 
+        // ── VTT ───────────────────────────────────────────────────────────────
+
+        await client.query(`ALTER TABLE channels ADD COLUMN IF NOT EXISTS dddice_room_slug VARCHAR(64)`);
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS vtt_maps (
+                id          VARCHAR(20) PRIMARY KEY,
+                channel_id  VARCHAR(20) REFERENCES channels(id) ON DELETE CASCADE,
+                map_url     TEXT,
+                grid_size   INTEGER DEFAULT 64,
+                fog_data    JSONB,
+                updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(channel_id)
+            )
+        `);
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS vtt_tokens (
+                id          VARCHAR(20) PRIMARY KEY,
+                channel_id  VARCHAR(20) REFERENCES channels(id) ON DELETE CASCADE,
+                owner_id    VARCHAR(20) REFERENCES users(id) ON DELETE SET NULL,
+                x           FLOAT NOT NULL DEFAULT 0,
+                y           FLOAT NOT NULL DEFAULT 0,
+                size        INTEGER DEFAULT 1,
+                image_url   TEXT,
+                label       VARCHAR(64),
+                hp          INTEGER,
+                hp_max      INTEGER,
+                conditions  JSONB DEFAULT '[]'
+            )
+        `);
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS vtt_encounters (
+                id           VARCHAR(20) PRIMARY KEY,
+                channel_id   VARCHAR(20) REFERENCES channels(id) ON DELETE CASCADE,
+                round        INTEGER DEFAULT 1,
+                active_index INTEGER DEFAULT 0,
+                is_active    BOOLEAN DEFAULT FALSE,
+                combatants   JSONB NOT NULL DEFAULT '[]',
+                updated_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(channel_id)
+            )
+        `);
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS vtt_characters (
+                id          VARCHAR(20) PRIMARY KEY,
+                channel_id  VARCHAR(20) REFERENCES channels(id) ON DELETE CASCADE,
+                user_id     VARCHAR(20) REFERENCES users(id) ON DELETE SET NULL,
+                token_id    VARCHAR(20) REFERENCES vtt_tokens(id) ON DELETE SET NULL,
+                system      VARCHAR(32) NOT NULL DEFAULT 'generic',
+                name        VARCHAR(64) NOT NULL,
+                sheet_data  JSONB NOT NULL DEFAULT '{}',
+                updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
         // ── Inbound Email ─────────────────────────────────────────────────────
 
         await client.query(`
@@ -601,6 +658,9 @@ const initDB = async () => {
         await pool.query('CREATE INDEX IF NOT EXISTS idx_bots_token          ON bots(token)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_slash_commands_bot  ON slash_commands(bot_id)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_slash_commands_srv  ON slash_commands(server_id)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_vtt_tokens_channel  ON vtt_tokens(channel_id)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_vtt_chars_channel   ON vtt_characters(channel_id)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_vtt_chars_user      ON vtt_characters(user_id)');
 
         log(tags.success, 'Database schema initialized successfully');
     } catch (e) {

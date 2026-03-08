@@ -468,6 +468,8 @@ function showVoiceView() {
     if (!container || !_lkRoom) return;
 
     const channel = state.channels.find(c => c.id === _voiceChannelId);
+    // VTT channels manage their own canvas — don't overwrite with voice grid
+    if (channel?.type === 'vtt') return;
     const channelName = channel ? channel.name : 'Voice Channel';
 
     container.innerHTML = `

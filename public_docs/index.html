@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NexusGuild Developer Docs</title>
+    <link rel="stylesheet" href="/css/docs.css">
+</head>
+<body>
+
+<header class="site-header">
+    <a class="logo" href="/">
+        <div class="logo-icon">N</div>
+        NexusGuild Docs
+    </a>
+    <nav>
+        <a href="/" class="active">Overview</a>
+        <a href="/bot-api.html">Bot API</a>
+        <a href="/gateway.html">Gateway</a>
+        <a href="/client.html">Client Guide</a>
+        <a href="/permissions.html">Permissions</a>
+    </nav>
+</header>
+
+<div class="layout">
+    <aside class="sidebar">
+        <div class="sidebar-section">
+            <div class="sidebar-label">Getting Started</div>
+            <a href="#overview" class="active">Overview</a>
+            <a href="#ids">IDs & Snowflakes</a>
+            <a href="#errors">Error Codes</a>
+        </div>
+        <div class="sidebar-section">
+            <div class="sidebar-label">Bot Development</div>
+            <a href="/bot-api.html">Bot REST API</a>
+            <a href="/gateway.html">Bot Gateway</a>
+        </div>
+        <div class="sidebar-section">
+            <div class="sidebar-label">Client Development</div>
+            <a href="/client.html">Client Guide</a>
+            <a href="/permissions.html">Permissions</a>
+        </div>
+    </aside>
+
+    <main class="content">
+        <h1>NexusGuild API Documentation</h1>
+        <p class="page-intro">
+            Welcome to the NexusGuild developer documentation. Here you'll find everything needed
+            to build bots that interact with NexusGuild servers, or to build a custom NexusGuild client.
+        </p>
+
+        <div class="card-grid">
+            <a class="card" href="/bot-api.html">
+                <div class="card-icon">🤖</div>
+                <div class="card-title">Bot REST API</div>
+                <div class="card-desc">Send messages, manage roles, pin messages, react to content, and more using HTTP requests authenticated with your bot token.</div>
+            </a>
+            <a class="card" href="/gateway.html">
+                <div class="card-icon">⚡</div>
+                <div class="card-title">Bot Gateway</div>
+                <div class="card-desc">Connect via Socket.io to receive real-time events — messages, member joins, channel changes, and slash command interactions.</div>
+            </a>
+            <a class="card" href="/client.html">
+                <div class="card-icon">💻</div>
+                <div class="card-title">Client Guide</div>
+                <div class="card-desc">Build a first-party NexusGuild client. Learn the session auth flow, socket events, message format, and full REST API surface.</div>
+            </a>
+            <a class="card" href="/permissions.html">
+                <div class="card-icon">🔐</div>
+                <div class="card-title">Permissions</div>
+                <div class="card-desc">Discord-compatible bitwise permission flags. Full reference with bit values, names, and what each permission controls.</div>
+            </a>
+        </div>
+
+        <h2 id="overview">Overview</h2>
+
+        <h3>Base URL</h3>
+        <p>All REST API endpoints are relative to the NexusGuild server base URL:</p>
+        <pre><code>https://nexusguild.gg</code></pre>
+
+        <h3>Two API Surfaces</h3>
+        <p>NexusGuild exposes two separate API surfaces depending on your use case:</p>
+        <table>
+            <thead>
+                <tr><th>Surface</th><th>Auth Method</th><th>Base Path</th><th>Use For</th></tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>Bot REST API</strong></td>
+                    <td><code>Authorization: Bot TOKEN</code></td>
+                    <td><code>/api/v1</code></td>
+                    <td>Bot integrations, automation, slash commands</td>
+                </tr>
+                <tr>
+                    <td><strong>Client REST API</strong></td>
+                    <td>Session cookie (<code>express-session</code>)</td>
+                    <td><code>/api</code></td>
+                    <td>Building a NexusGuild client application</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h3>Bot Gateway</h3>
+        <p>
+            Real-time events for bots are delivered over a Socket.io namespace at <code>/bot-gateway</code>.
+            Authenticate with your bot token on connection. See the <a href="/gateway.html">Gateway docs</a>.
+        </p>
+
+        <h2 id="ids">IDs &amp; Snowflakes</h2>
+        <p>
+            All entity IDs in NexusGuild — users, servers, channels, messages, roles — are
+            <strong>Snowflake IDs</strong>: 64-bit integers encoded as strings (<code>VARCHAR(20)</code>).
+            Always treat IDs as strings, never as JavaScript numbers (which lose precision above 53 bits).
+        </p>
+
+        <div class="callout info">
+            <span class="callout-icon">ℹ️</span>
+            <div>IDs are time-ordered. You can use <code>before</code> and <code>after</code> query params on
+            paginated endpoints to cursor through results.</div>
+        </div>
+
+        <h3>Snowflake Anatomy</h3>
+        <table>
+            <thead><tr><th>Bits</th><th>Field</th><th>Description</th></tr></thead>
+            <tbody>
+                <tr><td>63–22</td><td>Timestamp</td><td>Milliseconds since NexusGuild epoch (2009-02-09T00:00:00Z)</td></tr>
+                <tr><td>21–17</td><td>Worker ID</td><td>Internal worker node</td></tr>
+                <tr><td>16–12</td><td>Process ID</td><td>Internal process</td></tr>
+                <tr><td>11–0</td><td>Increment</td><td>Sequence counter per millisecond</td></tr>
+            </tbody>
+        </table>
+
+        <h2 id="errors">Standard Error Codes</h2>
+        <p>All error responses follow the format: <code>{"code": NUMBER, "message": "string"}</code></p>
+
+        <table>
+            <thead><tr><th>HTTP</th><th>Code</th><th>Message</th></tr></thead>
+            <tbody>
+                <tr><td>400</td><td>50006</td><td>Cannot send an empty message</td></tr>
+                <tr><td>400</td><td>50016</td><td>Provide 1–100 message IDs (bulk delete)</td></tr>
+                <tr><td>400</td><td>50035</td><td>Invalid form body (missing required field)</td></tr>
+                <tr><td>401</td><td>40001</td><td>401: Unauthorized (missing/invalid token)</td></tr>
+                <tr><td>403</td><td>50001</td><td>Missing Access (bot not in server or channel)</td></tr>
+                <tr><td>403</td><td>50003</td><td>Cannot delete a message authored by another user</td></tr>
+                <tr><td>403</td><td>50005</td><td>Cannot edit a message authored by another user</td></tr>
+                <tr><td>403</td><td>50013</td><td>Missing Permissions</td></tr>
+                <tr><td>404</td><td>10003</td><td>Unknown Channel</td></tr>
+                <tr><td>404</td><td>10004</td><td>Unknown Guild</td></tr>
+                <tr><td>404</td><td>10007</td><td>Unknown Member</td></tr>
+                <tr><td>404</td><td>10008</td><td>Unknown Message</td></tr>
+                <tr><td>404</td><td>10011</td><td>Unknown Role</td></tr>
+                <tr><td>500</td><td>0</td><td>Internal server error</td></tr>
+            </tbody>
+        </table>
+
+        <h2>Rate Limits</h2>
+        <div class="callout warn">
+            <span class="callout-icon">⚠️</span>
+            <div>Rate limiting is not yet enforced on NexusGuild API endpoints. Please be respectful —
+            avoid hammering endpoints in tight loops. This will change in a future update.</div>
+        </div>
+    </main>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Permissions — NexusGuild Docs</title>
+    <link rel="stylesheet" href="/css/docs.css">
+</head>
+<body>
+
+<header class="site-header">
+    <a class="logo" href="/">
+        <div class="logo-icon">N</div>
+        NexusGuild Docs
+    </a>
+    <nav>
+        <a href="/">Overview</a>
+        <a href="/bot-api.html">Bot API</a>
+        <a href="/gateway.html">Gateway</a>
+        <a href="/client.html">Client Guide</a>
+        <a href="/permissions.html" class="active">Permissions</a>
+    </nav>
+</header>
+
+<div class="layout">
+    <aside class="sidebar">
+        <div class="sidebar-section">
+            <div class="sidebar-label">Permissions</div>
+            <a href="#overview">Overview</a>
+            <a href="#how-it-works">How It Works</a>
+            <a href="#defaults">Default Permissions</a>
+            <a href="#checking">Checking Permissions</a>
+        </div>
+        <div class="sidebar-section">
+            <div class="sidebar-label">Flag Reference</div>
+            <a href="#general">General</a>
+            <a href="#text">Text</a>
+            <a href="#voice">Voice</a>
+            <a href="#nicknames">Nicknames</a>
+            <a href="#management">Server Management</a>
+            <a href="#threads">Threads</a>
+            <a href="#moderation">Moderation</a>
+        </div>
+    </aside>
+
+    <main class="content">
+        <h1>Permissions Reference</h1>
+        <p class="page-intro">
+            NexusGuild uses Discord-compatible bitwise permission flags. Every role stores a
+            <code>BIGINT</code> bitmask. A user's effective permissions are the bitwise OR of all
+            their role bitmasks, with channel-level overrides applied on top.
+        </p>
+
+        <h2 id="overview">Overview</h2>
+
+        <p>Permissions are 64-bit integers (BigInt in JavaScript). Each permission is a single bit:</p>
+
+        <pre><code><span class="comment">// Combining permissions</span>
+<span class="kw">const</span> canSendAndRead = SEND_MESSAGES | READ_MESSAGE_HISTORY;  <span class="comment">// 2048 | 65536 = 67584</span>
+
+<span class="comment">// Checking a permission</span>
+<span class="kw">function</span> <span class="fn">hasPermission</span>(userPerms, flag) {
+  <span class="kw">if</span> (userPerms & <span class="fn">BigInt</span>(<span class="num">8</span>)) <span class="kw">return true</span>;  <span class="comment">// ADMINISTRATOR bypasses everything</span>
+  <span class="kw">return</span> (userPerms & flag) === flag;
+}</code></pre>
+
+        <h2 id="how-it-works">How It Works</h2>
+
+        <ol>
+            <li>Each server has an <strong>@everyone</strong> role that applies to all members.</li>
+            <li>Additional roles can grant extra permissions on top.</li>
+            <li>A member's effective permissions = bitwise OR of <em>all</em> their role permissions.</li>
+            <li>Channel-level <strong>permission overrides</strong> can grant or deny specific flags per role for that channel only.</li>
+            <li><strong>Server owners</strong> bypass all permission checks — they always have full access.</li>
+            <li>The <strong>ADMINISTRATOR</strong> flag grants all permissions, bypassing channel overrides too.</li>
+        </ol>
+
+        <h2 id="defaults">Default @everyone Permissions</h2>
+
+        <p>New servers give @everyone this bitmask: <code>103926848</code></p>
+
+        <table>
+            <thead><tr><th>Permission</th><th>Value</th></tr></thead>
+            <tbody>
+                <tr><td>VIEW_CHANNEL</td><td>1024</td></tr>
+                <tr><td>SEND_MESSAGES</td><td>2048</td></tr>
+                <tr><td>EMBED_LINKS</td><td>16384</td></tr>
+                <tr><td>ATTACH_FILES</td><td>32768</td></tr>
+                <tr><td>READ_MESSAGE_HISTORY</td><td>65536</td></tr>
+                <tr><td>ADD_REACTIONS</td><td>64</td></tr>
+                <tr><td>CONNECT</td><td>1048576</td></tr>
+                <tr><td>SPEAK</td><td>2097152</td></tr>
+                <tr><td>USE_VAD</td><td>33554432</td></tr>
+                <tr><td>CHANGE_NICKNAME</td><td>67108864</td></tr>
+            </tbody>
+        </table>
+
+        <h2 id="checking">Checking Permissions in Code</h2>
+
+        <h3>Server-side (Node.js)</h3>
+        <pre><code><span class="kw">import</span> { PERMISSIONS, PermissionHandler } <span class="kw">from</span> <span class="str">'./config/permissions.js'</span>;
+
+<span class="comment">// Returns true if userPerms includes the flag (or ADMINISTRATOR)</span>
+<span class="kw">const</span> canSend = PermissionHandler.<span class="fn">hasPermission</span>(userPerms, PERMISSIONS.SEND_MESSAGES);</code></pre>
+
+        <h3>Client-side (via API)</h3>
+        <pre><code><span class="comment">// Fetch your effective permissions when joining a server</span>
+<span class="kw">const</span> { myPermissions } = <span class="kw">await</span> <span class="fn">fetch</span>(<span class="str">`/api/servers/${serverId}/members`</span>)
+  .<span class="fn">then</span>(r => r.<span class="fn">json</span>());
+
+<span class="kw">const</span> perms = <span class="fn">BigInt</span>(myPermissions);
+
+<span class="kw">function</span> <span class="fn">hasPermission</span>(flag) {
+  <span class="kw">if</span> (perms & <span class="num">8n</span>) <span class="kw">return true</span>;    <span class="comment">// ADMINISTRATOR</span>
+  <span class="kw">return</span> (perms & flag) === flag;
+}
+
+<span class="comment">// Usage</span>
+<span class="kw">if</span> (<span class="fn">hasPermission</span>(<span class="num">16n</span>)) {             <span class="comment">// MANAGE_CHANNELS</span>
+  <span class="fn">showCreateChannelButton</span>();
+}</code></pre>
+
+        <h3>Bot-side (via REST API)</h3>
+        <pre><code><span class="comment">// Permissions are returned as strings from the API</span>
+<span class="kw">const</span> roles = <span class="kw">await</span> <span class="fn">fetch</span>(<span class="str">`/api/v1/guilds/${guildId}/roles`</span>, {
+  headers: { Authorization: <span class="str">`Bot ${token}`</span> }
+}).<span class="fn">then</span>(r => r.<span class="fn">json</span>());
+
+<span class="kw">const</span> modRole = roles.<span class="fn">find</span>(r => r.name === <span class="str">'Mod'</span>);
+<span class="kw">const</span> modPerms = <span class="fn">BigInt</span>(modRole.permissions);  <span class="comment">// parse the string</span></code></pre>
+
+        <!-- ── Flag tables ── -->
+        <h2 id="general">General Permissions</h2>
+
+        <table>
+            <thead><tr><th>Name</th><th>Value</th><th>Bit</th><th>Description</th></tr></thead>
+            <tbody>
+                <tr><td><code>CREATE_INSTANT_INVITE</code></td><td>1</td><td>0</td><td>Create invite links for the server</td></tr>
+                <tr><td><code>KICK_MEMBERS</code></td><td>2</td><td>1</td><td>Remove members from the server</td></tr>
+                <tr><td><code>BAN_MEMBERS</code></td><td>4</td><td>2</td><td>Permanently ban members</td></tr>
+                <tr><td><code>ADMINISTRATOR</code></td><td>8</td><td>3</td><td>Grants all permissions; bypasses channel overrides. Assign with care.</td></tr>
+                <tr><td><code>MANAGE_CHANNELS</code></td><td>16</td><td>4</td><td>Create, edit, and delete channels and categories</td></tr>
+                <tr><td><code>MANAGE_GUILD</code></td><td>32</td><td>5</td><td>Edit server settings (name, icon, etc.)</td></tr>
+                <tr><td><code>ADD_REACTIONS</code></td><td>64</td><td>6</td><td>Add emoji reactions to messages</td></tr>
+                <tr><td><code>VIEW_AUDIT_LOG</code></td><td>128</td><td>7</td><td>View the server audit log</td></tr>
+                <tr><td><code>PRIORITY_SPEAKER</code></td><td>256</td><td>8</td><td>Reduces others' volume when speaking in voice</td></tr>
+                <tr><td><code>STREAM</code></td><td>512</td><td>9</td><td>Share screen / stream in voice channels</td></tr>
+            </tbody>
+        </table>
+
+        <h2 id="text">Text Channel Permissions</h2>
+
+        <table>
+            <thead><tr><th>Name</th><th>Value</th><th>Bit</th><th>Description</th></tr></thead>
+            <tbody>
+                <tr><td><code>VIEW_CHANNEL</code></td><td>1024</td><td>10</td><td>See the channel in the list and read its messages</td></tr>
+                <tr><td><code>SEND_MESSAGES</code></td><td>2048</td><td>11</td><td>Post messages in text channels</td></tr>
+                <tr><td><code>MANAGE_MESSAGES</code></td><td>8192</td><td>13</td><td>Delete others' messages; pin and unpin messages</td></tr>
+                <tr><td><code>EMBED_LINKS</code></td><td>16384</td><td>14</td><td>URLs in messages generate link preview cards</td></tr>
+                <tr><td><code>ATTACH_FILES</code></td><td>32768</td><td>15</td><td>Upload files as message attachments</td></tr>
+                <tr><td><code>READ_MESSAGE_HISTORY</code></td><td>65536</td><td>16</td><td>Load message history; scroll up in channels</td></tr>
+                <tr><td><code>MENTION_EVERYONE</code></td><td>131072</td><td>17</td><td>Send @everyone and @here mentions</td></tr>
+                <tr><td><code>USE_EXTERNAL_EMOJIS</code></td><td>262144</td><td>18</td><td>Use custom emojis from other servers</td></tr>
+            </tbody>
+        </table>
+
+        <h2 id="voice">Voice Channel Permissions</h2>
+
+        <table>
+            <thead><tr><th>Name</th><th>Value</th><th>Bit</th><th>Description</th></tr></thead>
+            <tbody>
+                <tr><td><code>CONNECT</code></td><td>1048576</td><td>20</td><td>Join voice channels</td></tr>
+                <tr><td><code>SPEAK</code></td><td>2097152</td><td>21</td><td>Transmit audio in voice channels</td></tr>
+                <tr><td><code>MUTE_MEMBERS</code></td><td>4194304</td><td>22</td><td>Server-mute other members in voice</td></tr>
+                <tr><td><code>DEAFEN_MEMBERS</code></td><td>8388608</td><td>23</td><td>Server-deafen other members in voice</td></tr>
+                <tr><td><code>MOVE_MEMBERS</code></td><td>16777216</td><td>24</td><td>Move members between voice channels</td></tr>
+                <tr><td><code>USE_VAD</code></td><td>33554432</td><td>25</td><td>Use voice activity detection (no push-to-talk required)</td></tr>
+            </tbody>
+        </table>
+
+        <h2 id="nicknames">Nickname Permissions</h2>
+
+        <table>
+            <thead><tr><th>Name</th><th>Value</th><th>Bit</th><th>Description</th></tr></thead>
+            <tbody>
+                <tr><td><code>CHANGE_NICKNAME</code></td><td>67108864</td><td>26</td><td>Change your own nickname in this server</td></tr>
+                <tr><td><code>MANAGE_NICKNAMES</code></td><td>134217728</td><td>27</td><td>Change other members' nicknames</td></tr>
+            </tbody>
+        </table>
+
+        <h2 id="management">Server Management</h2>
+
+        <table>
+            <thead><tr><th>Name</th><th>Value</th><th>Bit</th><th>Description</th></tr></thead>
+            <tbody>
+                <tr><td><code>MANAGE_ROLES</code></td><td>268435456</td><td>28</td><td>Create, edit, and delete roles; assign roles to members</td></tr>
+                <tr><td><code>MANAGE_WEBHOOKS</code></td><td>536870912</td><td>29</td><td>Create and manage incoming webhooks</td></tr>
+                <tr><td><code>MANAGE_GUILD_EXPRESSIONS</code></td><td>1073741824</td><td>30</td><td>Upload and delete custom emojis</td></tr>
+                <tr><td><code>USE_APPLICATION_COMMANDS</code></td><td>2147483648</td><td>31</td><td>Use bot slash commands in this server</td></tr>
+                <tr><td><code>REQUEST_TO_SPEAK</code></td><td>4294967296</td><td>32</td><td>Request to speak in Stage channels</td></tr>
+                <tr><td><code>MANAGE_EVENTS</code></td><td>8589934592</td><td>33</td><td>Create and manage scheduled events</td></tr>
+            </tbody>
+        </table>
+
+        <h2 id="threads">Thread Permissions</h2>
+
+        <table>
+            <thead><tr><th>Name</th><th>Value</th><th>Bit</th><th>Description</th></tr></thead>
+            <tbody>
+                <tr><td><code>MANAGE_THREADS</code></td><td>17179869184</td><td>34</td><td>Delete and archive threads; rename threads</td></tr>
+                <tr><td><code>CREATE_PUBLIC_THREADS</code></td><td>34359738368</td><td>35</td><td>Create public threads inside forum channels</td></tr>
+                <tr><td><code>CREATE_PRIVATE_THREADS</code></td><td>68719476736</td><td>36</td><td>Create private (invite-only) threads</td></tr>
+                <tr><td><code>SEND_MESSAGES_IN_THREADS</code></td><td>274877906944</td><td>38</td><td>Send messages in existing threads</td></tr>
+            </tbody>
+        </table>
+
+        <h2 id="moderation">Moderation</h2>
+
+        <table>
+            <thead><tr><th>Name</th><th>Value</th><th>Bit</th><th>Description</th></tr></thead>
+            <tbody>
+                <tr><td><code>MODERATE_MEMBERS</code></td><td>1099511627776</td><td>40</td><td>Timeout members (temporarily restrict messaging)</td></tr>
+            </tbody>
+        </table>
+
+        <h2>Quick Reference — All Flags</h2>
+
+        <pre><code><span class="comment">// All NexusGuild permission constants</span>
+<span class="kw">const</span> PERMISSIONS = {
+  CREATE_INSTANT_INVITE:    <span class="num">1n</span>,
+  KICK_MEMBERS:             <span class="num">2n</span>,
+  BAN_MEMBERS:              <span class="num">4n</span>,
+  ADMINISTRATOR:            <span class="num">8n</span>,
+  MANAGE_CHANNELS:          <span class="num">16n</span>,
+  MANAGE_GUILD:             <span class="num">32n</span>,
+  ADD_REACTIONS:            <span class="num">64n</span>,
+  VIEW_AUDIT_LOG:           <span class="num">128n</span>,
+  PRIORITY_SPEAKER:         <span class="num">256n</span>,
+  STREAM:                   <span class="num">512n</span>,
+
+  VIEW_CHANNEL:             <span class="num">1024n</span>,
+  SEND_MESSAGES:            <span class="num">2048n</span>,
+  MANAGE_MESSAGES:          <span class="num">8192n</span>,
+  EMBED_LINKS:              <span class="num">16384n</span>,
+  ATTACH_FILES:             <span class="num">32768n</span>,
+  READ_MESSAGE_HISTORY:     <span class="num">65536n</span>,
+  MENTION_EVERYONE:         <span class="num">131072n</span>,
+  USE_EXTERNAL_EMOJIS:      <span class="num">262144n</span>,
+
+  CONNECT:                  <span class="num">1048576n</span>,
+  SPEAK:                    <span class="num">2097152n</span>,
+  MUTE_MEMBERS:             <span class="num">4194304n</span>,
+  DEAFEN_MEMBERS:           <span class="num">8388608n</span>,
+  MOVE_MEMBERS:             <span class="num">16777216n</span>,
+  USE_VAD:                  <span class="num">33554432n</span>,
+
+  CHANGE_NICKNAME:          <span class="num">67108864n</span>,
+  MANAGE_NICKNAMES:         <span class="num">134217728n</span>,
+
+  MANAGE_ROLES:             <span class="num">268435456n</span>,
+  MANAGE_WEBHOOKS:          <span class="num">536870912n</span>,
+  MANAGE_GUILD_EXPRESSIONS: <span class="num">1073741824n</span>,
+  USE_APPLICATION_COMMANDS: <span class="num">2147483648n</span>,
+  REQUEST_TO_SPEAK:         <span class="num">4294967296n</span>,
+  MANAGE_EVENTS:            <span class="num">8589934592n</span>,
+
+  MANAGE_THREADS:           <span class="num">17179869184n</span>,
+  CREATE_PUBLIC_THREADS:    <span class="num">34359738368n</span>,
+  CREATE_PRIVATE_THREADS:   <span class="num">68719476736n</span>,
+  SEND_MESSAGES_IN_THREADS: <span class="num">274877906944n</span>,
+
+  MODERATE_MEMBERS:         <span class="num">1099511627776n</span>,
+};</code></pre>
+    </main>
+</div>
+
+</body>
+</html>

@@ -52,7 +52,7 @@ const validateChannel = [
         .trim(),
     body('type')
         .optional()
-        .isIn(['text', 'voice', 'announcement', 'forum', 'media'])
+        .isIn(['text', 'voice', 'announcement', 'forum', 'media', 'vtt'])
         .withMessage('Invalid channel type'),
     validate
 ];

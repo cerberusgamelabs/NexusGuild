@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="/css/voice.css">
     <link rel="stylesheet" href="/css/profile.css">
     <link rel="stylesheet" href="/css/ascension.css">
+    <link rel="stylesheet" href="/css/vtt.css">
 </head>
 <body>
 
@@ -282,6 +283,7 @@
                     <option value="announcement">📢 Announcement</option>
                     <option value="forum">💬 Forum</option>
                     <option value="media">🖼️ Media</option>
+                    <option value="vtt">🎲 VTT (Virtual Tabletop)</option>
                 </select>
                 <label style="display:flex; flex-direction:column; gap:6px; font-size:13px; color:#b5bac1;">
                     Category
@@ -366,6 +368,10 @@
     <script src="/js/components/forumView.js"></script>
     <script src="/js/components/profileView.js"></script>
     <script src="/js/components/ascensionView.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pixi.js@8/dist/pixi.min.js"></script>
+    <script>var exports = {};</script>
+    <script src="https://cdn.dddice.com/js/dddice-latest.js"></script>
+    <script src="/js/components/vttView.js"></script>
 
     <!-- New Conversation Modal (1:1 DM or Group DM) -->
     <div id="newConvModal" class="modal-overlay" style="display:none;" onclick="closeNewConvModal(event)">

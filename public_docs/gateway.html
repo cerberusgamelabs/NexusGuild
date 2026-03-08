@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bot Gateway — NexusGuild Docs</title>
+    <link rel="stylesheet" href="/css/docs.css">
+</head>
+<body>
+
+<header class="site-header">
+    <a class="logo" href="/">
+        <div class="logo-icon">N</div>
+        NexusGuild Docs
+    </a>
+    <nav>
+        <a href="/">Overview</a>
+        <a href="/bot-api.html">Bot API</a>
+        <a href="/gateway.html" class="active">Gateway</a>
+        <a href="/client.html">Client Guide</a>
+        <a href="/permissions.html">Permissions</a>
+    </nav>
+</header>
+
+<div class="layout">
+    <aside class="sidebar">
+        <div class="sidebar-section">
+            <div class="sidebar-label">Gateway</div>
+            <a href="#overview">Overview</a>
+            <a href="#connecting">Connecting</a>
+            <a href="#auth">Authentication</a>
+            <a href="#heartbeat">Heartbeat</a>
+        </div>
+        <div class="sidebar-section">
+            <div class="sidebar-label">Received Events</div>
+            <a href="#ev-ready">READY</a>
+            <a href="#ev-guild-create">GUILD_CREATE</a>
+            <a href="#ev-message-create">MESSAGE_CREATE</a>
+            <a href="#ev-message-update">MESSAGE_UPDATE</a>
+            <a href="#ev-message-delete">MESSAGE_DELETE</a>
+            <a href="#ev-member-join">MEMBER_JOIN</a>
+            <a href="#ev-member-leave">MEMBER_LEAVE</a>
+            <a href="#ev-channel-create">CHANNEL_CREATE</a>
+            <a href="#ev-channel-update">CHANNEL_UPDATE</a>
+            <a href="#ev-channel-delete">CHANNEL_DELETE</a>
+            <a href="#ev-role-update">ROLE_UPDATE</a>
+            <a href="#ev-interaction">INTERACTION_CREATE</a>
+            <a href="#ev-guild-member-update">GUILD_MEMBER_UPDATE</a>
+        </div>
+        <div class="sidebar-section">
+            <div class="sidebar-label">Examples</div>
+            <a href="#example-basic">Basic Bot</a>
+            <a href="#example-slash">Slash Command Bot</a>
+        </div>
+    </aside>
+
+    <main class="content">
+        <h1>Bot Gateway</h1>
+        <p class="page-intro">
+            The NexusGuild Bot Gateway delivers real-time events to your bot over a persistent
+            Socket.io connection. Your bot connects once and receives events for every guild it's installed in,
+            no polling required.
+        </p>
+
+        <h2 id="overview">Overview</h2>
+
+        <table>
+            <thead><tr><th>Property</th><th>Value</th></tr></thead>
+            <tbody>
+                <tr><td>Transport</td><td>Socket.io (WebSocket + HTTP long-poll fallback)</td></tr>
+                <tr><td>Namespace</td><td><code>/bot-gateway</code></td></tr>
+                <tr><td>Auth method</td><td>Bot token via Socket.io handshake auth</td></tr>
+                <tr><td>Connections per bot</td><td>1 (connecting again disconnects the previous session)</td></tr>
+                <tr><td>Gateway version</td><td><code>v: 1</code> (returned in READY)</td></tr>
+            </tbody>
+        </table>
+
+        <h2 id="connecting">Connecting</h2>
+
+        <p>Use the Socket.io client library to connect to the <code>/bot-gateway</code> namespace:</p>
+
+        <pre><code><span class="kw">import</span> { io } <span class="kw">from</span> <span class="str">'socket.io-client'</span>;
+
+<span class="kw">const</span> gateway = <span class="fn">io</span>(<span class="str">'https://nexusguild.gg/bot-gateway'</span>, {
+  auth: {
+    token: <span class="str">'YOUR_BOT_TOKEN'</span>,
+  },
+  transports: [<span class="str">'websocket'</span>],    <span class="comment">// prefer WebSocket</span>
+  reconnection: <span class="kw">true</span>,
+  reconnectionDelay: <span class="num">5000</span>,
+});
+
+gateway.<span class="fn">on</span>(<span class="str">'connect'</span>, () => {
+  console.<span class="fn">log</span>(<span class="str">'Connected to NexusGuild gateway'</span>);
+});
+
+gateway.<span class="fn">on</span>(<span class="str">'connect_error'</span>, (err) => {
+  console.<span class="fn">error</span>(<span class="str">'Gateway connection failed:'</span>, err.message);
+});</code></pre>
+
+        <h2 id="auth">Authentication</h2>
+
+        <p>
+            Pass your bot token in the Socket.io <code>auth</code> object at connection time.
+            If the token is missing or invalid, the connection is rejected with an error message.
+        </p>
+
+        <div class="callout warn">
+            <span class="callout-icon">⚠️</span>
+            <div>Connecting a second time with the same token will disconnect the existing session.
+            Only one gateway connection per bot is allowed.</div>
+        </div>
+
+        <h2 id="heartbeat">Heartbeat</h2>
+
+        <p>
+            Send a <code>HEARTBEAT</code> event periodically to verify connectivity.
+            The server responds with <code>HEARTBEAT_ACK</code>.
+        </p>
+
+        <pre><code><span class="comment">// Send heartbeat every 30 seconds</span>
+<span class="fn">setInterval</span>(() => {
+  gateway.<span class="fn">emit</span>(<span class="str">'HEARTBEAT'</span>);
+}, <span class="num">30000</span>);
+
+gateway.<span class="fn">on</span>(<span class="str">'HEARTBEAT_ACK'</span>, () => {
+  <span class="comment">// Connection is alive</span>
+});</code></pre>
+
+        <div class="callout info">
+            <span class="callout-icon">ℹ️</span>
+            <div>Socket.io handles its own ping/pong internally. The <code>HEARTBEAT</code> event
+            is an optional application-level health check, not a requirement for staying connected.</div>
+        </div>
+
+        <!-- ── Events ── -->
+        <h2>Gateway Events</h2>
+        <p>After connecting and authenticating, the gateway delivers these events to your bot.</p>
+
+        <h2 id="ev-ready">READY</h2>
+        <div class="event-block">
+            <div class="event-name">READY</div>
+            <p class="event-desc">Sent immediately after a successful connection. Contains bot identity and gateway version.</p>
+            <pre><code>{
+  <span class="key">"bot"</span>: {
+    <span class="key">"id"</span>:   <span class="str">"snowflake"</span>,
+    <span class="key">"name"</span>: <span class="str">"MyBot"</span>
+  },
+  <span class="key">"v"</span>: <span class="num">1</span>
+}</code></pre>
+            <p>Following READY, one <code>GUILD_CREATE</code> is emitted per guild the bot is installed in.</p>
+        </div>
+
+        <h2 id="ev-guild-create">GUILD_CREATE</h2>
+        <div class="event-block">
+            <div class="event-name">GUILD_CREATE</div>
+            <p class="event-desc">Sent once per guild on connection, providing a complete snapshot of each guild's state.</p>
+            <pre><code>{
+  <span class="key">"id"</span>:                       <span class="str">"snowflake"</span>,
+  <span class="key">"name"</span>:                     <span class="str">"My Server"</span>,
+  <span class="key">"icon"</span>:                     <span class="kw">null</span>,
+  <span class="key">"owner_id"</span>:                 <span class="str">"snowflake"</span>,
+  <span class="key">"approximate_member_count"</span>:  <span class="num">42</span>,
+  <span class="key">"channels"</span>: [
+    {
+      <span class="key">"id"</span>:        <span class="str">"snowflake"</span>,
+      <span class="key">"type"</span>:      <span class="num">0</span>,
+      <span class="key">"name"</span>:      <span class="str">"general"</span>,
+      <span class="key">"topic"</span>:     <span class="kw">null</span>,
+      <span class="key">"position"</span>:  <span class="num">0</span>,
+      <span class="key">"parent_id"</span>: <span class="kw">null</span>
+    }
+  ],
+  <span class="key">"roles"</span>: [
+    {
+      <span class="key">"id"</span>:          <span class="str">"snowflake"</span>,
+      <span class="key">"name"</span>:        <span class="str">"@everyone"</span>,
+      <span class="key">"color"</span>:       <span class="num">0</span>,
+      <span class="key">"permissions"</span>: <span class="str">"103926848"</span>,
+      <span class="key">"position"</span>:    <span class="num">0</span>,
+      <span class="key">"mentionable"</span>: <span class="kw">false</span>
+    }
+  ],
+  <span class="key">"members"</span>: [
+    {
+      <span class="key">"user"</span>: { <span class="key">"id"</span>: <span class="str">"snowflake"</span>, <span class="key">"username"</span>: <span class="str">"Alice"</span>, <span class="key">"bot"</span>: <span class="kw">false</span> },
+      <span class="key">"nick"</span>: <span class="kw">null</span>,
+      <span class="key">"roles"</span>: [],
+      <span class="key">"joined_at"</span>: <span class="str">"2026-01-01T00:00:00.000Z"</span>
+    }
+  ]
+}</code></pre>
+        </div>
+
+        <h2 id="ev-message-create">MESSAGE_CREATE</h2>
+        <div class="event-block">
+            <div class="event-name">MESSAGE_CREATE</div>
+            <p class="event-desc">Fired when any message is sent in a guild the bot is in. Payload mirrors the REST message object.</p>
+            <pre><code>{
+  <span class="key">"id"</span>:               <span class="str">"snowflake"</span>,
+  <span class="key">"channel_id"</span>:       <span class="str">"snowflake"</span>,
+  <span class="key">"user_id"</span>:          <span class="str">"snowflake"</span>,
+  <span class="key">"username"</span>:         <span class="str">"Alice"</span>,
+  <span class="key">"avatar"</span>:           <span class="kw">null</span>,
+  <span class="key">"content"</span>:          <span class="str">"Hello!"</span>,
+  <span class="key">"created_at"</span>:       <span class="str">"2026-03-07T12:00:00.000Z"</span>,
+  <span class="key">"attachments"</span>:      <span class="kw">null</span>,
+  <span class="key">"reply_to_content"</span>: <span class="kw">null</span>,
+  <span class="key">"thread_channel_id"</span>: <span class="kw">null</span>
+}</code></pre>
+        </div>
+
+        <h2 id="ev-message-update">MESSAGE_UPDATE</h2>
+        <div class="event-block">
+            <div class="event-name">MESSAGE_UPDATE</div>
+            <p class="event-desc">Fired when a message is edited. Payload is the updated message object (same shape as MESSAGE_CREATE).</p>
+        </div>
+
+        <h2 id="ev-message-delete">MESSAGE_DELETE</h2>
+        <div class="event-block">
+            <div class="event-name">MESSAGE_DELETE</div>
+            <p class="event-desc">Fired when a message is deleted (including bulk deletes — one event per deleted message).</p>
+            <pre><code>{
+  <span class="key">"id"</span>:         <span class="str">"snowflake"</span>,   <span class="comment">// message ID</span>
+  <span class="key">"channel_id"</span>: <span class="str">"snowflake"</span>,
+  <span class="key">"guild_id"</span>:   <span class="str">"snowflake"</span>
+}</code></pre>
+        </div>
+
+        <h2 id="ev-member-join">MEMBER_JOIN</h2>
+        <div class="event-block">
+            <div class="event-name">MEMBER_JOIN</div>
+            <p class="event-desc">Fired when a user joins a guild.</p>
+            <pre><code>{
+  <span class="key">"user"</span>: {
+    <span class="key">"id"</span>:       <span class="str">"snowflake"</span>,
+    <span class="key">"username"</span>: <span class="str">"Bob"</span>,
+    <span class="key">"avatar"</span>:   <span class="kw">null</span>
+  },
+  <span class="key">"guild_id"</span>:  <span class="str">"snowflake"</span>,
+  <span class="key">"joined_at"</span>: <span class="str">"2026-03-07T12:00:00.000Z"</span>
+}</code></pre>
+        </div>
+
+        <h2 id="ev-member-leave">MEMBER_LEAVE</h2>
+        <div class="event-block">
+            <div class="event-name">MEMBER_LEAVE</div>
+            <p class="event-desc">Fired when a user leaves or is removed from a guild.</p>
+            <pre><code>{
+  <span class="key">"user"</span>:     { <span class="key">"id"</span>: <span class="str">"snowflake"</span>, <span class="key">"username"</span>: <span class="str">"Bob"</span> },
+  <span class="key">"guild_id"</span>: <span class="str">"snowflake"</span>
+}</code></pre>
+        </div>
+
+        <h2 id="ev-channel-create">CHANNEL_CREATE</h2>
+        <div class="event-block">
+            <div class="event-name">CHANNEL_CREATE</div>
+            <p class="event-desc">Fired when a channel is created in a guild. Payload is a channel object.</p>
+            <pre><code>{
+  <span class="key">"id"</span>:        <span class="str">"snowflake"</span>,
+  <span class="key">"type"</span>:      <span class="num">0</span>,
+  <span class="key">"guild_id"</span>:  <span class="str">"snowflake"</span>,
+  <span class="key">"name"</span>:      <span class="str">"announcements"</span>,
+  <span class="key">"topic"</span>:     <span class="kw">null</span>,
+  <span class="key">"position"</span>:  <span class="num">1</span>,
+  <span class="key">"parent_id"</span>: <span class="kw">null</span>
+}</code></pre>
+        </div>
+
+        <h2 id="ev-channel-update">CHANNEL_UPDATE</h2>
+        <div class="event-block">
+            <div class="event-name">CHANNEL_UPDATE</div>
+            <p class="event-desc">Fired when a channel is updated. Same payload shape as CHANNEL_CREATE.</p>
+        </div>
+
+        <h2 id="ev-channel-delete">CHANNEL_DELETE</h2>
+        <div class="event-block">
+            <div class="event-name">CHANNEL_DELETE</div>
+            <p class="event-desc">Fired when a channel is deleted.</p>
+            <pre><code>{
+  <span class="key">"id"</span>:       <span class="str">"snowflake"</span>,
+  <span class="key">"guild_id"</span>: <span class="str">"snowflake"</span>
+}</code></pre>
+        </div>
+
+        <h2 id="ev-role-update">ROLE_UPDATE</h2>
+        <div class="event-block">
+            <div class="event-name">ROLE_UPDATE</div>
+            <p class="event-desc">
+                Fired when a role is created, edited, or deleted. Check for a <code>deleted: true</code>
+                field to distinguish deletion from creation/update.
+            </p>
+            <pre><code><span class="comment">// Created or updated:</span>
+{
+  <span class="key">"id"</span>:          <span class="str">"snowflake"</span>,
+  <span class="key">"name"</span>:        <span class="str">"Mod"</span>,
+  <span class="key">"color"</span>:       <span class="num">3447003</span>,
+  <span class="key">"permissions"</span>: <span class="str">"8"</span>,
+  <span class="key">"position"</span>:    <span class="num">1</span>,
+  <span class="key">"mentionable"</span>: <span class="kw">false</span>,
+  <span class="key">"hoist"</span>:       <span class="kw">false</span>
+}
+
+<span class="comment">// Deleted:</span>
+{
+  <span class="key">"deleted"</span>:  <span class="kw">true</span>,
+  <span class="key">"id"</span>:       <span class="str">"snowflake"</span>,
+  <span class="key">"guild_id"</span>: <span class="str">"snowflake"</span>
+}</code></pre>
+        </div>
+
+        <h2 id="ev-interaction">INTERACTION_CREATE</h2>
+        <div class="event-block">
+            <div class="event-name">INTERACTION_CREATE</div>
+            <p class="event-desc">
+                Fired when a user invokes one of your bot's slash commands. Respond using the
+                <a href="/bot-api.html#interactions">interaction callback endpoint</a> with the
+                <code>interactionId</code> and <code>token</code> from this event.
+                You have <strong>3 seconds</strong> to respond (or send a deferred response first).
+            </p>
+            <pre><code>{
+  <span class="key">"id"</span>:         <span class="str">"snowflake"</span>,          <span class="comment">// interactionId</span>
+  <span class="key">"token"</span>:      <span class="str">"interaction_token"</span>,  <span class="comment">// use in callback URL</span>
+  <span class="key">"type"</span>:       <span class="num">2</span>,                    <span class="comment">// APPLICATION_COMMAND</span>
+  <span class="key">"guild_id"</span>:   <span class="str">"snowflake"</span>,
+  <span class="key">"channel_id"</span>: <span class="str">"snowflake"</span>,
+  <span class="key">"member"</span>: {
+    <span class="key">"user"</span>: { <span class="key">"id"</span>: <span class="str">"snowflake"</span>, <span class="key">"username"</span>: <span class="str">"Alice"</span> },
+    <span class="key">"roles"</span>: []
+  },
+  <span class="key">"data"</span>: {
+    <span class="key">"name"</span>:    <span class="str">"ping"</span>,              <span class="comment">// command name</span>
+    <span class="key">"options"</span>: []                    <span class="comment">// command arguments</span>
+  }
+}</code></pre>
+        </div>
+
+        <h2 id="ev-guild-member-update">GUILD_MEMBER_UPDATE</h2>
+        <div class="event-block">
+            <div class="event-name">GUILD_MEMBER_UPDATE</div>
+            <p class="event-desc">Fired when a member's roles change (via the role management REST endpoints).</p>
+            <pre><code>{
+  <span class="key">"guild_id"</span>: <span class="str">"snowflake"</span>,
+  <span class="key">"user"</span>:     { <span class="key">"id"</span>: <span class="str">"snowflake"</span>, <span class="key">"username"</span>: <span class="str">"Alice"</span> },
+  <span class="key">"nick"</span>:     <span class="kw">null</span>,
+  <span class="key">"roles"</span>:    [<span class="str">"roleSnowflake"</span>],
+  <span class="key">"joined_at"</span>: <span class="str">"2026-01-01T00:00:00.000Z"</span>
+}</code></pre>
+        </div>
+
+        <!-- ── Examples ── -->
+        <h2 id="example-basic">Example: Basic Bot</h2>
+
+        <p>A minimal bot that connects, logs guild names, and echoes messages:</p>
+
+        <pre><code><span class="kw">import</span> { io } <span class="kw">from</span> <span class="str">'socket.io-client'</span>;
+
+<span class="kw">const</span> BOT_TOKEN = <span class="str">'your_token_here'</span>;
+<span class="kw">const</span> BASE_URL  = <span class="str">'https://nexusguild.gg'</span>;
+
+<span class="kw">const</span> guilds = <span class="kw">new</span> <span class="fn">Map</span>();
+
+<span class="kw">const</span> gateway = <span class="fn">io</span>(<span class="str">`${BASE_URL}/bot-gateway`</span>, {
+  auth: { token: BOT_TOKEN },
+  transports: [<span class="str">'websocket'</span>],
+});
+
+gateway.<span class="fn">on</span>(<span class="str">'READY'</span>, ({ bot }) => {
+  console.<span class="fn">log</span>(<span class="str">`Logged in as ${bot.name} (${bot.id})`</span>);
+});
+
+gateway.<span class="fn">on</span>(<span class="str">'GUILD_CREATE'</span>, (guild) => {
+  guilds.<span class="fn">set</span>(guild.id, guild);
+  console.<span class="fn">log</span>(<span class="str">`In guild: ${guild.name} (${guild.members.length} members)`</span>);
+});
+
+gateway.<span class="fn">on</span>(<span class="str">'MESSAGE_CREATE'</span>, <span class="kw">async</span> (msg) => {
+  <span class="kw">if</span> (msg.content === <span class="str">'!ping'</span>) {
+    <span class="kw">await</span> <span class="fn">fetch</span>(<span class="str">`${BASE_URL}/api/v1/channels/${msg.channel_id}/messages`</span>, {
+      method: <span class="str">'POST'</span>,
+      headers: {
+        <span class="str">'Authorization'</span>: <span class="str">`Bot ${BOT_TOKEN}`</span>,
+        <span class="str">'Content-Type'</span>:  <span class="str">'application/json'</span>,
+      },
+      body: <span class="fn">JSON.stringify</span>({ content: <span class="str">'Pong!'</span> }),
+    });
+  }
+});</code></pre>
+
+        <h2 id="example-slash">Example: Slash Command Bot</h2>
+
+        <p>Registering a command and responding to it:</p>
+
+        <pre><code><span class="comment">// 1. Register the command (one-time setup, session auth required)</span>
+<span class="kw">await</span> <span class="fn">fetch</span>(<span class="str">`/api/bots/${botId}/servers/${guildId}/commands`</span>, {
+  method: <span class="str">'PUT'</span>,
+  headers: { <span class="str">'Content-Type'</span>: <span class="str">'application/json'</span> },
+  <span class="comment">// session cookie sent automatically</span>
+  body: <span class="fn">JSON.stringify</span>({
+    name: <span class="str">'roll'</span>,
+    description: <span class="str">'Roll a dice'</span>,
+    options: [
+      {
+        name: <span class="str">'sides'</span>,
+        description: <span class="str">'Number of sides'</span>,
+        type: <span class="num">4</span>,       <span class="comment">// INTEGER</span>
+        required: <span class="kw">false</span>,
+      }
+    ]
+  }),
+});
+
+<span class="comment">// 2. Handle the INTERACTION_CREATE event</span>
+gateway.<span class="fn">on</span>(<span class="str">'INTERACTION_CREATE'</span>, <span class="kw">async</span> (interaction) => {
+  <span class="kw">if</span> (interaction.data.name !== <span class="str">'roll'</span>) <span class="kw">return</span>;
+
+  <span class="kw">const</span> sides = interaction.data.options?.[<span class="num">0</span>]?.value ?? <span class="num">6</span>;
+  <span class="kw">const</span> result = <span class="fn">Math.floor</span>(<span class="fn">Math.random</span>() * sides) + <span class="num">1</span>;
+
+  <span class="kw">await</span> <span class="fn">fetch</span>(
+    <span class="str">`/api/interactions/${interaction.id}/${interaction.token}/callback`</span>,
+    {
+      method: <span class="str">'POST'</span>,
+      headers: { <span class="str">'Content-Type'</span>: <span class="str">'application/json'</span> },
+      body: <span class="fn">JSON.stringify</span>({
+        type: <span class="num">4</span>,
+        data: { content: <span class="str">`🎲 You rolled a **${result}** (d${sides})`</span> },
+      }),
+    }
+  );
+});</code></pre>
+    </main>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bot REST API — NexusGuild Docs</title>
+    <link rel="stylesheet" href="/css/docs.css">
+</head>
+<body>
+
+<header class="site-header">
+    <a class="logo" href="/">
+        <div class="logo-icon">N</div>
+        NexusGuild Docs
+    </a>
+    <nav>
+        <a href="/">Overview</a>
+        <a href="/bot-api.html" class="active">Bot API</a>
+        <a href="/gateway.html">Gateway</a>
+        <a href="/client.html">Client Guide</a>
+        <a href="/permissions.html">Permissions</a>
+    </nav>
+</header>
+
+<div class="layout">
+    <aside class="sidebar">
+        <div class="sidebar-section">
+            <div class="sidebar-label">Bot REST API</div>
+            <a href="#auth">Authentication</a>
+            <a href="#bot-user">Bot User</a>
+        </div>
+        <div class="sidebar-section">
+            <div class="sidebar-label">Channels</div>
+            <a href="#get-channel">Get Channel</a>
+            <a href="#get-messages">Get Messages</a>
+            <a href="#create-message">Send Message</a>
+            <a href="#edit-message">Edit Message</a>
+            <a href="#delete-message">Delete Message</a>
+            <a href="#bulk-delete">Bulk Delete</a>
+        </div>
+        <div class="sidebar-section">
+            <div class="sidebar-label">Reactions</div>
+            <a href="#add-reaction">Add Reaction</a>
+            <a href="#remove-reaction">Remove Reaction</a>
+        </div>
+        <div class="sidebar-section">
+            <div class="sidebar-label">Pins</div>
+            <a href="#get-pins">Get Pins</a>
+            <a href="#add-pin">Pin Message</a>
+            <a href="#remove-pin">Unpin Message</a>
+        </div>
+        <div class="sidebar-section">
+            <div class="sidebar-label">Guilds</div>
+            <a href="#get-guild">Get Guild</a>
+            <a href="#get-guild-channels">Get Channels</a>
+            <a href="#get-members">Get Members</a>
+            <a href="#get-member">Get Member</a>
+        </div>
+        <div class="sidebar-section">
+            <div class="sidebar-label">Roles</div>
+            <a href="#get-roles">Get Roles</a>
+            <a href="#create-role">Create Role</a>
+            <a href="#edit-role">Edit Role</a>
+            <a href="#delete-role">Delete Role</a>
+            <a href="#add-role">Add Role to Member</a>
+            <a href="#remove-role">Remove Role</a>
+        </div>
+        <div class="sidebar-section">
+            <div class="sidebar-label">Bot Management</div>
+            <a href="#manage-bots">Managing Bots</a>
+            <a href="#slash-commands">Slash Commands</a>
+            <a href="#interactions">Interaction Responses</a>
+        </div>
+    </aside>
+
+    <main class="content">
+        <h1>Bot REST API</h1>
+        <p class="page-intro">
+            The Bot REST API lets your bot read and write data using standard HTTP requests.
+            All endpoints live under <code>/api/v1</code> and require a bot token header.
+            Bots must be installed in a guild to access its channels and members.
+        </p>
+
+        <!-- ── Auth ── -->
+        <h2 id="auth">Authentication</h2>
+        <p>
+            Every request to <code>/api/v1</code> must include your bot token in the
+            <code>Authorization</code> header:
+        </p>
+        <pre><code>Authorization: Bot YOUR_BOT_TOKEN</code></pre>
+
+        <p>
+            Bot tokens are 64-character hex strings generated when you create a bot through the
+            developer portal. You can regenerate a token at any time — the old token immediately stops working.
+        </p>
+
+        <div class="callout warn">
+            <span class="callout-icon">⚠️</span>
+            <div>Never expose your bot token in client-side code or commit it to version control.
+            Treat it like a password.</div>
+        </div>
+
+        <h3>Obtaining a Token</h3>
+        <ol>
+            <li>Log in to the NexusGuild developer portal</li>
+            <li>Create a new application under <strong>My Applications</strong></li>
+            <li>Go to <strong>Bot</strong> → copy the token</li>
+            <li>To install the bot in a server, use the invite link or call
+                <code>PUT /api/bots/:botId/servers/:serverId</code></li>
+        </ol>
+
+        <!-- ── Bot User ── -->
+        <h2 id="bot-user">Bot User</h2>
+
+        <div class="endpoint-block" id="get-me">
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <span class="endpoint-path">/api/v1/users/@me</span>
+            </div>
+            <p class="desc">Returns the authenticated bot's user object.</p>
+
+            <h4>Response</h4>
+            <pre><code>{
+  <span class="key">"id"</span>:       <span class="str">"snowflake"</span>,
+  <span class="key">"username"</span>: <span class="str">"MyBot"</span>,
+  <span class="key">"avatar"</span>:   <span class="str">"/uploads/avatars/..."</span> <span class="comment">// or null</span>,
+  <span class="key">"bot"</span>:      <span class="kw">true</span>
+}</code></pre>
+        </div>
+
+        <!-- ── Channels ── -->
+        <h2 id="get-channel">Get Channel</h2>
+
+        <div class="endpoint-block">
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <span class="endpoint-path">/api/v1/channels/<span class="param">{channelId}</span></span>
+            </div>
+            <p class="desc">Fetch a single channel. Bot must be a member of the channel's guild and have <code>VIEW_CHANNEL</code> permission.</p>
+
+            <h4>Response — Channel Object</h4>
+            <pre><code>{
+  <span class="key">"id"</span>:        <span class="str">"snowflake"</span>,
+  <span class="key">"type"</span>:      <span class="num">0</span>, <span class="comment">// 0=text 2=voice 4=category 5=announcement 11=thread 15=forum</span>
+  <span class="key">"guild_id"</span>:  <span class="str">"snowflake"</span>,
+  <span class="key">"name"</span>:      <span class="str">"general"</span>,
+  <span class="key">"topic"</span>:     <span class="str">"Channel topic"</span> <span class="comment">// or null</span>,
+  <span class="key">"position"</span>:  <span class="num">0</span>,
+  <span class="key">"parent_id"</span>: <span class="str">"snowflake"</span> <span class="comment">// category ID, or null</span>
+}</code></pre>
+        </div>
+
+        <h2 id="get-messages">Get Channel Messages</h2>
+
+        <div class="endpoint-block">
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <span class="endpoint-path">/api/v1/channels/<span class="param">{channelId}</span>/messages</span>
+            </div>
+            <p class="desc">Fetch messages from a channel. Requires <code>VIEW_CHANNEL</code> and <code>READ_MESSAGE_HISTORY</code>. Results ordered oldest-first; up to 100 per call.</p>
+
+            <h4>Query Parameters</h4>
+            <table>
+                <thead><tr><th>Param</th><th></th><th>Default</th><th>Description</th></tr></thead>
+                <tbody>
+                    <tr><td><code>limit</code></td><td><span class="badge optional">optional</span></td><td>50</td><td>Max messages to return (1–100)</td></tr>
+                    <tr><td><code>before</code></td><td><span class="badge optional">optional</span></td><td>—</td><td>Return messages with ID less than this (cursor before)</td></tr>
+                    <tr><td><code>after</code></td><td><span class="badge optional">optional</span></td><td>—</td><td>Return messages with ID greater than this (cursor after)</td></tr>
+                </tbody>
+            </table>
+
+            <h4>Response — Array of Message Objects</h4>
+            <pre><code>[
+  {
+    <span class="key">"id"</span>:               <span class="str">"snowflake"</span>,
+    <span class="key">"channel_id"</span>:       <span class="str">"snowflake"</span>,
+    <span class="key">"author"</span>: {
+      <span class="key">"id"</span>:       <span class="str">"snowflake"</span>,
+      <span class="key">"username"</span>: <span class="str">"SomeUser"</span>,
+      <span class="key">"avatar"</span>:   <span class="str">"/uploads/avatars/..."</span>,
+      <span class="key">"bot"</span>:      <span class="kw">false</span>
+    },
+    <span class="key">"content"</span>:          <span class="str">"Hello world"</span>,
+    <span class="key">"timestamp"</span>:        <span class="str">"2026-03-07T12:00:00.000Z"</span>,
+    <span class="key">"edited_timestamp"</span>:  <span class="kw">null</span>,
+    <span class="key">"attachments"</span>:      [],
+    <span class="key">"embeds"</span>:           [],
+    <span class="key">"pinned"</span>:           <span class="kw">false</span>,
+    <span class="key">"type"</span>:             <span class="num">0</span>
+  }
+]</code></pre>
+        </div>
+
+        <h2 id="create-message">Send Message</h2>
+
+        <div class="endpoint-block">
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <span class="endpoint-path">/api/v1/channels/<span class="param">{channelId}</span>/messages</span>
+            </div>
+            <p class="desc">Send a message to a channel. Requires <code>VIEW_CHANNEL</code> and <code>SEND_MESSAGES</code>. The message is broadcast to all clients in the channel via Socket.io.</p>
+
+            <h4>Request Body (JSON)</h4>
+            <table>
+                <thead><tr><th>Field</th><th></th><th>Description</th></tr></thead>
+                <tbody>
+                    <tr><td><code>content</code></td><td><span class="badge required">required</span></td><td>Message text (non-empty string)</td></tr>
+                </tbody>
+            </table>
+
+            <h4>Example</h4>
+            <pre><code><span class="kw">fetch</span>(<span class="str">`/api/v1/channels/${channelId}/messages`</span>, {
+  method: <span class="str">'POST'</span>,
+  headers: {
+    <span class="str">'Authorization'</span>: <span class="str">`Bot ${token}`</span>,
+    <span class="str">'Content-Type'</span>:  <span class="str">'application/json'</span>,
+  },
+  body: <span class="fn">JSON.stringify</span>({ content: <span class="str">'Hello from my bot!'</span> }),
+})</code></pre>
+
+            <h4>Response — Message Object</h4>
+            <p>Returns the created message object (same shape as <a href="#get-messages">Get Messages</a>).</p>
+        </div>
+
+        <h2 id="edit-message">Edit Message</h2>
+
+        <div class="endpoint-block">
+            <div class="endpoint">
+                <span class="method patch">PATCH</span>
+                <span class="endpoint-path">/api/v1/channels/<span class="param">{channelId}</span>/messages/<span class="param">{messageId}</span></span>
+            </div>
+            <p class="desc">Edit a message. Bots can only edit their own messages. Requires <code>VIEW_CHANNEL</code>.</p>
+
+            <h4>Request Body (JSON)</h4>
+            <table>
+                <thead><tr><th>Field</th><th></th><th>Description</th></tr></thead>
+                <tbody>
+                    <tr><td><code>content</code></td><td><span class="badge required">required</span></td><td>New message content (non-empty)</td></tr>
+                </tbody>
+            </table>
+
+            <h4>Response — Updated Message Object</h4>
+        </div>
+
+        <h2 id="delete-message">Delete Message</h2>
+
+        <div class="endpoint-block">
+            <div class="endpoint">
+                <span class="method delete">DELETE</span>
+                <span class="endpoint-path">/api/v1/channels/<span class="param">{channelId}</span>/messages/<span class="param">{messageId}</span></span>
+            </div>
+            <p class="desc">Delete a message. Bots can only delete their own messages. Requires <code>VIEW_CHANNEL</code>.</p>
+            <h4>Response</h4>
+            <p><code>204 No Content</code></p>
+        </div>
+
+        <h2 id="bulk-delete">Bulk Delete Messages</h2>
+
+        <div class="endpoint-block">
+            <div class="endpoint">
+                <span class="method delete">DELETE</span>
+                <span class="endpoint-path">/api/v1/channels/<span class="param">{channelId}</span>/messages/bulk-delete</span>
+            </div>
+            <p class="desc">Delete up to 100 of the bot's own messages at once. Only deletes messages authored by this bot. Requires <code>VIEW_CHANNEL</code>.</p>
+
+            <h4>Request Body (JSON)</h4>
+            <table>
+                <thead><tr><th>Field</th><th></th><th>Description</th></tr></thead>
+                <tbody>
+                    <tr><td><code>messages</code></td><td><span class="badge required">required</span></td><td>Array of message ID strings (1–100)</td></tr>
+                </tbody>
+            </table>
+
+            <pre><code>{ <span class="key">"messages"</span>: [<span class="str">"id1"</span>, <span class="str">"id2"</span>, <span class="str">"id3"</span>] }</code></pre>
+            <h4>Response</h4>
+            <p><code>204 No Content</code></p>
+        </div>
+
+        <!-- ── Reactions ── -->
+        <h2 id="add-reaction">Add Reaction</h2>
+
+        <div class="endpoint-block">
+            <div class="endpoint">
+                <span class="method put">PUT</span>
+                <span class="endpoint-path">/api/v1/channels/<span class="param">{channelId}</span>/messages/<span class="param">{messageId}</span>/reactions/<span class="param">{emoji}</span>/@me</span>
+            </div>
+            <p class="desc">
+                Add a reaction to a message. Requires <code>VIEW_CHANNEL</code> and <code>ADD_REACTIONS</code>.
+                The <code>emoji</code> must be URL-encoded (e.g. <code>%F0%9F%91%8D</code> for 👍,
+                or <code>name%3Aid</code> for custom emojis).
+            </p>
+            <h4>Response</h4>
+            <p><code>204 No Content</code></p>
+        </div>
+
+        <h2 id="remove-reaction">Remove Reaction</h2>
+
+        <div class="endpoint-block">
+            <div class="endpoint">
+                <span class="method delete">DELETE</span>
+                <span class="endpoint-path">/api/v1/channels/<span class="param">{channelId}</span>/messages/<span class="param">{messageId}</span>/reactions/<span class="param">{emoji}</span>/@me</span>
+            </div>
+            <p class="desc">Remove the bot's reaction from a message.</p>
+            <h4>Response</h4>
+            <p><code>204 No Content</code></p>
+        </div>
+
+        <!-- ── Pins ── -->
+        <h2 id="get-pins">Get Pinned Messages</h2>
+
+        <div class="endpoint-block">
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <span class="endpoint-path">/api/v1/channels/<span class="param">{channelId}</span>/pins</span>
+            </div>
+            <p class="desc">Fetch all pinned messages in a channel. Requires <code>VIEW_CHANNEL</code>.</p>
+            <h4>Response</h4>
+            <p>Array of message objects where <code>pinned: true</code>.</p>
+        </div>
+
+        <h2 id="add-pin">Pin a Message</h2>
+
+        <div class="endpoint-block">
+            <div class="endpoint">
+                <span class="method put">PUT</span>
+                <span class="endpoint-path">/api/v1/channels/<span class="param">{channelId}</span>/pins/<span class="param">{messageId}</span></span>
+            </div>
+            <p class="desc">Pin a message. Requires <code>VIEW_CHANNEL</code> and <code>MANAGE_MESSAGES</code>. Emits <code>message_pinned</code> to all clients in the channel.</p>
+            <h4>Response</h4>
+            <p><code>204 No Content</code></p>
+        </div>
+
+        <h2 id="remove-pin">Unpin a Message</h2>
+
+        <div class="endpoint-block">
+            <div class="endpoint">
+                <span class="method delete">DELETE</span>
+                <span class="endpoint-path">/api/v1/channels/<span class="param">{channelId}</span>/pins/<span class="param">{messageId}</span></span>
+            </div>
+            <p class="desc">Unpin a message. Requires <code>VIEW_CHANNEL</code> and <code>MANAGE_MESSAGES</code>.</p>
+            <h4>Response</h4>
+            <p><code>204 No Content</code></p>
+        </div>
+
+        <!-- ── Guilds ── -->
+        <h2 id="get-guild">Get Guild</h2>
+
+        <div class="endpoint-block">
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <span class="endpoint-path">/api/v1/guilds/<span class="param">{guildId}</span></span>
+            </div>
+            <p class="desc">Fetch guild (server) information. Bot must be installed in the guild.</p>
+
+            <h4>Response — Guild Object</h4>
+            <pre><code>{
+  <span class="key">"id"</span>:                       <span class="str">"snowflake"</span>,
+  <span class="key">"name"</span>:                     <span class="str">"My Server"</span>,
+  <span class="key">"icon"</span>:                     <span class="str">"/uploads/icons/..."</span> <span class="comment">// or null</span>,
+  <span class="key">"owner_id"</span>:                 <span class="str">"snowflake"</span>,
+  <span class="key">"approximate_member_count"</span>:  <span class="num">42</span>
+}</code></pre>
+        </div>
+
+        <h2 id="get-guild-channels">Get Guild Channels</h2>
+
+        <div class="endpoint-block">
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <span class="endpoint-path">/api/v1/guilds/<span class="param">{guildId}</span>/channels</span>
+            </div>
+            <p class="desc">List all channels in a guild ordered by position. Returns channel objects (same shape as <a href="#get-channel">Get Channel</a>).</p>
+        </div>
+
+        <h2 id="get-members">List Guild Members</h2>
+
+        <div class="endpoint-block">
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <span class="endpoint-path">/api/v1/guilds/<span class="param">{guildId}</span>/members</span>
+            </div>
+            <p class="desc">List guild members paginated by join date. Max 1000 per page.</p>
+
+            <h4>Query Parameters</h4>
+            <table>
+                <thead><tr><th>Param</th><th></th><th>Default</th><th>Description</th></tr></thead>
+                <tbody>
+                    <tr><td><code>limit</code></td><td><span class="badge optional">optional</span></td><td>100</td><td>Max results (1–1000)</td></tr>
+                    <tr><td><code>after</code></td><td><span class="badge optional">optional</span></td><td>—</td><td>Return members whose user ID is greater than this</td></tr>
+                </tbody>
+            </table>
+
+            <h4>Response — Array of Member Objects</h4>
+            <pre><code>[
+  {
+    <span class="key">"user"</span>: {
+      <span class="key">"id"</span>:       <span class="str">"snowflake"</span>,
+      <span class="key">"username"</span>: <span class="str">"Alice"</span>,
+      <span class="key">"avatar"</span>:   <span class="str">"/uploads/avatars/..."</span>,
+      <span class="key">"bot"</span>:      <span class="kw">false</span>
+    },
+    <span class="key">"nick"</span>:      <span class="kw">null</span>,
+    <span class="key">"roles"</span>:     [<span class="str">"roleSnowflake"</span>],
+    <span class="key">"joined_at"</span>: <span class="str">"2026-01-01T00:00:00.000Z"</span>
+  }
+]</code></pre>
+        </div>
+
+        <h2 id="get-member">Get Guild Member</h2>
+
+        <div class="endpoint-block">
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <span class="endpoint-path">/api/v1/guilds/<span class="param">{guildId}</span>/members/<span class="param">{userId}</span></span>
+            </div>
+            <p class="desc">Fetch a single member. Returns a member object.</p>
+        </div>
+
+        <!-- ── Roles ── -->
+        <h2 id="get-roles">List Guild Roles</h2>
+
+        <div class="endpoint-block">
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <span class="endpoint-path">/api/v1/guilds/<span class="param">{guildId}</span>/roles</span>
+            </div>
+            <p class="desc">List all roles in a guild ordered by position (highest first).</p>
+
+            <h4>Response — Array of Role Objects</h4>
+            <pre><code>[
+  {
+    <span class="key">"id"</span>:          <span class="str">"snowflake"</span>,
+    <span class="key">"name"</span>:        <span class="str">"Moderator"</span>,
+    <span class="key">"color"</span>:       <span class="num">3447003</span>,       <span class="comment">// integer RGB (e.g. 0x3498DB)</span>
+    <span class="key">"permissions"</span>: <span class="str">"8"</span>,           <span class="comment">// permission bitmask as string</span>
+    <span class="key">"position"</span>:    <span class="num">2</span>,
+    <span class="key">"mentionable"</span>: <span class="kw">false</span>,
+    <span class="key">"hoist"</span>:       <span class="kw">false</span>
+  }
+]</code></pre>
+        </div>
+
+        <h2 id="create-role">Create Role</h2>
+
+        <div class="endpoint-block">
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <span class="endpoint-path">/api/v1/guilds/<span class="param">{guildId}</span>/roles</span>
+            </div>
+            <p class="desc">Create a new role. Requires <code>MANAGE_ROLES</code>.</p>
+
+            <h4>Request Body (JSON)</h4>
+            <table>
+                <thead><tr><th>Field</th><th></th><th>Description</th></tr></thead>
+                <tbody>
+                    <tr><td><code>name</code></td><td><span class="badge required">required</span></td><td>Role name</td></tr>
+                    <tr><td><code>color</code></td><td><span class="badge optional">optional</span></td><td>RGB color as integer (e.g. <code>0xFF0000</code>) or hex string (<code>"#FF0000"</code>)</td></tr>
+                    <tr><td><code>permissions</code></td><td><span class="badge optional">optional</span></td><td>Bitmask string (default <code>"0"</code>)</td></tr>
+                    <tr><td><code>position</code></td><td><span class="badge optional">optional</span></td><td>Hierarchy position (0 = lowest)</td></tr>
+                    <tr><td><code>mentionable</code></td><td><span class="badge optional">optional</span></td><td>Boolean — whether users can @mention this role</td></tr>
+                </tbody>
+            </table>
+
+            <h4>Response — Role Object</h4>
+        </div>
+
+        <h2 id="edit-role">Edit Role</h2>
+
+        <div class="endpoint-block">
+            <div class="endpoint">
+                <span class="method patch">PATCH</span>
+                <span class="endpoint-path">/api/v1/guilds/<span class="param">{guildId}</span>/roles/<span class="param">{roleId}</span></span>
+            </div>
+            <p class="desc">Update a role. All body fields are optional — only provided fields are updated. Requires <code>MANAGE_ROLES</code>.</p>
+            <p>Body fields: same as <a href="#create-role">Create Role</a> (all optional).</p>
+            <h4>Response — Updated Role Object</h4>
+        </div>
+
+        <h2 id="delete-role">Delete Role</h2>
+
+        <div class="endpoint-block">
+            <div class="endpoint">
+                <span class="method delete">DELETE</span>
+                <span class="endpoint-path">/api/v1/guilds/<span class="param">{guildId}</span>/roles/<span class="param">{roleId}</span></span>
+            </div>
+            <p class="desc">Delete a role. Requires <code>MANAGE_ROLES</code>.</p>
+            <h4>Response</h4>
+            <p><code>204 No Content</code></p>
+        </div>
+
+        <h2 id="add-role">Add Role to Member</h2>
+
+        <div class="endpoint-block">
+            <div class="endpoint">
+                <span class="method put">PUT</span>
+                <span class="endpoint-path">/api/v1/guilds/<span class="param">{guildId}</span>/members/<span class="param">{userId}</span>/roles/<span class="param">{roleId}</span></span>
+            </div>
+            <p class="desc">Assign a role to a guild member. Requires <code>MANAGE_ROLES</code>. Emits a <code>GUILD_MEMBER_UPDATE</code> gateway event.</p>
+            <h4>Response</h4>
+            <p><code>204 No Content</code></p>
+        </div>
+
+        <h2 id="remove-role">Remove Role from Member</h2>
+
+        <div class="endpoint-block">
+            <div class="endpoint">
+                <span class="method delete">DELETE</span>
+                <span class="endpoint-path">/api/v1/guilds/<span class="param">{guildId}</span>/members/<span class="param">{userId}</span>/roles/<span class="param">{roleId}</span></span>
+            </div>
+            <p class="desc">Remove a role from a guild member. Requires <code>MANAGE_ROLES</code>.</p>
+            <h4>Response</h4>
+            <p><code>204 No Content</code></p>
+        </div>
+
+        <!-- ── Bot Management ── -->
+        <h2 id="manage-bots">Managing Bots (Session Auth)</h2>
+
+        <div class="callout info">
+            <span class="callout-icon">ℹ️</span>
+            <div>The following endpoints use <strong>session cookie auth</strong> (same as the main app), not bot token auth.
+            They are used by the developer portal UI to manage bot configurations.</div>
+        </div>
+
+        <table>
+            <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
+            <tbody>
+                <tr>
+                    <td><span class="method get" style="font-size:11px;padding:2px 6px">GET</span></td>
+                    <td><code>/api/bots</code></td>
+                    <td>List all bots owned by the session user</td>
+                </tr>
+                <tr>
+                    <td><span class="method post" style="font-size:11px;padding:2px 6px">POST</span></td>
+                    <td><code>/api/bots</code></td>
+                    <td>Create a new bot application</td>
+                </tr>
+                <tr>
+                    <td><span class="method get" style="font-size:11px;padding:2px 6px">GET</span></td>
+                    <td><code>/api/bots/:botId</code></td>
+                    <td>Get bot details</td>
+                </tr>
+                <tr>
+                    <td><span class="method patch" style="font-size:11px;padding:2px 6px">PATCH</span></td>
+                    <td><code>/api/bots/:botId</code></td>
+                    <td>Update bot (name, description, callback URL, etc.)</td>
+                </tr>
+                <tr>
+                    <td><span class="method delete" style="font-size:11px;padding:2px 6px">DELETE</span></td>
+                    <td><code>/api/bots/:botId</code></td>
+                    <td>Delete bot and its user account</td>
+                </tr>
+                <tr>
+                    <td><span class="method get" style="font-size:11px;padding:2px 6px">GET</span></td>
+                    <td><code>/api/bots/:botId/token</code></td>
+                    <td>Retrieve bot token (masked except last 4 chars)</td>
+                </tr>
+                <tr>
+                    <td><span class="method post" style="font-size:11px;padding:2px 6px">POST</span></td>
+                    <td><code>/api/bots/:botId/token/regenerate</code></td>
+                    <td>Regenerate bot token (immediately invalidates old token)</td>
+                </tr>
+                <tr>
+                    <td><span class="method put" style="font-size:11px;padding:2px 6px">PUT</span></td>
+                    <td><code>/api/bots/:botId/servers/:serverId</code></td>
+                    <td>Install bot into a server (you must be owner/admin)</td>
+                </tr>
+                <tr>
+                    <td><span class="method delete" style="font-size:11px;padding:2px 6px">DELETE</span></td>
+                    <td><code>/api/bots/:botId/servers/:serverId</code></td>
+                    <td>Remove bot from a server</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <!-- ── Slash Commands ── -->
+        <h2 id="slash-commands">Slash Commands (Session Auth)</h2>
+
+        <p>Register and manage slash commands per server. Commands are sent to connected clients
+        and trigger <code>INTERACTION_CREATE</code> gateway events when a user invokes them.</p>
+
+        <table>
+            <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
+            <tbody>
+                <tr>
+                    <td><span class="method get" style="font-size:11px;padding:2px 6px">GET</span></td>
+                    <td><code>/api/bots/:botId/servers/:serverId/commands</code></td>
+                    <td>List slash commands registered for this bot in this server</td>
+                </tr>
+                <tr>
+                    <td><span class="method put" style="font-size:11px;padding:2px 6px">PUT</span></td>
+                    <td><code>/api/bots/:botId/servers/:serverId/commands</code></td>
+                    <td>Create or update a slash command (upsert by name)</td>
+                </tr>
+                <tr>
+                    <td><span class="method delete" style="font-size:11px;padding:2px 6px">DELETE</span></td>
+                    <td><code>/api/bots/:botId/servers/:serverId/commands/:commandId</code></td>
+                    <td>Delete a slash command</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h4>Slash Command Object</h4>
+        <pre><code>{
+  <span class="key">"id"</span>:          <span class="str">"snowflake"</span>,
+  <span class="key">"bot_id"</span>:      <span class="str">"snowflake"</span>,
+  <span class="key">"server_id"</span>:   <span class="str">"snowflake"</span>,
+  <span class="key">"name"</span>:        <span class="str">"ping"</span>,          <span class="comment">// unique per bot+server</span>
+  <span class="key">"description"</span>: <span class="str">"Replies with pong"</span>,
+  <span class="key">"options"</span>:      []               <span class="comment">// JSON array of option objects</span>
+}</code></pre>
+
+        <!-- ── Interactions ── -->
+        <h2 id="interactions">Responding to Interactions</h2>
+
+        <p>
+            When a user invokes a slash command, your bot receives an <code>INTERACTION_CREATE</code>
+            gateway event. You must respond within <strong>3 seconds</strong>, or use a deferred response.
+        </p>
+
+        <h3>Immediate Response (Type 4)</h3>
+        <div class="endpoint-block">
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <span class="endpoint-path">/api/interactions/<span class="param">{interactionId}</span>/<span class="param">{token}</span>/callback</span>
+            </div>
+            <p class="desc">Respond to an interaction immediately. No auth required — the token in the URL grants access.</p>
+
+            <pre><code>{
+  <span class="key">"type"</span>: <span class="num">4</span>,        <span class="comment">// CHANNEL_MESSAGE_WITH_SOURCE</span>
+  <span class="key">"data"</span>: {
+    <span class="key">"content"</span>: <span class="str">"Pong!"</span>
+  }
+}</code></pre>
+        </div>
+
+        <h3>Deferred Response (Type 5)</h3>
+        <div class="endpoint-block">
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <span class="endpoint-path">/api/interactions/<span class="param">{interactionId}</span>/<span class="param">{token}</span>/callback</span>
+            </div>
+            <p class="desc">Acknowledge the interaction immediately, then send the real response later (within 15 minutes).</p>
+
+            <pre><code><span class="comment">// Step 1: Acknowledge immediately</span>
+{
+  <span class="key">"type"</span>: <span class="num">5</span>          <span class="comment">// DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE</span>
+}
+
+<span class="comment">// Step 2: Send follow-up (within 15 minutes)</span>
+<span class="fn">fetch</span>(<span class="str">`/api/interactions/${interactionId}/${token}/followup`</span>, {
+  method: <span class="str">'POST'</span>,
+  headers: { <span class="str">'Content-Type'</span>: <span class="str">'application/json'</span> },
+  body: <span class="fn">JSON.stringify</span>({ content: <span class="str">'Done!'</span> }),
+})</code></pre>
+        </div>
+
+        <h3>Interaction Type Constants</h3>
+        <table>
+            <thead><tr><th>Type</th><th>Name</th><th>Description</th></tr></thead>
+            <tbody>
+                <tr><td><code>4</code></td><td>CHANNEL_MESSAGE_WITH_SOURCE</td><td>Reply with a message immediately</td></tr>
+                <tr><td><code>5</code></td><td>DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE</td><td>Show "thinking..." then follow up later</td></tr>
+            </tbody>
+        </table>
+    </main>
+</div>
+
+</body>
+</html>

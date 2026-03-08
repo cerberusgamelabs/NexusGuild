@@ -24,7 +24,7 @@ class VoiceController {
             if (chanResult.rows.length === 0) {
                 return res.status(404).json({ error: 'Channel not found' });
             }
-            if (chanResult.rows[0].type !== 'voice') {
+            if (!['voice', 'vtt'].includes(chanResult.rows[0].type)) {
                 return res.status(400).json({ error: 'Not a voice channel' });
             }
 

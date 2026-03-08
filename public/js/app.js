@@ -40,6 +40,7 @@ const CLIENT_PERMS = {
     CONNECT:                  1048576n,
     SPEAK:                    2097152n,
     MANAGE_GUILD_EXPRESSIONS: 1073741824n,
+    VTT_GM:                   1125899906842624n,
 };
 
 // Returns true if the current user has the given permission.
@@ -397,7 +398,7 @@ async function loadServerChannels(serverId) {
             renderChannelList(data.channels, data.categories);
 
             // Auto-select first messageable channel
-            const firstTextChannel = data.channels.find(c => ['text', 'announcement', 'forum', 'media'].includes(c.type));
+            const firstTextChannel = data.channels.find(c => ['text', 'announcement', 'forum', 'media'].includes(c.type)); // vtt excluded — voice-like
             if (firstTextChannel) {
                 selectChannel(firstTextChannel.id);
             }
@@ -441,6 +442,7 @@ function selectChannel(channelId) {
                  : channel.type === 'announcement' ? '📢'
                  : channel.type === 'forum'        ? '💬'
                  : channel.type === 'media'        ? '🖼️'
+                 : channel.type === 'vtt'          ? '🎲'
                  : '#';
     document.getElementById('currentChannelName').textContent = `${chIcon} ${channel.name}`;
 
@@ -477,6 +479,9 @@ function selectChannel(channelId) {
                     </button>
                 </div>`;
         }
+    } else if (channel.type === 'vtt') {
+        state.messages = [];
+        if (typeof openVTTView === 'function') openVTTView(channel);
     } else if (channel.type === 'forum' || channel.type === 'media') {
         state.messages = [];
         openForumView(channel);
@@ -498,7 +503,7 @@ function _updateInputForChannel(channel) {
     const msgInput  = document.getElementById('messageInput');
     if (!inputArea || !msgInput) return;
 
-    if (channel.type === 'voice' || channel.type === 'forum' || channel.type === 'media') {
+    if (channel.type === 'voice' || channel.type === 'vtt' || channel.type === 'forum' || channel.type === 'media') {
         inputArea.style.display = 'none';
         return;
     }

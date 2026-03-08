@@ -88,6 +88,55 @@ export const uploadEmoji = multer({
     fileFilter: emojiFilter
 }).single('emoji');
 
+// ── VTT map upload — images only, 25MB ─────────────────────────────────────
+const vttMapStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        const dir = path.join(__dirname, '../public/uploads/vtt/maps');
+        fs.mkdirSync(dir, { recursive: true });
+        cb(null, dir);
+    },
+    filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        const ext = path.extname(file.originalname);
+        cb(null, `map-${uniqueSuffix}${ext}`);
+    }
+});
+
+const vttMapFilter = (req, file, cb) => {
+    const allowed = /jpeg|jpg|png|gif|webp/;
+    if (allowed.test(path.extname(file.originalname).toLowerCase()) && allowed.test(file.mimetype)) {
+        cb(null, true);
+    } else {
+        cb(new Error('Only image files are allowed for VTT maps (jpeg, jpg, png, gif, webp)'));
+    }
+};
+
+export const uploadVTTMap = multer({
+    storage: vttMapStorage,
+    limits: { fileSize: 25 * 1024 * 1024, files: 1 },
+    fileFilter: vttMapFilter
+}).single('map');
+
+// ── VTT token image upload — images only, 5MB ──────────────────────────────
+const vttTokenStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        const dir = path.join(__dirname, '../public/uploads/vtt/tokens');
+        fs.mkdirSync(dir, { recursive: true });
+        cb(null, dir);
+    },
+    filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        const ext = path.extname(file.originalname);
+        cb(null, `token-${uniqueSuffix}${ext}`);
+    }
+});
+
+export const uploadVTTToken = multer({
+    storage: vttTokenStorage,
+    limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+    fileFilter: vttMapFilter  // same image filter
+}).single('token');
+
 // Error handler middleware
 export const handleUploadError = (err, req, res, next) => {
     if (err instanceof multer.MulterError) {

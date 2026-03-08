@@ -86,6 +86,7 @@ function _makeChannelEl(channel, canDrag) {
                : channel.type === 'announcement' ? '📢'
                : channel.type === 'forum'        ? '💬'
                : channel.type === 'media'        ? '🖼️'
+               : channel.type === 'vtt'          ? '🎲'
                : '#';
     const isActive = state.currentChannel?.id === channel.id;
     const unread = state.unread?.[channel.id];

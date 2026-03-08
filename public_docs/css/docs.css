@@ -1,0 +1,411 @@
+/* NexusGuild Developer Documentation Styles */
+
+:root {
+    --bg:          #1e1f22;
+    --sidebar-bg:  #232428;
+    --surface:     #2b2d31;
+    --surface-alt: #313338;
+    --border:      #3f4248;
+    --text:        #dbdee1;
+    --muted:       #949ba4;
+    --link:        #7289da;
+    --link-hover:  #9aaed4;
+    --accent:      #5865f2;
+    --accent-dim:  rgba(88,101,242,.15);
+
+    --get:         #3ba55c;
+    --get-bg:      rgba(59,165,92,.15);
+    --post:        #5865f2;
+    --post-bg:     rgba(88,101,242,.15);
+    --patch:       #faa61a;
+    --patch-bg:    rgba(250,166,26,.15);
+    --delete:      #ed4245;
+    --delete-bg:   rgba(237,66,69,.15);
+    --put:         #eb459e;
+    --put-bg:      rgba(235,69,158,.15);
+
+    --code-bg:     #111214;
+    --sidebar-w:   260px;
+    --header-h:    56px;
+    --font-mono:   'Consolas', 'Courier New', monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    font-size: 15px;
+}
+
+/* ── Top header ── */
+.site-header {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: var(--header-h);
+    background: var(--sidebar-bg);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    gap: 16px;
+    z-index: 100;
+}
+
+.site-header .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-decoration: none;
+    color: var(--text);
+    font-weight: 700;
+    font-size: 16px;
+}
+
+.site-header .logo-icon {
+    width: 32px;
+    height: 32px;
+    background: var(--accent);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+}
+
+.site-header nav {
+    display: flex;
+    gap: 4px;
+    margin-left: auto;
+}
+
+.site-header nav a {
+    color: var(--muted);
+    text-decoration: none;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 14px;
+    transition: color .15s, background .15s;
+}
+
+.site-header nav a:hover,
+.site-header nav a.active {
+    color: var(--text);
+    background: var(--surface);
+}
+
+/* ── Layout ── */
+.layout {
+    display: flex;
+    margin-top: var(--header-h);
+    min-height: calc(100vh - var(--header-h));
+}
+
+/* ── Sidebar ── */
+.sidebar {
+    width: var(--sidebar-w);
+    flex-shrink: 0;
+    background: var(--sidebar-bg);
+    border-right: 1px solid var(--border);
+    position: sticky;
+    top: var(--header-h);
+    height: calc(100vh - var(--header-h));
+    overflow-y: auto;
+    padding: 20px 0;
+}
+
+.sidebar::-webkit-scrollbar { width: 4px; }
+.sidebar::-webkit-scrollbar-track { background: transparent; }
+.sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.sidebar-section {
+    margin-bottom: 8px;
+}
+
+.sidebar-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--muted);
+    padding: 12px 16px 4px;
+}
+
+.sidebar a {
+    display: block;
+    padding: 5px 16px;
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 14px;
+    border-left: 2px solid transparent;
+    transition: color .15s, border-color .15s, background .15s;
+}
+
+.sidebar a:hover {
+    color: var(--text);
+    background: var(--surface);
+}
+
+.sidebar a.active {
+    color: var(--link);
+    border-left-color: var(--accent);
+    background: var(--accent-dim);
+}
+
+/* ── Main content ── */
+.content {
+    flex: 1;
+    min-width: 0;
+    padding: 40px 48px 80px;
+    max-width: 900px;
+}
+
+/* ── Typography ── */
+h1 { font-size: 28px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+h2 { font-size: 20px; font-weight: 700; color: var(--text); margin: 48px 0 16px; padding-top: 8px; border-top: 1px solid var(--border); }
+h3 { font-size: 16px; font-weight: 600; color: var(--text); margin: 28px 0 10px; }
+h4 { font-size: 14px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin: 20px 0 8px; }
+
+p { margin-bottom: 12px; color: var(--text); }
+
+a { color: var(--link); text-decoration: none; }
+a:hover { color: var(--link-hover); text-decoration: underline; }
+
+ul, ol { margin: 8px 0 12px 20px; }
+li { margin-bottom: 4px; }
+
+/* ── Page intro ── */
+.page-intro {
+    color: var(--muted);
+    font-size: 16px;
+    margin-bottom: 32px;
+    line-height: 1.7;
+}
+
+/* ── Method + endpoint ── */
+.endpoint {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 12px;
+    font-family: var(--font-mono);
+    font-size: 14px;
+}
+
+.method {
+    font-size: 12px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    flex-shrink: 0;
+}
+.method.get    { background: var(--get-bg);    color: var(--get); }
+.method.post   { background: var(--post-bg);   color: var(--post); }
+.method.patch  { background: var(--patch-bg);  color: var(--patch); }
+.method.delete { background: var(--delete-bg); color: var(--delete); }
+.method.put    { background: var(--put-bg);    color: var(--put); }
+
+.endpoint-path { color: var(--text); flex: 1; }
+.endpoint-path .param { color: var(--patch); }
+
+/* ── Endpoint detail block ── */
+.endpoint-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin-bottom: 28px;
+}
+
+.endpoint-block .desc {
+    color: var(--muted);
+    margin: 8px 0 16px;
+    font-size: 14px;
+}
+
+/* ── Code blocks ── */
+pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    overflow-x: auto;
+    margin: 12px 0;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.55;
+}
+
+code {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 5px;
+    color: #e8c07d;
+}
+
+pre code {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--text);
+}
+
+.comment  { color: #5c6370; }
+.kw       { color: #c678dd; }
+.str      { color: #98c379; }
+.num      { color: #d19a66; }
+.fn       { color: #61afef; }
+.key      { color: #e06c75; }
+
+/* ── Tables ── */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+    margin: 12px 0 20px;
+}
+
+th {
+    background: var(--surface);
+    color: var(--muted);
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+}
+
+td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+}
+
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--surface); }
+
+td code { font-size: 12px; }
+
+/* ── Callout boxes ── */
+.callout {
+    display: flex;
+    gap: 12px;
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin: 16px 0;
+    font-size: 14px;
+    line-height: 1.55;
+}
+
+.callout-icon { font-size: 18px; flex-shrink: 0; }
+
+.callout.info    { background: rgba(88,101,242,.12);  border-left: 3px solid var(--accent); }
+.callout.warn    { background: rgba(250,166,26,.12);  border-left: 3px solid var(--patch); }
+.callout.success { background: rgba(59,165,92,.12);   border-left: 3px solid var(--get); }
+.callout.danger  { background: rgba(237,66,69,.12);   border-left: 3px solid var(--delete); }
+
+/* ── Tags / badges ── */
+.badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+.badge.required { background: rgba(237,66,69,.2); color: var(--delete); }
+.badge.optional { background: rgba(149,165,166,.15); color: var(--muted); }
+.badge.event    { background: rgba(88,101,242,.2); color: #7289da; }
+.badge.bot      { background: rgba(88,101,242,.2); color: #7289da; }
+.badge.session  { background: rgba(59,165,92,.2); color: var(--get); }
+
+/* ── Landing grid ── */
+.card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 16px;
+    margin: 24px 0;
+}
+
+.card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    text-decoration: none;
+    color: var(--text);
+    transition: border-color .15s, background .15s;
+    display: block;
+}
+.card:hover { border-color: var(--accent); background: var(--surface-alt); text-decoration: none; }
+
+.card-icon { font-size: 28px; margin-bottom: 10px; }
+.card-title { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+.card-desc { font-size: 13px; color: var(--muted); line-height: 1.5; }
+
+/* ── Response section ── */
+.response-label {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: var(--muted);
+    margin-bottom: 6px;
+    margin-top: 16px;
+}
+
+/* ── Gateway event box ── */
+.event-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-bottom: 20px;
+}
+
+.event-name {
+    font-family: var(--font-mono);
+    font-size: 15px;
+    font-weight: 700;
+    color: #7289da;
+    margin-bottom: 6px;
+}
+
+.event-desc { font-size: 14px; color: var(--muted); margin-bottom: 10px; }
+
+/* ── Section divider ── */
+.section-divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 40px 0;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .sidebar { display: none; }
+    .content { padding: 24px 20px 60px; }
+    .endpoint { flex-wrap: wrap; }
+}

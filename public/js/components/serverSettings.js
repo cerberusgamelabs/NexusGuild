@@ -73,6 +73,12 @@ const PERM_GROUPS = [
             { key: 'MODERATE_MEMBERS',name: 'Timeout Members',desc: 'Allows members to put others in timeout' },
         ]
     },
+    {
+        label: 'VTT',
+        perms: [
+            { key: 'VTT_GM', name: 'VTT Game Master', desc: 'Allows members to act as GM in VTT channels — upload maps, move all tokens, control fog of war, and manage encounters' },
+        ]
+    },
 ];
 
 // State local to this module

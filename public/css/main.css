@@ -252,6 +252,7 @@ body {
     display: flex;
     flex-direction: column;
     border-right: 1px solid #222;
+    position: relative;
 }
 
 .server-name {
@@ -952,12 +953,16 @@ body {
     }
 
 .server-dropdown {
+    position: absolute;
+    top: 49px;
+    left: 8px;
+    right: 8px;
     background: #1e1f22;
     border: 1px solid #3a3a3a;
     border-radius: 6px;
-    margin: 0 8px 8px;
     overflow: hidden;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+    z-index: 100;
 }
 
     .server-dropdown button {
