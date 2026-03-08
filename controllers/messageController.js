@@ -8,7 +8,8 @@ import db from "../config/database.js";
 import { generateSnowflake } from "#utils/functions";
 import { log, tags } from "#utils/logging";
 import { PermissionHandler, PERMISSIONS } from "../config/permissions.js";
-import { resolveChannelPerms, permissionCache } from "../utils/channelPerms.js";
+import { resolveChannelPerms } from "../utils/channelPerms.js";
+import { permissionCache } from "../utils/permissionCache.js";
 import { logAuditEvent } from "../utils/audit.js";
 
 const __filename = fileURLToPath(import.meta.url);

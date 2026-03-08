@@ -5,7 +5,8 @@ import db from "../config/database.js";
 import { generateSnowflake } from "#utils/functions";
 import { log, tags } from "#utils/logging";
 import { PermissionHandler, PERMISSIONS } from "../config/permissions.js";
-import { batchResolveChannelPerms, permissionCache } from "../utils/channelPerms.js";
+import { batchResolveChannelPerms } from "../utils/channelPerms.js";
+import { permissionCache } from "../utils/permissionCache.js";
 import { logAuditEvent } from "../utils/audit.js";
 
 // Resolve channelId → serverId and check if userId holds the given permission.
