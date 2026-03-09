@@ -607,6 +607,22 @@ const initDB = async () => {
             )
         `);
 
+        // ── VTT Dice Rolls ─────────────────────────────────────────────────────
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS vtt_dice_rolls (
+                id               VARCHAR(20) PRIMARY KEY,
+                channel_id       VARCHAR(20) REFERENCES channels(id) ON DELETE CASCADE,
+                user_id          VARCHAR(20) REFERENCES users(id) ON DELETE SET NULL,
+                notation         TEXT NOT NULL,
+                total            INTEGER NOT NULL,
+                dice             JSONB NOT NULL,
+                dddice_roll_id   TEXT,
+                modifier         INTEGER DEFAULT 0,
+                created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
         // ── Inbound Email ─────────────────────────────────────────────────────
 
         await client.query(`
@@ -661,6 +677,8 @@ const initDB = async () => {
         await pool.query('CREATE INDEX IF NOT EXISTS idx_vtt_tokens_channel  ON vtt_tokens(channel_id)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_vtt_chars_channel   ON vtt_characters(channel_id)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_vtt_chars_user      ON vtt_characters(user_id)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_vtt_dice_rolls_channel ON vtt_dice_rolls(channel_id)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_vtt_dice_rolls_created ON vtt_dice_rolls(created_at DESC)');
 
         log(tags.success, 'Database schema initialized successfully');
     } catch (e) {

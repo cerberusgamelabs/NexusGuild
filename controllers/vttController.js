@@ -41,14 +41,22 @@ export async function getSession(req, res) {
         const serverId = await _getChannelServer(channelId);
         if (!serverId) return res.status(404).json({ error: 'VTT channel not found' });
 
-        const [mapRes, tokensRes, encounterRes, charsRes] = await Promise.all([
+        const [mapRes, tokensRes, encounterRes, charsRes, rollsRes] = await Promise.all([
             db.query('SELECT * FROM vtt_maps WHERE channel_id=$1', [channelId]),
             db.query('SELECT * FROM vtt_tokens WHERE channel_id=$1 ORDER BY id', [channelId]),
             db.query('SELECT * FROM vtt_encounters WHERE channel_id=$1', [channelId]),
             db.query('SELECT * FROM vtt_characters WHERE channel_id=$1 ORDER BY name', [channelId]),
+            db.query(`
+                SELECT vr.*, u.username, u.avatar
+                FROM vtt_dice_rolls vr
+                LEFT JOIN users u ON u.id = vr.user_id
+                WHERE vr.channel_id=$1
+                ORDER BY vr.created_at DESC
+                LIMIT 50
+            `, [channelId]),
         ]);
 
-        const isGM = await _isGM(req.session.userId, serverId, null);
+        const isGM = await _isGM(req.session.user.id, serverId, null);
 
         res.json({
             map:       mapRes.rows[0] || null,
@@ -56,6 +64,7 @@ export async function getSession(req, res) {
             encounter: encounterRes.rows[0] || null,
             characters: charsRes.rows,
             isGM,
+            recent_rolls: rollsRes.rows,
         });
     } catch (e) {
         log(tags.error, 'vttController.getSession:', e.message);
@@ -70,7 +79,7 @@ export async function uploadMap(req, res) {
     try {
         const serverId = await _getChannelServer(channelId);
         if (!serverId) return res.status(404).json({ error: 'VTT channel not found' });
-        if (!await _isGM(req.session.userId, serverId, null))
+        if (!await _isGM(req.session.user.id, serverId, null))
             return res.status(403).json({ error: 'VTT_GM permission required' });
 
         if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
@@ -109,7 +118,7 @@ export async function updateMap(req, res) {
     try {
         const serverId = await _getChannelServer(channelId);
         if (!serverId) return res.status(404).json({ error: 'VTT channel not found' });
-        if (!await _isGM(req.session.userId, serverId, null))
+        if (!await _isGM(req.session.user.id, serverId, null))
             return res.status(403).json({ error: 'VTT_GM permission required' });
 
         const existing = await db.query('SELECT id FROM vtt_maps WHERE channel_id=$1', [channelId]);
@@ -158,7 +167,7 @@ export async function addToken(req, res) {
         const r = await db.query(
             `INSERT INTO vtt_tokens (id, channel_id, owner_id, x, y, size, image_url, label)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-            [id, channelId, req.session.userId, x, y, size, imageUrl, label]
+            [id, channelId, req.session.user.id, x, y, size, imageUrl, label]
         );
         const token = r.rows[0];
 
@@ -181,9 +190,9 @@ export async function updateToken(req, res) {
         if (!tokenRes.rows.length) return res.status(404).json({ error: 'Token not found' });
         const token = tokenRes.rows[0];
 
-        const isGM = await _isGM(req.session.userId, serverId, null);
+        const isGM = await _isGM(req.session.user.id, serverId, null);
         // Players can only move their own token; GM can move any
-        if (!isGM && token.owner_id !== req.session.userId)
+        if (!isGM && token.owner_id !== req.session.user.id)
             return res.status(403).json({ error: 'You can only move your own token' });
 
         const { x, y, size, label, hp, hp_max, conditions } = req.body;
@@ -221,8 +230,8 @@ export async function removeToken(req, res) {
         const tokenRes = await db.query('SELECT owner_id FROM vtt_tokens WHERE id=$1 AND channel_id=$2', [tokenId, channelId]);
         if (!tokenRes.rows.length) return res.status(404).json({ error: 'Token not found' });
 
-        const isGM = await _isGM(req.session.userId, serverId, null);
-        if (!isGM && tokenRes.rows[0].owner_id !== req.session.userId)
+        const isGM = await _isGM(req.session.user.id, serverId, null);
+        if (!isGM && tokenRes.rows[0].owner_id !== req.session.user.id)
             return res.status(403).json({ error: 'You can only remove your own token' });
 
         await db.query('DELETE FROM vtt_tokens WHERE id=$1', [tokenId]);
@@ -243,7 +252,7 @@ export async function updateEncounter(req, res) {
     try {
         const serverId = await _getChannelServer(channelId);
         if (!serverId) return res.status(404).json({ error: 'VTT channel not found' });
-        if (!await _isGM(req.session.userId, serverId, null))
+        if (!await _isGM(req.session.user.id, serverId, null))
             return res.status(403).json({ error: 'VTT_GM permission required' });
 
         const { round, active_index, is_active, combatants } = req.body;
@@ -289,11 +298,11 @@ export async function getCharacters(req, res) {
         const serverId = await _getChannelServer(channelId);
         if (!serverId) return res.status(404).json({ error: 'VTT channel not found' });
 
-        const isGM = await _isGM(req.session.userId, serverId, null);
+        const isGM = await _isGM(req.session.user.id, serverId, null);
         // Players see only their own; GM sees all
         const r = isGM
             ? await db.query('SELECT * FROM vtt_characters WHERE channel_id=$1 ORDER BY name', [channelId])
-            : await db.query('SELECT * FROM vtt_characters WHERE channel_id=$1 AND user_id=$2 ORDER BY name', [channelId, req.session.userId]);
+            : await db.query('SELECT * FROM vtt_characters WHERE channel_id=$1 AND user_id=$2 ORDER BY name', [channelId, req.session.user.id]);
 
         res.json({ characters: r.rows });
     } catch (e) {
@@ -310,9 +319,9 @@ export async function createCharacter(req, res) {
         const serverId = await _getChannelServer(channelId);
         if (!serverId) return res.status(404).json({ error: 'VTT channel not found' });
 
-        const isGM = await _isGM(req.session.userId, serverId, null);
+        const isGM = await _isGM(req.session.user.id, serverId, null);
         // NPCs (user_id=null) only creatable by GM
-        const ownerId = req.body.is_npc && isGM ? null : req.session.userId;
+        const ownerId = req.body.is_npc && isGM ? null : req.session.user.id;
 
         const r = await db.query(
             `INSERT INTO vtt_characters (id, channel_id, user_id, token_id, system, name, sheet_data)
@@ -335,8 +344,8 @@ export async function updateCharacter(req, res) {
         const charRes = await db.query('SELECT * FROM vtt_characters WHERE id=$1 AND channel_id=$2', [charId, channelId]);
         if (!charRes.rows.length) return res.status(404).json({ error: 'Character not found' });
 
-        const isGM = await _isGM(req.session.userId, serverId, null);
-        if (!isGM && charRes.rows[0].user_id !== req.session.userId)
+        const isGM = await _isGM(req.session.user.id, serverId, null);
+        if (!isGM && charRes.rows[0].user_id !== req.session.user.id)
             return res.status(403).json({ error: 'You can only edit your own character' });
 
         const { name, sheet_data, token_id, system } = req.body;
@@ -367,8 +376,8 @@ export async function deleteCharacter(req, res) {
         const charRes = await db.query('SELECT user_id FROM vtt_characters WHERE id=$1 AND channel_id=$2', [charId, channelId]);
         if (!charRes.rows.length) return res.status(404).json({ error: 'Character not found' });
 
-        const isGM = await _isGM(req.session.userId, serverId, null);
-        if (!isGM && charRes.rows[0].user_id !== req.session.userId)
+        const isGM = await _isGM(req.session.user.id, serverId, null);
+        if (!isGM && charRes.rows[0].user_id !== req.session.user.id)
             return res.status(403).json({ error: 'You can only delete your own character' });
 
         await db.query('DELETE FROM vtt_characters WHERE id=$1', [charId]);
@@ -450,27 +459,57 @@ export async function getDddiceToken(req, res) {
     }
 }
 
-// ── dddice roll (server-side, for debugging) ──────────────────────────────────
+// ── dddice roll (client-side logging endpoint) ───────────────────────────────
 
 export async function dddiceRoll(req, res) {
     const { channelId } = req.params;
-    const { dice } = req.body; // [{type, theme}]
+    const { notation, total, dice, dddice_roll_id, modifier = 0 } = req.body;
     try {
-        const apiKey = process.env.DDDICE_API_TOKEN;
-        const chanRes = await db.query('SELECT dddice_room_slug FROM channels WHERE id=$1', [channelId]);
-        const roomSlug = chanRes.rows[0]?.dddice_room_slug;
-        if (!roomSlug) return res.status(404).json({ error: 'No dddice room for this channel' });
+        // Validate required fields
+        if (!notation || total === undefined || !dice || !Array.isArray(dice)) {
+            return res.status(400).json({ error: 'Missing required fields: notation, total, dice' });
+        }
 
-        const rollRes = await fetch('https://dddice.com/api/1.0/roll', {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ dice, room: roomSlug })
-        });
-        const rollData = await rollRes.json();
-        log(tags.info, `dddice roll: ${rollRes.status}`, JSON.stringify(rollData).slice(0, 300));
-        res.status(rollRes.status).json(rollData);
+        const serverId = await _getChannelServer(channelId);
+        if (!serverId) return res.status(404).json({ error: 'VTT channel not found' });
+
+        // Verify server membership
+        const memberCheck = await db.query(
+            'SELECT 1 FROM server_members WHERE server_id=$1 AND user_id=$2',
+            [serverId, req.session.user.id]
+        );
+        if (!memberCheck.rows.length) {
+            return res.status(403).json({ error: 'Not a server member' });
+        }
+
+        // Store roll in database
+        const rollId = generateSnowflake();
+        await db.query(
+            `INSERT INTO vtt_dice_rolls (id, channel_id, user_id, notation, total, dice, dddice_roll_id, modifier)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+            [rollId, channelId, req.session.user.id, notation, total, JSON.stringify(dice), dddice_roll_id, modifier]
+        );
+
+        // Broadcast to channel for sync (optional)
+        const io = req.app.get('io');
+        if (io) {
+            io.to(`channel:${channelId}`).emit('vtt_dice_rolled', {
+                id: rollId,
+                channelId,
+                userId: req.session.user.id,
+                username: req.session.user.username,
+                notation,
+                total,
+                dice,
+                dddice_roll_id,
+                modifier,
+                created_at: new Date().toISOString()
+            });
+        }
+
+        res.json({ success: true, id: rollId });
     } catch (e) {
         log(tags.error, 'vttController.dddiceRoll:', e.message);
-        res.status(500).json({ error: 'Roll failed' });
+        res.status(500).json({ error: 'Failed to log roll' });
     }
 }

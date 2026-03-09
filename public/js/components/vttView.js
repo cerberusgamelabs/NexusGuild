@@ -13,11 +13,19 @@ let _dddice      = null;
 let _vttDiceTheme = 'dddice-bees';
 let _vttSession  = null;     // { map, tokens, encounter, characters, isGM }
 let _dragState   = null;     // { tokenId, startX, startY, offsetX, offsetY }
+let _pendingRolls = [];      // Queue of { modifier, notation } for our own rolls (to match roll events)
+let _loggedRollIds = new Set(); // dddice_roll_id values we've already displayed in the log (avoid duplicates)
+let _activeFogMode = null;   // 'paint' | 'erase' | null
+let _fogPainting = false;    // true while dragging to paint fog
+let _lastFogCell = null;     // {row, col} to avoid redundant updates while dragging
+let _fogSaveTimeout = null;  // debounce timer for fog saves
 
 // ── Open / Close ──────────────────────────────────────────────────────────────
 
 async function openVTTView(channel) {
     _vttChannel = channel;
+    _pendingRolls = []; // reset pending roll queue
+    _loggedRollIds = new Set(); // reset logged roll ID tracking
 
     if (typeof closeForumView === 'function') closeForumView();
 
@@ -41,7 +49,7 @@ async function openVTTView(channel) {
                 <div id="vttFogTools" class="vtt-fog-tools" style="display:none">
                     <button onclick="vttFogMode('paint')">🌫️ Paint</button>
                     <button onclick="vttFogMode('erase')">☀️ Erase</button>
-                    <button class="vtt-tool-btn-sm" onclick="document.getElementById('vttFogTools').style.display='none'">✕</button>
+                    <button class="vtt-tool-btn-sm" onclick="vttCloseFogTools()">✕</button>
                 </div>
             </div>
             <div id="vttSidebar" class="vtt-sidebar">
@@ -86,6 +94,12 @@ function closeVTTView() {
     _vttChannel  = null;
     _vttSession  = null;
     _tokenSprites = {};
+    _pendingRolls = [];
+    _loggedRollIds = new Set();
+    _activeFogMode = null;
+    _fogPainting = false;
+    _lastFogCell = null;
+    if (_fogSaveTimeout) clearTimeout(_fogSaveTimeout);
 }
 
 // ── Voice ─────────────────────────────────────────────────────────────────────
@@ -187,6 +201,58 @@ function _initPanZoom() {
         stage.x = e.clientX - rect.left - localX * stage.scale.x;
         stage.y = e.clientY - rect.top  - localY * stage.scale.y;
     }, { passive: false });
+
+    // Additional: left-click drag to pan (when not in fog mode)
+    let mapPanning = false, mapPanStart = { x: 0, y: 0 }, mapStageStart = { x: 0, y: 0 };
+    view.addEventListener('pointerdown', (e) => {
+        if (e.button === 0 && !e.altKey && !_activeFogMode && !_dragState) {
+            mapPanning = true;
+            mapPanStart = { x: e.clientX, y: e.clientY };
+            mapStageStart = { x: stage.x, y: stage.y };
+            e.preventDefault();
+        }
+    });
+    view.addEventListener('pointermove', (e) => {
+        if (mapPanning) {
+            stage.x = mapStageStart.x + (e.clientX - mapPanStart.x);
+            stage.y = mapStageStart.y + (e.clientY - mapPanStart.y);
+        }
+        // Fog painting also handled on same move (separate flag)
+        if (_fogPainting) {
+            _paintFogAtEvent(e);
+        }
+    });
+    view.addEventListener('pointerup',   () => { mapPanning = false; });
+    view.addEventListener('pointerleave',() => { mapPanning = false; });
+
+    // Fog painting
+    view.addEventListener('pointerdown', (e) => {
+        if (e.button === 0 && _activeFogMode && !_dragState) {
+            _fogPainting = true;
+            _lastFogCell = null;
+            _paintFogAtEvent(e);
+            e.preventDefault();
+        }
+    });
+    view.addEventListener('pointermove', (e) => {
+        if (_fogPainting) {
+            _paintFogAtEvent(e);
+        }
+    });
+    view.addEventListener('pointerup', () => {
+        if (_fogPainting) {
+            _fogPainting = false;
+            _lastFogCell = null;
+            _debouncedSaveFog();
+        }
+    });
+    view.addEventListener('pointerleave', () => {
+        if (_fogPainting) {
+            _fogPainting = false;
+            _lastFogCell = null;
+            _debouncedSaveFog();
+        }
+    });
 }
 
 // ── Session Load ──────────────────────────────────────────────────────────────
@@ -200,8 +266,23 @@ async function _loadSession() {
 
         if (_vttSession.isGM) _showGMTools();
         if (_vttSession.map)  _renderMap(_vttSession.map);
-        _vttSession.tokens.forEach(_renderToken);
+        (_vttSession.tokens || []).forEach(_renderToken);
         _renderEncounter(_vttSession.encounter);
+        // Render recent dice rolls from history
+        if (Array.isArray(_vttSession.recent_rolls)) {
+            _vttSession.recent_rolls.forEach(r => {
+                const fakeRoll = {
+                    total_value: r.total,
+                    user: { username: r.username },
+                    values: r.dice
+                };
+                _logRoll(fakeRoll, 0, r.notation);
+                // Mark as logged to avoid duplicates if we later receive a broadcast for the same roll
+                if (r.dddice_roll_id) {
+                    _loggedRollIds.add(r.dddice_roll_id);
+                }
+            });
+        }
         _initDddice();
     } catch (e) {
         console.error('[VTT] Failed to load session:', e);
@@ -249,6 +330,46 @@ function _renderFog(fogData, cellSize) {
             _layers.fog.addChild(g);
         });
     });
+}
+
+// ── Fog Painting ───────────────────────────────────────────────────────────────
+
+function _paintFogAtEvent(e) {
+    if (!_vttSession?.map || !_pixiApp) return;
+    const stage = _pixiApp.stage;
+    const scale = stage.scale.x;
+    const view = _pixiApp.canvas;
+    const rect = view.getBoundingClientRect();
+    const worldX = (e.clientX - rect.left - stage.x) / scale;
+    const worldY = (e.clientY - rect.top - stage.y) / scale;
+    const gridSize = _vttSession.map.grid_size || 64;
+    const col = Math.floor(worldX / gridSize);
+    const row = Math.floor(worldY / gridSize);
+    // Get or initialize fog_data
+    let fogData = _vttSession.map.fog_data;
+    if (!fogData) {
+        const cols = Math.ceil((_mapSprite?.width || 0) / gridSize);
+        const rows = Math.ceil((_mapSprite?.height || 0) / gridSize);
+        fogData = Array.from({ length: rows }, () => Array(cols).fill(false));
+        _vttSession.map.fog_data = fogData;
+    }
+    const rows = fogData.length;
+    const cols = fogData[0]?.length || 0;
+    if (row < 0 || row >= rows || col < 0 || col >= cols) return;
+    if (_lastFogCell && _lastFogCell.row === row && _lastFogCell.col === col) return;
+    const value = _activeFogMode === 'paint' ? true : false;
+    fogData[row][col] = value;
+    _lastFogCell = { row, col };
+    _renderFog(fogData, gridSize);
+}
+
+function _debouncedSaveFog() {
+    if (_fogSaveTimeout) clearTimeout(_fogSaveTimeout);
+    _fogSaveTimeout = setTimeout(() => {
+        if (_vttSession?.map) {
+            _saveFog(_vttSession.map.fog_data);
+        }
+    }, 500);
 }
 
 // ── Tokens ────────────────────────────────────────────────────────────────────
@@ -361,11 +482,26 @@ async function _saveTokenPosition(tokenId, x, y) {
 
 // ── Fog of War ────────────────────────────────────────────────────────────────
 
-let _activeFogMode = null;
-
 function vttToggleFogTool() {
     const panel = document.getElementById('vttFogTools');
-    if (panel) panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
+    if (panel) {
+        const showing = panel.style.display !== 'none';
+        if (showing) {
+            // Hide and clear state
+            vttCloseFogTools();
+        } else {
+            panel.style.display = 'flex';
+        }
+    }
+}
+
+function vttCloseFogTools() {
+    const panel = document.getElementById('vttFogTools');
+    if (panel) panel.style.display = 'none';
+    _activeFogMode = null;
+    _fogPainting = false;
+    const canvas = document.getElementById('vttCanvas');
+    if (canvas) canvas.style.cursor = '';
 }
 
 function vttFogMode(mode) {
@@ -380,6 +516,9 @@ function vttClearFog() {
     const cols = Math.ceil((_mapSprite?.width || 0) / (map.grid_size || 64));
     const rows = Math.ceil((_mapSprite?.height || 0) / (map.grid_size || 64));
     const fog = Array.from({ length: rows }, () => Array(cols).fill(false));
+    // Update local state immediately
+    map.fog_data = fog;
+    _renderFog(fog, map.grid_size);
     _saveFog(fog);
 }
 
@@ -428,7 +567,22 @@ async function _initDddice() {
             ? ThreeDDiceRollEvent
             : 'roll';
         _dddice.on(rollEvent, (roll) => {
-            _logRoll(roll);
+            // Check if this is our own roll (initiated locally)
+            const pending = _pendingRolls.length > 0 ? _pendingRolls.shift() : null;
+            if (pending) {
+                // Our own roll: log with modifier/notation and POST to server
+                _logRoll(roll, pending.modifier, pending.notation);
+                _postRollToServer(roll, pending.modifier, pending.notation);
+            } else {
+                // Someone else's roll: we'll rely on server broadcast to get notation; skip logging here to avoid duplicate
+                // But still mark this roll ID as seen so we don't broadcast duplicate if we already saw it via history?
+                // No, we want to listen for broadcast to log with notation.
+                // Just do nothing; will be handled by vtt_dice_rolled socket event.
+            }
+            // Mark this roll ID as processed to avoid duplicates if broadcast arrives
+            if (roll.id) {
+                _loggedRollIds.add(roll.id);
+            }
         });
     } catch (e) {
         console.warn('[VTT] dddice init failed:', e);
@@ -440,61 +594,191 @@ function _teardownDddice() {
     document.getElementById('vttDddiceCanvas')?.remove();
 }
 
-function _logRoll(roll) {
+function _logRoll(roll, modifier = 0, notation = null) {
     const list = document.getElementById('vttRollLogList');
     if (!list) return;
-    const total = roll.total_value ?? roll.values?.reduce((s, v) => s + v.value, 0) ?? '?';
-    const name  = roll.user?.username || 'Unknown';
+    let total = roll.total_value ?? roll.values?.reduce((s, v) => s + (v.value || 0), 0) ?? '?';
+    if (typeof total === 'number') total += modifier;
+    const name = roll.user?.username || 'Unknown';
+    let entryHTML;
+    if (notation) {
+        entryHTML = `<span class="vtt-roll-name">${name}</span> ${notation} = <strong>${total}</strong>`;
+    } else {
+        entryHTML = `<span class="vtt-roll-name">${name}</span> rolled <strong>${total}</strong>`;
+    }
     const entry = document.createElement('div');
     entry.className = 'vtt-roll-entry';
-    entry.innerHTML = `<span class="vtt-roll-name">${name}</span> rolled <strong>${total}</strong>`;
+    entry.innerHTML = entryHTML;
     list.prepend(entry);
     // Keep last 50 rolls
     while (list.children.length > 50) list.removeChild(list.lastChild);
 }
 
+// Send a roll to our server for persistence
+async function _postRollToServer(roll, modifier, notation) {
+    if (!_vttChannel) return;
+    // Compute total (including modifier)
+    let total = roll.total_value ?? roll.values?.reduce((s, v) => s + (v.value || 0), 0) ?? 0;
+    if (typeof total === 'number') total += modifier;
+    // dice array from roll result
+    const dice = roll.dice || roll.values || [];
+    // Validate required fields
+    if (!notation || total === undefined || !dice || dice.length === 0) {
+        console.warn('[VTT] Skipping invalid roll:', { roll, modifier, notation, total, dice });
+        return;
+    }
+    const payload = {
+        notation,
+        total,
+        dice,
+        dddice_roll_id: roll.id,
+        modifier
+    };
+    try {
+        await fetch(`/api/vtt/${_vttChannel.id}/roll`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+    } catch (e) {
+        console.warn('[VTT] Failed to log roll to server:', e);
+    }
+}
+
 // ── Dice Roll Prompt ──────────────────────────────────────────────────────────
 
 async function vttRollPrompt() {
-    const notation = prompt('Dice notation (e.g. 1d20, 2d6):');
-    if (!notation || !_vttChannel) return;
-    const theme = _vttDiceTheme || 'dddice-bees';
-    // Parse simple NdX notation into dice array
-    const dice = _parseDiceNotation(notation.trim(), theme);
-    if (!dice.length) { console.warn('[VTT] Could not parse notation:', notation); return; }
+    if (!_vttChannel || !_dddice) return;
+
+    const notationInput = document.getElementById('modalInput');
+    const modalError = document.getElementById('modalError');
+
+    // Reset modal state
+    if (notationInput) notationInput.value = '';
+    if (modalError) modalError.style.display = 'none';
+
+    showModal({
+        title: 'Roll Dice',
+        message: 'Enter dice notation (e.g. 1d20, 2d6+3):',
+        inputType: 'text',
+        inputPlaceholder: '1d20',
+        buttons: [
+            { text: 'Cancel', style: 'secondary', action: closeModal },
+            { text: 'Roll', style: 'primary', action: () => {
+                const val = notationInput?.value?.trim();
+                if (!val) {
+                    modalError.textContent = 'Please enter a dice notation';
+                    modalError.style.display = 'block';
+                    return;
+                }
+                closeModal();
+                _executeRoll(val);
+            }}
+        ],
+        onEnter: () => {
+            const val = notationInput?.value?.trim();
+            if (!val) {
+                modalError.textContent = 'Please enter a dice notation';
+                modalError.style.display = 'block';
+                return;
+            }
+            closeModal();
+            _executeRoll(val);
+        }
+    });
+}
+
+function _executeRoll(notation) {
+    const trimmed = notation.trim();
+    const parsed = _parseDiceNotation(trimmed, _vttDiceTheme);
+    if (!parsed.dice.length) {
+        console.warn('[VTT] Could not parse notation:', trimmed);
+        return;
+    }
+    _pendingRolls.push({ modifier: parsed.modifier, notation: trimmed });
     try {
-        const res = await fetch(`/api/vtt/${_vttChannel.id}/roll`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ dice })
-        });
-        if (!res.ok) console.warn('[VTT] Roll failed:', res.status, await res.text());
+        _dddice.roll(parsed.dice);
     } catch (e) {
-        console.warn('[VTT] Roll failed:', e);
+        _pendingRolls.pop();
+        console.warn('[VTT] Roll error:', e);
     }
 }
 
 function _parseDiceNotation(notation, theme) {
-    // Supports: d20, 2d6, 1d20, d6
+    // Supports: d20, 2d6, 1d20, d6, and trailing modifiers like 2d6+3 or 1d20-2
+    let str = notation.trim().toLowerCase().replace(/\s/g, '');
+    let modifier = 0;
+
+    // Extract trailing +/- integer
+    const modMatch = str.match(/([+-]\d+)$/);
+    if (modMatch) {
+        modifier = parseInt(modMatch[1], 10);
+        str = str.slice(0, -modMatch[1].length);
+    }
+
+    // Split remaining dice groups (e.g., "2d6+1d4" -> ["2d6","1d4"])
+    const parts = str.split('+');
     const dice = [];
-    const parts = notation.toLowerCase().split('+').flatMap(p => p.split(' ')).filter(Boolean);
+
     for (const part of parts) {
         const m = part.match(/^(\d*)d(\d+)$/);
         if (m) {
             const count = parseInt(m[1] || '1', 10);
-            const type  = `d${m[2]}`;
-            for (let i = 0; i < count; i++) dice.push({ type, theme });
+            const type = `d${m[2]}`;
+            for (let i = 0; i < count; i++) {
+                dice.push({ type, theme });
+            }
         }
     }
-    return dice;
+
+    return { dice, modifier };
 }
 
 // ── Add Token Prompt ──────────────────────────────────────────────────────────
 
 function vttAddTokenPrompt() {
-    const label = prompt('Token label (name):');
-    if (!label || !_vttChannel) return;
+    if (!_vttChannel) return;
+
+    const labelInput = document.getElementById('modalInput');
+    const modalError = document.getElementById('modalError');
+
+    if (labelInput) labelInput.value = '';
+    if (modalError) modalError.style.display = 'none';
+
+    showModal({
+        title: 'Add Token',
+        message: 'Enter a label for the token:',
+        inputType: 'text',
+        inputPlaceholder: 'Token name',
+        buttons: [
+            { text: 'Cancel', style: 'secondary', action: closeModal },
+            { text: 'Add', style: 'primary', action: () => {
+                const val = labelInput?.value?.trim();
+                if (!val) {
+                    modalError.textContent = 'Please enter a label';
+                    modalError.style.display = 'block';
+                    return;
+                }
+                closeModal();
+                _executeAddToken(val);
+            }}
+        ],
+        onEnter: () => {
+            const val = labelInput?.value?.trim();
+            if (!val) {
+                modalError.textContent = 'Please enter a label';
+                modalError.style.display = 'block';
+                return;
+            }
+            closeModal();
+            _executeAddToken(val);
+        }
+    });
+}
+
+function _executeAddToken(label) {
+    if (!_vttChannel) return;
     const form = new FormData();
     form.append('label', label);
     form.append('x', 100);
@@ -652,10 +936,12 @@ function _renderSheet() {
 
     const chars = _vttSession.characters || [];
     const myChar = chars.find(c => c.user_id === state.currentUser?.id) || null;
+    const canDelete = myChar && (myChar.user_id === state.currentUser?.id || _vttSession.isGM);
 
     panel.innerHTML = `
         <div class="vtt-sheet-header">
             <span>📋 Character Sheet</span>
+            ${canDelete ? `<button class="vtt-btn-sm vtt-btn-danger" onclick="vttDeleteCharacter('${myChar.id}')">Delete</button>` : ''}
             <button class="vtt-btn-sm" onclick="document.getElementById('vttSheetPanel').style.display='none'">✕</button>
         </div>
         ${myChar ? _renderSheetContent(myChar) : `
@@ -801,13 +1087,23 @@ function vttQuickRoll(label, bonus) {
 }
 
 function _quickRoll(label, notation) {
-    if (!_dddice) {
-        _logRoll({ user: { username: state.currentUser?.username || 'You' }, total_value: label + ': ' + notation });
+    if (!_vttChannel || !_dddice) {
+        // Fallback: log without 3D dice
+        _logRoll({ user: { username: state.currentUser?.username || 'You' } }, 0, `${label}: ${notation}`);
         return;
     }
+    const parsed = _parseDiceNotation(notation, _vttDiceTheme);
+    if (!parsed.dice.length) {
+        // Invalid notation: log as-is
+        _logRoll({ user: { username: state.currentUser?.username || 'You' } }, 0, `${label}: ${notation}`);
+        return;
+    }
+    // Queue this roll's modifier and formatted notation for when the roll event fires
+    _pendingRolls.push({ modifier: parsed.modifier, notation: `${label}: ${notation}` });
     try {
-        _dddice.roll([{ type: notation, theme: _vttDiceTheme || 'dddice-bees' }]);
+        _dddice.roll(parsed.dice);
     } catch (e) {
+        _pendingRolls.pop(); // remove on error
         console.warn('[VTT] Roll error:', e);
     }
 }
@@ -815,9 +1111,57 @@ function _quickRoll(label, notation) {
 // ── Create Character ──────────────────────────────────────────────────────────
 
 function vttCreateCharPrompt() {
-    const name = prompt('Character name:');
-    if (!name || !_vttChannel) return;
-    const system = prompt('System (generic, dnd5e, pf2e):', 'generic') || 'generic';
+    if (!_vttChannel) return;
+
+    const nameInput = document.getElementById('charNameInput');
+    const systemSelect = document.getElementById('charSystemSelect');
+    const modalError = document.getElementById('modalError');
+
+    // Create customHTML for the modal (only once; we'll show it)
+    const customHTML = `
+        <div style="margin-bottom:12px">
+            <label style="display:block;margin-bottom:4px;font-weight:600">Name:</label>
+            <input type="text" id="charNameInput" class="modal-input" placeholder="Character name" style="width:100%">
+        </div>
+        <div>
+            <label style="display:block;margin-bottom:4px;font-weight:600">System:</label>
+            <select id="charSystemSelect" class="modal-input" style="width:100%">
+                <option value="generic">Generic</option>
+                <option value="dnd5e">D&D 5e</option>
+                <option value="pf2e">Pathfinder 2e</option>
+            </select>
+        </div>
+    `;
+
+    // Reset fields each time
+    setTimeout(() => {
+        if (nameInput) nameInput.value = '';
+        if (systemSelect) systemSelect.value = 'generic';
+        if (modalError) modalError.style.display = 'none';
+    }, 0);
+
+    showModal({
+        title: 'Create Character',
+        customHTML,
+        buttons: [
+            { text: 'Cancel', style: 'secondary', action: closeModal },
+            { text: 'Create', style: 'primary', action: () => {
+                const name = document.getElementById('charNameInput')?.value.trim();
+                const system = document.getElementById('charSystemSelect')?.value || 'generic';
+                if (!name) {
+                    modalError.textContent = 'Please enter a name';
+                    modalError.style.display = 'block';
+                    return;
+                }
+                closeModal();
+                _executeCreateCharacter(name, system);
+            }}
+        ]
+    });
+}
+
+function _executeCreateCharacter(name, system) {
+    if (!_vttChannel) return;
     fetch(`/api/vtt/${_vttChannel.id}/characters`, {
         method: 'POST',
         credentials: 'include',
@@ -846,6 +1190,52 @@ async function vttUpdateSheetField(field, value) {
     myChar.sheet_data = sheet;
 }
 
+async function vttDeleteCharacter(charId) {
+    if (!_vttChannel || !_vttSession) return;
+    const chars = _vttSession.characters || [];
+    const char = chars.find(c => c.id === charId);
+    if (!char) return;
+
+    showModal({
+        title: 'Delete Character',
+        message: `Delete "${char.name}"? This action cannot be undone.`,
+        buttons: [
+            { text: 'Cancel', style: 'secondary', action: closeModal },
+            {
+                text: 'Delete',
+                style: 'danger',
+                action: async () => {
+                    closeModal();
+                    try {
+                        const res = await fetch(`/api/vtt/${_vttChannel.id}/characters/${charId}`, {
+                            method: 'DELETE',
+                            credentials: 'include'
+                        });
+                        if (res.ok) {
+                            _vttSession.characters = chars.filter(c => c.id !== charId);
+                            _renderSheet();
+                        } else {
+                            const err = await res.json();
+                            showModal({
+                                title: 'Error',
+                                message: err.error || 'Failed to delete character',
+                                buttons: [{ text: 'OK', style: 'primary', action: closeModal }]
+                            });
+                        }
+                    } catch (e) {
+                        console.error('[VTT] Delete character error:', e);
+                        showModal({
+                            title: 'Error',
+                            message: 'Network error. Please try again.',
+                            buttons: [{ text: 'OK', style: 'primary', action: closeModal }]
+                        });
+                    }
+                }
+            }
+        ]
+    });
+}
+
 // ── Socket Listeners ──────────────────────────────────────────────────────────
 
 function _initSocketListeners() {
@@ -856,6 +1246,7 @@ function _initSocketListeners() {
     state.socket.on('vtt_token_removed',     _onTokenRemoved);
     state.socket.on('vtt_encounter_updated', _onEncounterUpdated);
     state.socket.on('vtt_fog_updated',       _onFogUpdated);
+    state.socket.on('vtt_dice_rolled',       _onDiceRolled);
 }
 
 function _removeSocketListeners() {
@@ -866,6 +1257,7 @@ function _removeSocketListeners() {
     state.socket.off('vtt_token_removed',     _onTokenRemoved);
     state.socket.off('vtt_encounter_updated', _onEncounterUpdated);
     state.socket.off('vtt_fog_updated',       _onFogUpdated);
+    state.socket.off('vtt_dice_rolled',       _onDiceRolled);
 }
 
 function _onMapUpdated({ map }) {
@@ -898,4 +1290,23 @@ function _onEncounterUpdated({ encounter }) {
 
 function _onFogUpdated({ map }) {
     if (_vttSession && map) { _vttSession.map = map; _renderFog(map.fog_data, map.grid_size || 64); }
+}
+
+function _onDiceRolled(rollData) {
+    // rollData: { id, channelId, userId, username, notation, total, dice, dddice_roll_id, modifier, created_at }
+    // Avoid duplicates: if we've already logged this dddice_roll_id, skip.
+    if (rollData.dddice_roll_id && _loggedRollIds.has(rollData.dddice_roll_id)) {
+        return;
+    }
+    // Construct a fake roll object for _logRoll (total already includes modifier)
+    const fakeRoll = {
+        total_value: rollData.total,
+        user: { username: rollData.username },
+        values: rollData.dice
+    };
+    _logRoll(fakeRoll, 0, rollData.notation);
+    // Mark as logged
+    if (rollData.dddice_roll_id) {
+        _loggedRollIds.add(rollData.dddice_roll_id);
+    }
 }
