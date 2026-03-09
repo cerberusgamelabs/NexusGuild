@@ -577,7 +577,9 @@ const initDB = async () => {
                 label       VARCHAR(64),
                 hp          INTEGER,
                 hp_max      INTEGER,
-                conditions  JSONB DEFAULT '[]'
+                conditions  JSONB DEFAULT '[]',
+                size_x      INTEGER DEFAULT 1,
+                size_y      INTEGER DEFAULT 1
             )
         `);
 
@@ -675,6 +677,8 @@ const initDB = async () => {
         await pool.query('CREATE INDEX IF NOT EXISTS idx_slash_commands_bot  ON slash_commands(bot_id)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_slash_commands_srv  ON slash_commands(server_id)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_vtt_tokens_channel  ON vtt_tokens(channel_id)');
+        await pool.query('ALTER TABLE vtt_tokens ADD COLUMN IF NOT EXISTS size_x INTEGER DEFAULT 1');
+        await pool.query('ALTER TABLE vtt_tokens ADD COLUMN IF NOT EXISTS size_y INTEGER DEFAULT 1');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_vtt_chars_channel   ON vtt_characters(channel_id)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_vtt_chars_user      ON vtt_characters(user_id)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_vtt_dice_rolls_channel ON vtt_dice_rolls(channel_id)');

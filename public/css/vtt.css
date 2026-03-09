@@ -67,6 +67,24 @@
     background: #4e5058;
     margin: 4px 2px;
 }
+.vtt-grid-size-wrap {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 2px;
+}
+.vtt-grid-label {
+    color: #b5bac1;
+    font-size: 16px;
+    line-height: 1;
+}
+.vtt-grid-input {
+    width: 52px !important;
+    height: 28px;
+    padding: 2px 4px;
+    font-size: 13px;
+    text-align: center;
+}
 
 .vtt-fog-tools {
     position: absolute;
@@ -209,9 +227,10 @@
     position: absolute;
     right: 244px;
     top: 10px;
-    width: 320px;
+    width: 640px;
     max-height: calc(100% - 20px);
     overflow-y: auto;
+    overflow-x: hidden;
     background: #2b2d31;
     border: 1px solid #1e1f22;
     border-radius: 8px;
@@ -221,6 +240,8 @@
 }
 
 .vtt-sheet-header {
+    position: sticky;
+    top: 0;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -228,7 +249,9 @@
     font-weight: 600;
     font-size: 14px;
     border-bottom: 1px solid #1e1f22;
+    background: #2b2d31;
     flex-shrink: 0;
+    z-index: 1;
 }
 
 .vtt-sheet-body {
@@ -238,18 +261,185 @@
     gap: 8px;
 }
 
-.vtt-sheet-name {
-    font-size: 18px;
+/* Field groups */
+.vtt-sheet-field-group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.vtt-sheet-label {
+    font-size: 10px;
     font-weight: 700;
-    color: #f2f3f5;
+    color: #80848e;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.vtt-sheet-full { width: 100%; box-sizing: border-box; }
+.vtt-sheet-textarea { width: 100%; box-sizing: border-box; resize: vertical; min-height: 52px; }
+
+/* Multi-column grids */
+.vtt-sheet-3col {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+}
+.vtt-sheet-2col {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
 }
 
-.vtt-sheet-meta {
+/* Combat stat boxes (value on top, label below) */
+.vtt-sheet-combat-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+.vtt-sheet-combat-box .vtt-input {
+    width: 100%;
+    text-align: center;
+    box-sizing: border-box;
+}
+.vtt-sheet-combat-box .vtt-sheet-label { text-align: center; }
+
+/* Inspiration checkbox in combat box */
+.vtt-inspiration-check { width: 20px; height: 20px; cursor: pointer; margin-top: 4px; }
+
+/* Death saves */
+.vtt-sheet-death-saves {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.vtt-sheet-death-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     font-size: 12px;
     color: #b5bac1;
-    margin-top: -6px;
+}
+.vtt-sheet-death-row span { width: 72px; flex-shrink: 0; }
+.vtt-sheet-death-row input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; }
+
+/* Ability scores — editable version */
+.vtt-abilities {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    margin: 2px 0;
 }
 
+.vtt-ability {
+    background: #313338;
+    border-radius: 6px;
+    padding: 6px 4px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+
+.vtt-ability-name { font-size: 10px; color: #b5bac1; text-transform: uppercase; letter-spacing: 0.05em; }
+.vtt-ability-mod  { font-size: 15px; color: #5865f2; font-weight: 700; line-height: 1; }
+.vtt-ability-score-input {
+    width: 44px;
+    text-align: center;
+    background: #1e1f22;
+    border: 1px solid #3b3e44;
+    border-radius: 4px;
+    color: #f2f3f5;
+    font-size: 16px;
+    font-weight: 700;
+    padding: 2px 0;
+    outline: none;
+}
+.vtt-ability-score-input:focus { border-color: #5865f2; }
+
+/* Saving throws / skills list */
+.vtt-save-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+.vtt-save-row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    color: #b5bac1;
+    padding: 2px 2px;
+}
+.vtt-prof-check { width: 13px; height: 13px; flex-shrink: 0; cursor: pointer; }
+.vtt-save-row-name { flex: 1; color: #dbdee1; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vtt-skill-ab { color: #80848e; font-size: 10px; }
+
+/* PF2e proficiency rank select */
+.vtt-rank-select {
+    background: #1e1f22;
+    border: 1px solid #3b3e44;
+    border-radius: 3px;
+    color: #5865f2;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 2px;
+    outline: none;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.vtt-rank-select:focus { border-color: #5865f2; }
+
+/* Passive perception */
+.vtt-sheet-passive { font-size: 12px; color: #b5bac1; margin-bottom: 2px; }
+
+/* Section headers */
+.vtt-sheet-section {
+    font-size: 11px;
+    font-weight: 700;
+    color: #b5bac1;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding-bottom: 3px;
+    border-bottom: 1px solid #3b3e44;
+    margin-top: 6px;
+}
+.vtt-sheet-section-btn {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+/* Attack rows */
+.vtt-attack-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    padding: 2px 0;
+}
+.vtt-atk-name { flex: 1; min-width: 0; }
+.vtt-atk-stat { width: 52px; text-align: center; }
+
+/* Currency */
+.vtt-sheet-currency {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 4px;
+    margin-bottom: 4px;
+}
+.vtt-sheet-currency .vtt-sheet-combat-box .vtt-input {
+    padding: 2px 0;
+    font-size: 12px;
+}
+
+/* Stat pill (kept for pf2e / generic) */
+.vtt-stat-pill {
+    background: #313338;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 12px;
+    color: #dbdee1;
+}
 .vtt-sheet-row {
     display: flex;
     align-items: center;
@@ -258,57 +448,8 @@
     font-size: 13px;
     color: #b5bac1;
 }
-
-.vtt-stat-pill {
-    background: #313338;
-    border-radius: 4px;
-    padding: 2px 8px;
-    font-size: 12px;
-    color: #dbdee1;
-}
-
-.vtt-abilities {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 6px;
-    margin: 4px 0;
-}
-
-.vtt-ability {
-    background: #313338;
-    border-radius: 6px;
-    padding: 6px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 2px;
-}
-
-.vtt-ability-name  { font-size: 10px; color: #b5bac1; text-transform: uppercase; letter-spacing: 0.05em; }
-.vtt-ability-score { font-size: 20px; font-weight: 700; color: #f2f3f5; line-height: 1; }
-.vtt-ability-mod   { font-size: 12px; color: #5865f2; font-weight: 600; }
-
-.vtt-sheet-section {
-    font-size: 11px;
-    font-weight: 700;
-    color: #b5bac1;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    padding-bottom: 2px;
-    border-bottom: 1px solid #3b3e44;
-    margin-top: 4px;
-}
-
-.vtt-save-row, .vtt-attack-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 12px;
-    color: #b5bac1;
-    padding: 2px 4px;
-}
-.vtt-save-row span:first-child,
-.vtt-attack-row span:first-child { flex: 1; color: #dbdee1; }
+.vtt-sheet-name { font-size: 18px; font-weight: 700; color: #f2f3f5; }
+.vtt-sheet-meta { font-size: 12px; color: #b5bac1; margin-top: -4px; }
 
 /* ── Shared inputs / buttons ── */
 .vtt-input {
@@ -354,8 +495,103 @@
     padding: 8px;
 }
 
+/* ── Dice Builder ── */
+.vtt-dice-builder-panel { flex-shrink: 0; }
+
+.vtt-die-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+    padding: 6px 6px 4px;
+}
+.vtt-die-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+.vtt-die-icon {
+    width: 28px;
+    height: 28px;
+    color: #b5bac1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.vtt-die-icon svg { width: 100%; height: 100%; }
+.vtt-die-label {
+    font-size: 10px;
+    color: #80848e;
+    font-weight: 600;
+    line-height: 1;
+}
+.vtt-die-controls {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+.vtt-die-btn {
+    background: #3b3e44;
+    border: none;
+    border-radius: 3px;
+    color: #dbdee1;
+    cursor: pointer;
+    font-size: 13px;
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    line-height: 1;
+}
+.vtt-die-btn:hover { background: #5865f2; }
+.vtt-die-count {
+    font-size: 12px;
+    color: #80848e;
+    min-width: 14px;
+    text-align: center;
+    font-weight: 600;
+}
+.vtt-die-count-active { color: #5865f2; }
+.vtt-die-modifier-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 6px 6px;
+    border-top: 1px solid #3f4147;
+    margin-top: 2px;
+}
+.vtt-die-mod-label {
+    font-size: 11px;
+    color: #80848e;
+    flex: 1;
+}
+.vtt-btn-primary { background: #5865f2; color: #fff; }
+.vtt-btn-primary:hover { background: #4752c4; }
+
 /* ── Mobile ── */
 @media (max-width: 768px) {
     .vtt-sidebar { width: 200px; min-width: 160px; }
-    .vtt-sheet-panel { right: 164px; width: calc(100vw - 184px); }
+    .vtt-sheet-panel { right: 164px; width: calc(100vw - 174px); }
 }
+
+.vtt-ctx-menu {
+    background: #2b2d31;
+    border: 1px solid #3f4147;
+    border-radius: 6px;
+    padding: 4px;
+    min-width: 160px;
+    box-shadow: 0 4px 16px rgba(0,0,0,.5);
+}
+.vtt-ctx-item {
+    padding: 7px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #dbdee1;
+    white-space: nowrap;
+}
+.vtt-ctx-item:hover { background: #5865f2; color: #fff; }
+.vtt-ctx-danger { color: #ed4245; }
+.vtt-ctx-danger:hover { background: #ed4245; color: #fff; }

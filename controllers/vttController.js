@@ -156,7 +156,7 @@ export async function updateMap(req, res) {
 
 export async function addToken(req, res) {
     const { channelId } = req.params;
-    const { x = 0, y = 0, size = 1, label = '' } = req.body;
+    const { x = 0, y = 0, size = 1, size_x = 1, size_y = 1, label = '' } = req.body;
     try {
         const serverId = await _getChannelServer(channelId);
         if (!serverId) return res.status(404).json({ error: 'VTT channel not found' });
@@ -165,9 +165,9 @@ export async function addToken(req, res) {
         const id = generateSnowflake();
 
         const r = await db.query(
-            `INSERT INTO vtt_tokens (id, channel_id, owner_id, x, y, size, image_url, label)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-            [id, channelId, req.session.user.id, x, y, size, imageUrl, label]
+            `INSERT INTO vtt_tokens (id, channel_id, owner_id, x, y, size, size_x, size_y, image_url, label)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+            [id, channelId, req.session.user.id, x, y, size, size_x, size_y, imageUrl, label]
         );
         const token = r.rows[0];
 
@@ -195,15 +195,18 @@ export async function updateToken(req, res) {
         if (!isGM && token.owner_id !== req.session.user.id)
             return res.status(403).json({ error: 'You can only move your own token' });
 
-        const { x, y, size, label, hp, hp_max, conditions } = req.body;
+        const { x, y, size, size_x, size_y, label, hp, hp_max, conditions, owner_id } = req.body;
         const sets = [], vals = [];
-        if (x          !== undefined) { sets.push(`x=$${sets.length+1}`);          vals.push(x); }
-        if (y          !== undefined) { sets.push(`y=$${sets.length+1}`);          vals.push(y); }
-        if (size       !== undefined) { sets.push(`size=$${sets.length+1}`);       vals.push(size); }
-        if (label      !== undefined) { sets.push(`label=$${sets.length+1}`);      vals.push(label); }
-        if (hp         !== undefined) { sets.push(`hp=$${sets.length+1}`);         vals.push(hp); }
-        if (hp_max     !== undefined) { sets.push(`hp_max=$${sets.length+1}`);     vals.push(hp_max); }
-        if (conditions !== undefined) { sets.push(`conditions=$${sets.length+1}`); vals.push(JSON.stringify(conditions)); }
+        if (x          !== undefined) { sets.push(`x=${sets.length+1}`);          vals.push(x); }
+        if (y          !== undefined) { sets.push(`y=${sets.length+1}`);          vals.push(y); }
+        if (size       !== undefined) { sets.push(`size=${sets.length+1}`);       vals.push(size); }
+        if (size_x     !== undefined) { sets.push(`size_x=${sets.length+1}`);     vals.push(size_x); }
+        if (size_y     !== undefined) { sets.push(`size_y=${sets.length+1}`);     vals.push(size_y); }
+        if (label      !== undefined) { sets.push(`label=${sets.length+1}`);      vals.push(label); }
+        if (hp         !== undefined) { sets.push(`hp=${sets.length+1}`);         vals.push(hp); }
+        if (hp_max     !== undefined) { sets.push(`hp_max=${sets.length+1}`);     vals.push(hp_max); }
+        if (conditions !== undefined) { sets.push(`conditions=${sets.length+1}`); vals.push(JSON.stringify(conditions)); }
+        if (owner_id   !== undefined && isGM) { sets.push(`owner_id=${sets.length+1}`); vals.push(owner_id || null); }
 
         if (!sets.length) return res.status(400).json({ error: 'Nothing to update' });
         vals.push(tokenId);
