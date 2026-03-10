@@ -625,6 +625,10 @@ const initDB = async () => {
             )
         `);
 
+        // ── dddice Integration ────────────────────────────────────────────────
+        await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS dddice_token TEXT`);
+        await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS dddice_theme VARCHAR(100)`);
+
         // ── Inbound Email ─────────────────────────────────────────────────────
 
         await client.query(`

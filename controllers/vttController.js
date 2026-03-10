@@ -421,38 +421,52 @@ export async function getDddiceToken(req, res) {
             await db.query('UPDATE channels SET dddice_room_slug=$1 WHERE id=$2', [roomSlug, channelId]);
         }
 
-        // Create a guest user (no auth) — returns a short-lived fetch token
-        const guestRes = await fetch('https://dddice.com/api/1.0/user', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        });
-        if (!guestRes.ok) throw new Error('Failed to create dddice guest user');
-        const guestData = await guestRes.json();
-        const fetchToken = guestData.data; // {type:"token", data:"<fetch-token>"}
+        // Check if this user has a linked dddice account
+        const userRow = await db.query('SELECT dddice_token, dddice_theme FROM users WHERE id=$1', [req.session.user.id]);
+        const linkedToken = userRow.rows[0]?.dddice_token;
+        const linkedTheme = userRow.rows[0]?.dddice_theme;
 
-        // Exchange the fetch token for a full API token
-        const apiTokenRes = await fetch('https://dddice.com/api/1.0/user/token', {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${fetchToken}`, 'Content-Type': 'application/json' }
-        });
-        const apiTokenData = await apiTokenRes.json();
-        const guestToken = apiTokenRes.ok ? (apiTokenData.data || fetchToken) : fetchToken;
+        let sessionToken, theme;
 
-        // Join the guest to the room using their API token
+        if (linkedToken) {
+            // Use their real account token
+            sessionToken = linkedToken;
+            theme = linkedTheme || 'nexusguild-mmji72re';
+        } else {
+            // Create a guest user (no auth) — returns a short-lived fetch token
+            const guestRes = await fetch('https://dddice.com/api/1.0/user', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            if (!guestRes.ok) throw new Error('Failed to create dddice guest user');
+            const guestData = await guestRes.json();
+            const fetchToken = guestData.data;
+
+            // Exchange the fetch token for a full API token
+            const apiTokenRes = await fetch('https://dddice.com/api/1.0/user/token', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${fetchToken}`, 'Content-Type': 'application/json' }
+            });
+            const apiTokenData = await apiTokenRes.json();
+            sessionToken = apiTokenRes.ok ? (apiTokenData.data || fetchToken) : fetchToken;
+
+            // Add the NexusGuild dice theme to the guest's dice box via share code
+            await fetch('https://dddice.com/api/1.0/share/614648f2-1bee-11f1-9b69-969c76305473', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${sessionToken}`, 'Content-Type': 'application/json' },
+            });
+
+            theme = 'nexusguild-mmji72re';
+        }
+
+        // Join the user/guest to the room
         await fetch(`https://dddice.com/api/1.0/room/${roomSlug}/participant`, {
             method: 'POST',
-            headers: { 'Authorization': `Bearer ${guestToken}`, 'Content-Type': 'application/json' },
+            headers: { 'Authorization': `Bearer ${sessionToken}`, 'Content-Type': 'application/json' },
         });
-
-        // Fetch the account's available themes so the client uses a valid one
-        const diceBoxRes = await fetch('https://dddice.com/api/1.0/dice-box', {
-            headers: { 'Authorization': `Bearer ${apiKey}` }
-        });
-        const diceBoxData = await diceBoxRes.json();
-        const theme = diceBoxData.data?.[0]?.id || diceBoxData.data?.[0]?.slug || 'dddice-bees';
 
         res.json({
-            guestToken,
+            guestToken: sessionToken,
             roomSlug,
             theme,
         });

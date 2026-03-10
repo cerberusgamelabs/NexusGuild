@@ -3390,3 +3390,79 @@ a.msg-image-link {
     margin: 16px 0;
 }
 
+/* ── Integrations ─────────────────────────────────────────────────────────── */
+.integration-card {
+    background: #2b2d31;
+    border: 1px solid #3a3d44;
+    border-radius: 8px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+.integration-card-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+.integration-icon {
+    font-size: 32px;
+    line-height: 1;
+}
+.integration-name {
+    font-size: 16px;
+    font-weight: 600;
+    color: #f2f3f5;
+}
+.integration-status {
+    font-size: 13px;
+    margin-top: 2px;
+}
+.integration-status.connected { color: #23a55a; }
+.integration-status.disconnected { color: #80848e; }
+.integration-desc {
+    font-size: 14px;
+    color: #b5bac1;
+    line-height: 1.5;
+}
+.dddice-theme-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 10px;
+    margin-top: 6px;
+}
+.dddice-theme-card {
+    background: #1e1f22;
+    border: 2px solid transparent;
+    border-radius: 8px;
+    padding: 8px;
+    cursor: pointer;
+    text-align: center;
+    transition: border-color 0.15s;
+}
+.dddice-theme-card:hover { border-color: #5865f2; }
+.dddice-theme-card.active { border-color: #5865f2; background: #2d3055; }
+.dddice-theme-preview {
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    border-radius: 4px;
+    display: block;
+    margin-bottom: 6px;
+}
+.dddice-theme-no-preview {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    background: #2b2d31;
+    border-radius: 4px;
+}
+.dddice-theme-name {
+    font-size: 11px;
+    color: #b5bac1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+

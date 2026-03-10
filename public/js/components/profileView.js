@@ -202,6 +202,7 @@ function switchUserSettingsTab(tab) {
     else if (tab === 'status') renderUserStatusTab(content);
     else if (tab === 'asc-points') renderAscensionPointsTab(content);
     else if (tab === 'asc-tree') renderAscensionSkillTreeTab(content);
+    else if (tab === 'int-dddice') renderDddiceIntegrationTab(content);
 }
 
 function renderUserProfileTab(content) {
@@ -485,6 +486,165 @@ function renderAscensionSkillTreeTab(content) {
         .catch(() => {
             content.innerHTML = `<h2 class="settings-section-title">Ascension Skill Tree</h2><p style="color:#f23f43;">Failed to load.</p>`;
         });
+}
+
+// ── dddice Integration Tab ────────────────────────────────────────────────────
+
+let _dddiceActivationPoll = null;
+function _cancelDddiceActivation() {
+    if (_dddiceActivationPoll) { clearInterval(_dddiceActivationPoll); _dddiceActivationPoll = null; }
+}
+
+async function renderDddiceIntegrationTab(content) {
+    _cancelDddiceActivation();
+    content.innerHTML = `<h2 class="settings-section-title">dddice</h2><div class="integration-card"><p style="color:var(--text-muted)">Loading...</p></div>`;
+
+    const res = await fetch('/api/integrations/dddice', { credentials: 'include' });
+    const data = await res.json();
+
+    if (data.connected) {
+        _renderDddiceConnected(content, data);
+    } else {
+        _renderDddiceDisconnected(content);
+    }
+}
+
+function _renderDddiceDisconnected(content) {
+    content.innerHTML = `
+        <h2 class="settings-section-title">dddice</h2>
+        <div class="integration-card">
+            <div class="integration-card-header">
+                <div class="integration-icon">🎲</div>
+                <div>
+                    <div class="integration-name">dddice</div>
+                    <div class="integration-status disconnected">Not connected</div>
+                </div>
+            </div>
+            <p class="integration-desc">Link your dddice account to roll with your own dice themes in VTT sessions. The NexusGuild theme will be added to your dice box automatically.</p>
+            <button class="btn-primary" onclick="connectDddice()">Connect dddice Account</button>
+        </div>`;
+}
+
+function _renderDddiceConnected(content, data) {
+    content.innerHTML = `
+        <h2 class="settings-section-title">dddice</h2>
+        <div class="integration-card">
+            <div class="integration-card-header">
+                <div class="integration-icon">🎲</div>
+                <div>
+                    <div class="integration-name">dddice</div>
+                    <div class="integration-status connected">Connected as <strong>${escapeHtml(data.username)}</strong></div>
+                </div>
+            </div>
+            <div class="settings-divider"></div>
+            <div class="settings-field">
+                <label class="settings-label">Active Dice Theme</label>
+                <div id="dddiceThemeGrid" class="dddice-theme-grid"><p style="color:var(--text-muted)">Loading your dice box...</p></div>
+            </div>
+            <div class="settings-divider"></div>
+            <button class="btn-danger" onclick="disconnectDddice()">Disconnect</button>
+        </div>`;
+
+    _loadDddiceThemePicker(data.theme);
+}
+
+async function _loadDddiceThemePicker(activeTheme) {
+    const grid = document.getElementById('dddiceThemeGrid');
+    if (!grid) return;
+
+    const res = await fetch('/api/integrations/dddice/dice-box', { credentials: 'include' });
+    const data = await res.json();
+    if (!data.themes?.length) {
+        grid.innerHTML = `<p style="color:var(--text-muted)">No themes found in your dice box.</p>`;
+        return;
+    }
+
+    grid.innerHTML = data.themes.map(t => `
+        <div class="dddice-theme-card ${t.id === activeTheme ? 'active' : ''}" onclick="selectDddiceTheme('${t.id}', this)">
+            ${t.preview ? `<img src="${t.preview}" alt="${escapeHtml(t.name)}" class="dddice-theme-preview">` : `<div class="dddice-theme-preview dddice-theme-no-preview">🎲</div>`}
+            <div class="dddice-theme-name">${escapeHtml(t.name)}</div>
+        </div>
+    `).join('');
+}
+
+async function connectDddice() {
+    const btn = document.querySelector('.integration-card .btn-primary');
+    if (btn) { btn.disabled = true; btn.textContent = 'Generating code...'; }
+
+    const res = await fetch('/api/integrations/dddice/activate', { method: 'POST', credentials: 'include' });
+    const data = await res.json();
+    if (!data.code) {
+        if (btn) { btn.disabled = false; btn.textContent = 'Connect dddice Account'; }
+        showToast('Failed to start activation. Try again.', 'error');
+        return;
+    }
+
+    // Show the code to the user — they enter it at dddice.com/activate
+    const card = document.querySelector('.integration-card');
+    if (card) {
+        card.innerHTML = `
+            <div class="integration-card-header">
+                <div class="integration-icon">🎲</div>
+                <div>
+                    <div class="integration-name">dddice</div>
+                    <div class="integration-status disconnected">Waiting for authorization...</div>
+                </div>
+            </div>
+            <p class="integration-desc">
+                1. Open <a href="https://dddice.com/activate" target="_blank" style="color:#5865f2;">dddice.com/activate</a> and log in to your dddice account.<br>
+                2. Enter the code below when prompted:
+            </p>
+            <div style="text-align:center;margin:12px 0;">
+                <div style="font-size:32px;font-weight:700;letter-spacing:8px;color:#f2f3f5;background:#1e1f22;padding:16px 24px;border-radius:8px;display:inline-block;">${data.code}</div>
+            </div>
+            <p style="font-size:13px;color:#80848e;text-align:center;">Waiting for you to authorize on dddice.com...</p>
+            <button class="btn-secondary" onclick="renderDddiceIntegrationTab(document.getElementById('userSettingsContent'))">Cancel</button>
+        `;
+    }
+
+    // Poll every 5 seconds, up to 2 minutes
+    let attempts = 0;
+    const maxAttempts = 40;
+    _cancelDddiceActivation();
+    _dddiceActivationPoll = setInterval(async () => {
+        attempts++;
+        if (attempts > maxAttempts) {
+            _cancelDddiceActivation();
+            showToast('Authorization timed out. Please try again.', 'error');
+            const content = document.getElementById('userSettingsContent');
+            if (content) renderDddiceIntegrationTab(content);
+            return;
+        }
+        const pollUrl = `/api/integrations/dddice/activate/${data.code}?secret=${encodeURIComponent(data.secret)}`;
+        const pollRes = await fetch(pollUrl, { credentials: 'include' });
+        const pollData = await pollRes.json();
+        if (pollData.status === 'complete') {
+            _cancelDddiceActivation();
+            showToast(`Connected as ${pollData.username}!`, 'success');
+            const content = document.getElementById('userSettingsContent');
+            if (content) renderDddiceIntegrationTab(content);
+        }
+    }, 5000);
+}
+
+async function selectDddiceTheme(themeId, el) {
+    document.querySelectorAll('.dddice-theme-card').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    await fetch('/api/integrations/dddice/theme', {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ theme: themeId })
+    });
+    showToast('Dice theme saved', 'success');
+}
+
+async function disconnectDddice() {
+    if (!confirm('Disconnect your dddice account? You\'ll roll as a guest in VTT sessions.')) return;
+    await fetch('/api/integrations/dddice', { method: 'DELETE', credentials: 'include' });
+    const content = document.getElementById('userSettingsContent');
+    if (content) renderDddiceIntegrationTab(content);
+    showToast('dddice account disconnected', 'success');
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────

@@ -10,7 +10,7 @@ let _layers      = {};
 let _mapSprite   = null;
 let _tokenSprites = {};      // tokenId → { container, sprite }
 let _dddice      = null;
-let _vttDiceTheme = 'dddice-bees';
+let _vttDiceTheme = 'nexusguild-mmji72re';
 let _vttSession  = null;     // { map, tokens, encounter, characters, isGM }
 let _dragState   = null;     // { tokenId, startX, startY, offsetX, offsetY }
 let _pendingRolls = [];      // Queue of { modifier, notation } for our own rolls (to match roll events)
@@ -758,7 +758,7 @@ async function _initDddice() {
         const res = await fetch(`/api/vtt/${_vttChannel.id}/dddice`, { credentials: 'include' });
         if (!res.ok) return;
         const { guestToken, roomSlug, theme: diceTheme } = await res.json();
-        _vttDiceTheme = diceTheme || 'dddice-bees';
+        _vttDiceTheme = diceTheme || 'nexusguild-mmji72re';
 
         const canvas = document.createElement('canvas');
         canvas.id = 'vttDddiceCanvas';
@@ -934,9 +934,7 @@ function _executeRoll(notation) {
         console.warn('[VTT] Could not parse notation:', trimmed);
         return;
     }
-    // d100 is not a valid dddice die type — always simulate locally
-    const hasD100 = parsed.dice.some(d => d.type === 'd100');
-    if (!_dddice || hasD100) {
+    if (!_dddice) {
         _postRollToServer(_simRoll(parsed), 0, trimmed);
         return;
     }
@@ -969,7 +967,8 @@ function _parseDiceNotation(notation, theme) {
         const m = part.match(/^(\d*)d(\d+)$/);
         if (m) {
             const count = parseInt(m[1] || '1', 10);
-            const type = `d${m[2]}`;
+            const rawType = `d${m[2]}`;
+            const type = rawType === 'd100' ? 'd10x' : rawType;
             for (let i = 0; i < count; i++) {
                 dice.push({ type, theme });
             }
@@ -1919,8 +1918,7 @@ function _quickRoll(label, notation) {
         _logRoll({ user: { username: state.currentUser?.username || 'You' } }, 0, `${label}: ${notation}`);
         return;
     }
-    const hasD100q = parsed.dice.some(d => d.type === 'd100');
-    if (!_dddice || hasD100q) {
+    if (!_dddice) {
         _postRollToServer(_simRoll(parsed), 0, `${label}: ${notation}`);
         return;
     }

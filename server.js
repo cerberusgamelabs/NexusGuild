@@ -43,6 +43,7 @@ import botRoutes from "./routes/bots.js";
 import interactionRoutes from "./routes/interactions.js";
 import reportRoutes from "./routes/reports.js";
 import vttRoutes from "./routes/vtt.js";
+import integrationsRoutes from "./routes/integrations.js";
 import v1Routes from "./routes/v1.js";
 import { initBotGateway } from "./gateway/botGateway.js";
 import { runExpirationJob } from "./controllers/ascensionController.js";
@@ -143,7 +144,8 @@ const startServer = async () => {
         app.use('/api/bots', botRoutes);
         app.use('/api/interactions', interactionRoutes);
         app.use('/api/reports', reportRoutes);
-        app.use('/api/vtt',     vttRoutes);
+        app.use('/api/vtt',          vttRoutes);
+        app.use('/api/integrations', integrationsRoutes);
         app.use('/api/v1', v1Routes);
 
         app.get('/api/health', (req, res) => {
@@ -255,8 +257,57 @@ const startServer = async () => {
             res.sendFile(path.join(__dirname, 'public', 'bot-invite.html'));
         });
 
-        app.get('/invite/:code', (req, res) => {
-            res.sendFile(path.join(__dirname, 'public', 'index.html'));
+        app.get('/invite/:code', async (req, res) => {
+            const { code } = req.params;
+            const indexPath = path.join(__dirname, 'public', 'index.html');
+            let html = fs.readFileSync(indexPath, 'utf8');
+
+            try {
+                const result = await db.query(
+                    `SELECT s.name, s.icon,
+                            u.username AS inviter_username,
+                            (SELECT COUNT(*) FROM server_members WHERE server_id = s.id) AS member_count,
+                            (i.expires_at IS NOT NULL AND i.expires_at < NOW())
+                                OR (i.max_uses > 0 AND i.uses >= i.max_uses) AS is_expired
+                     FROM invites i
+                     JOIN servers s ON s.id = i.server_id
+                     LEFT JOIN users u ON u.id = i.inviter_id
+                     WHERE UPPER(i.code) = UPPER($1)`,
+                    [code]
+                );
+
+                if (result.rows.length && !result.rows[0].is_expired) {
+                    const { name, icon, inviter_username, member_count } = result.rows[0];
+                    const baseUrl = 'https://www.nexusguild.gg';
+                    const inviteUrl = `${baseUrl}/invite/${code}`;
+                    const iconUrl = icon
+                        ? (icon.startsWith('http') ? icon : `${baseUrl}${icon}`)
+                        : `${baseUrl}/img/logo.png`;
+                    const memberCount = parseInt(member_count);
+                    const description = inviter_username
+                        ? `${inviter_username} invites you to join · ${memberCount} member${memberCount !== 1 ? 's' : ''}`
+                        : `${memberCount} member${memberCount !== 1 ? 's' : ''}`;
+
+                    const ogTags = `
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="NexusGuild" />
+    <meta property="og:title" content="Join ${name} on NexusGuild" />
+    <meta property="og:description" content="${description}" />
+    <meta property="og:image" content="${iconUrl}" />
+    <meta property="og:url" content="${inviteUrl}" />
+    <meta name="theme-color" content="#5865f2" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Join ${name} on NexusGuild" />
+    <meta name="twitter:description" content="${description}" />
+    <meta name="twitter:image" content="${iconUrl}" />`;
+
+                    html = html.replace('</head>', `${ogTags}\n</head>`);
+                }
+            } catch (e) {
+                log(tags.error, 'invite OG tag injection error:', e.message);
+            }
+
+            res.send(html);
         });
 
         app.get('*', (req, res) => {
