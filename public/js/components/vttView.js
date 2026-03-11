@@ -1218,6 +1218,8 @@ function _renderSheet() {
     panel.innerHTML = `
         <div class="vtt-sheet-header">
             <span>📋 Character Sheet</span>
+            ${myChar && myChar.system === 'dnd5e' ? `<button class="vtt-btn-sm" title="Re-import from DnDBeyond" onclick="vttImportDndbeyond('${myChar.id}')">⬇ DnDBeyond</button>` : ''}
+            ${!myChar ? `<button class="vtt-btn-sm" onclick="vttImportDndbeyond()">⬇ Import DnDBeyond</button>` : ''}
             ${canDelete ? `<button class="vtt-btn-sm vtt-btn-danger" onclick="vttDeleteCharacter('${myChar.id}')">Delete</button>` : ''}
             <button class="vtt-btn-sm" onclick="document.getElementById('vttSheetPanel').style.display='none'">✕</button>
         </div>
@@ -1291,13 +1293,190 @@ function _renderGenericSheet(char, d) {
         </div>`;
 }
 
-function _renderDnd5eSheet(char, d) {
+// ── D&D 5e Tab System ─────────────────────────────────────────────────────────
+
+const _DND5E_TABS = [
+    { id: 'main',       label: 'Main'               },
+    { id: 'actions',    label: 'Actions'             },
+    { id: 'spells',     label: 'Spells'              },
+    { id: 'inventory',  label: 'Inventory'           },
+    { id: 'features',   label: 'Features & Traits'  },
+    { id: 'background', label: 'Background'          },
+    { id: 'notes',      label: 'Notes'               },
+    { id: 'extras',     label: 'Extras'              },
+];
+
+function _injectDnd5eTabStyles() {
+    if (_dnd5eTabStyleOk) return;
+    _dnd5eTabStyleOk = true;
+    const style = document.createElement('style');
+    style.textContent = `
+        /* vtt-tab-bar — sits at top of sheet panel, always visible */
+        .vtt-tab-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2px;
+            padding: 6px 8px 0;
+            background: var(--bg-secondary, #2b2d31);
+            border-bottom: 1px solid var(--border-color, #1e1f22);
+            flex-shrink: 0;
+        }
+        .vtt-tab-btn {
+            background: none;
+            border: none;
+            border-bottom: 2px solid transparent;
+            color: var(--text-muted, #949ba4);
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 500;
+            padding: 4px 8px 6px;
+            white-space: nowrap;
+            transition: color 0.1s, border-color 0.1s;
+        }
+        .vtt-tab-btn:hover { color: var(--text-primary, #dde1e6); }
+        .vtt-tab-btn-active {
+            border-bottom-color: #5865f2;
+            color: #fff;
+        }
+        /* Tab body scrolls independently */
+        #vttSheetTabBody {
+            flex: 1 1 auto;
+            overflow-y: auto;
+            padding: 0;
+        }
+        /* Spell slot grid */
+        .vtt-spell-slots {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 6px;
+            margin-bottom: 10px;
+        }
+        .vtt-spell-slot-box {
+            background: var(--bg-tertiary, #1e1f22);
+            border-radius: 6px;
+            padding: 6px;
+            text-align: center;
+        }
+        .vtt-spell-slot-box .vtt-slot-level {
+            font-size: 10px;
+            color: var(--text-muted, #949ba4);
+            margin-bottom: 4px;
+        }
+        .vtt-spell-slot-box .vtt-slot-inputs {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            font-size: 11px;
+            color: var(--text-muted, #949ba4);
+        }
+        .vtt-spell-slot-box input[type=number] {
+            width: 44px;
+            text-align: center;
+            /* hide spin buttons so they don't overlap the value */
+            -moz-appearance: textfield;
+        }
+        .vtt-spell-slot-box input[type=number]::-webkit-inner-spin-button,
+        .vtt-spell-slot-box input[type=number]::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        /* Spell list rows */
+        .vtt-spell-row {
+            display: grid;
+            grid-template-columns: 16px 1fr 40px 40px 24px;
+            gap: 4px;
+            align-items: center;
+            padding: 3px 0;
+            border-bottom: 1px solid var(--border-color, #1e1f22);
+            font-size: 12px;
+        }
+        .vtt-spell-row:last-child { border-bottom: none; }
+        .vtt-spell-level-header {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted, #949ba4);
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            margin: 8px 0 4px;
+        }
+        /* Exhaustion pips */
+        .vtt-exhaustion-pips {
+            display: flex;
+            gap: 6px;
+            margin-top: 6px;
+        }
+        .vtt-exhaustion-pip {
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            border: 2px solid var(--text-muted, #949ba4);
+            cursor: pointer;
+            background: none;
+            transition: background 0.15s, border-color 0.15s;
+        }
+        .vtt-exhaustion-pip.active {
+            background: #ed4245;
+            border-color: #ed4245;
+        }
+        /* Inventory list */
+        .vtt-inventory-list { margin-bottom: 8px; }
+        .vtt-inventory-row {
+            display: grid;
+            grid-template-columns: 18px 1fr 36px auto 24px;
+            gap: 6px;
+            align-items: center;
+            padding: 4px 0;
+            border-bottom: 1px solid var(--border-color, #1e1f22);
+            font-size: 12px;
+        }
+        .vtt-inventory-row:last-child { border-bottom: none; }
+        .vtt-inv-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .vtt-inv-qty  { color: var(--text-muted, #949ba4); text-align: right; }
+        .vtt-inv-type { color: var(--text-muted, #949ba4); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    `;
+    document.head.appendChild(style);
+}
+
+// Public: called by tab button onclick handlers
+function vttSetSheetTab(tab) {
+    _activeSheetTab = tab;
+    const myChar = _getMyChar();
+    if (!myChar) return;
+    const d = myChar.sheet_data || {};
+    // Swap body content
+    const body = document.getElementById('vttSheetTabBody');
+    if (body) body.innerHTML = _dnd5eTabContent(tab, myChar, d);
+    // Update button active states
+    document.querySelectorAll('.vtt-tab-btn').forEach(btn => {
+        btn.classList.toggle('vtt-tab-btn-active', btn.dataset.tab === tab);
+    });
+}
+
+// Dispatcher — returns HTML string for tab body
+function _dnd5eTabContent(tab, char, d) {
+    switch (tab) {
+        case 'main':       return _dnd5eTabMain(char, d);
+        case 'actions':    return _dnd5eTabActions(char, d);
+        case 'spells':     return _dnd5eTabSpells(char, d);
+        case 'inventory':  return _dnd5eTabInventory(char, d);
+        case 'features':   return _dnd5eTabFeatures(char, d);
+        case 'background': return _dnd5eTabBackground(char, d);
+        case 'notes':      return _dnd5eTabNotes(char, d);
+        case 'extras':     return _dnd5eTabExtras(char, d);
+        default:           return _dnd5eTabMain(char, d);
+    }
+}
+
+// ── Tab: Main ─────────────────────────────────────────────────────────────────
+function _dnd5eTabMain(char, d) {
     const abs  = d.ability_scores || {};
     const mod  = s => Math.floor(((s || 10) - 10) / 2);
     const fmt  = n => n >= 0 ? `+${n}` : `${n}`;
     const prof = d.proficiency_bonus || 2;
     const saveProfs  = d.saving_throw_profs || [];
     const skillProfs = d.skill_profs || [];
+    const passPerc   = 10 + mod(abs['wis']) + (skillProfs.includes('perception') ? prof : 0);
 
     const abilityBox = (key) => {
         const score = abs[key] || 10;
@@ -1338,219 +1517,588 @@ function _renderDnd5eSheet(char, d) {
         </div>`;
     };
 
+    return `<div class="vtt-sheet-body">
+
+        <!-- Identity strip -->
+        <div class="vtt-sheet-field-group">
+            <label class="vtt-sheet-label">Character Name</label>
+            <input class="vtt-input vtt-sheet-full" type="text" value="${char.name || ''}"
+                   oninput="vttSheetEdit('_name', this.value)">
+        </div>
+        <div class="vtt-sheet-3col">
+            <div class="vtt-sheet-field-group">
+                <label class="vtt-sheet-label">Class</label>
+                <input class="vtt-input" type="text" value="${d.class || ''}"
+                       oninput="vttSheetEdit('class', this.value)">
+            </div>
+            <div class="vtt-sheet-field-group">
+                <label class="vtt-sheet-label">Level</label>
+                <input class="vtt-input" type="number" min="1" max="20" value="${d.level || 1}"
+                       oninput="vttSheetEdit('level', +this.value)">
+            </div>
+            <div class="vtt-sheet-field-group">
+                <label class="vtt-sheet-label">Prof Bonus</label>
+                <input class="vtt-input" type="number" min="2" max="9" value="${prof}"
+                       oninput="vttSheetEdit('proficiency_bonus', +this.value)">
+            </div>
+        </div>
+        <div class="vtt-sheet-2col">
+            <div class="vtt-sheet-field-group">
+                <label class="vtt-sheet-label">Player Name</label>
+                <input class="vtt-input" type="text" value="${d.player_name || ''}"
+                       oninput="vttSheetEdit('player_name', this.value)">
+            </div>
+            <div class="vtt-sheet-field-group">
+                <label class="vtt-sheet-label">Experience</label>
+                <input class="vtt-input" type="number" value="${d.xp || 0}"
+                       oninput="vttSheetEdit('xp', +this.value)">
+            </div>
+        </div>
+
+        <!-- Combat stats -->
+        <div class="vtt-sheet-section">Combat</div>
+        <div class="vtt-sheet-3col">
+            <div class="vtt-sheet-combat-box">
+                <input class="vtt-input" type="number" value="${d.ac || 10}"
+                       oninput="vttSheetEdit('ac', +this.value)">
+                <label class="vtt-sheet-label">Armor Class</label>
+            </div>
+            <div class="vtt-sheet-combat-box">
+                <input class="vtt-input" type="number" value="${d.initiative_bonus ?? mod(abs['dex'])}"
+                       oninput="vttSheetEdit('initiative_bonus', +this.value)">
+                <label class="vtt-sheet-label">Initiative</label>
+            </div>
+            <div class="vtt-sheet-combat-box">
+                <input class="vtt-input" type="number" value="${d.speed || 30}"
+                       oninput="vttSheetEdit('speed', +this.value)">
+                <label class="vtt-sheet-label">Speed (ft)</label>
+            </div>
+        </div>
+        <div class="vtt-sheet-3col">
+            <div class="vtt-sheet-combat-box">
+                <input class="vtt-input" type="number" value="${d.hp ?? 0}"
+                       oninput="vttSheetEdit('hp', +this.value)">
+                <label class="vtt-sheet-label">Current HP</label>
+            </div>
+            <div class="vtt-sheet-combat-box">
+                <input class="vtt-input" type="number" value="${d.hp_max ?? 0}"
+                       oninput="vttSheetEdit('hp_max', +this.value)">
+                <label class="vtt-sheet-label">HP Max</label>
+            </div>
+            <div class="vtt-sheet-combat-box">
+                <input class="vtt-input" type="number" value="${d.hp_temp ?? 0}"
+                       oninput="vttSheetEdit('hp_temp', +this.value)">
+                <label class="vtt-sheet-label">Temp HP</label>
+            </div>
+        </div>
+        <div class="vtt-sheet-3col">
+            <div class="vtt-sheet-combat-box">
+                <input class="vtt-input" type="text" value="${d.hit_dice || '1d8'}"
+                       oninput="vttSheetEdit('hit_dice', this.value)">
+                <label class="vtt-sheet-label">Hit Dice</label>
+            </div>
+            <div class="vtt-sheet-combat-box" style="grid-column:span 2">
+                <div class="vtt-sheet-passive" style="margin:0">
+                    Passive Perception: <strong id="vttPassivePerc">${passPerc}</strong>
+                </div>
+            </div>
+        </div>
+
+        <!-- Death Saves -->
+        <div class="vtt-sheet-section">Death Saves</div>
+        <div class="vtt-sheet-death-saves">
+            <div class="vtt-sheet-death-row">
+                <span>Successes</span>
+                ${[0,1,2].map(i => `<input type="checkbox" ${(d.death_saves_success||0) > i ? 'checked' : ''}
+                    onchange="vttSheetDeathSave('success', ${i}, this.checked)">`).join('')}
+            </div>
+            <div class="vtt-sheet-death-row">
+                <span>Failures</span>
+                ${[0,1,2].map(i => `<input type="checkbox" ${(d.death_saves_fail||0) > i ? 'checked' : ''}
+                    onchange="vttSheetDeathSave('fail', ${i}, this.checked)">`).join('')}
+            </div>
+        </div>
+
+        <!-- Ability Scores -->
+        <div class="vtt-sheet-section">Ability Scores</div>
+        <div class="vtt-abilities">
+            ${['str','dex','con','int','wis','cha'].map(abilityBox).join('')}
+        </div>
+
+        <!-- Saving Throws -->
+        <div class="vtt-sheet-section">Saving Throws</div>
+        <div class="vtt-save-list">
+            ${['str','dex','con','int','wis','cha'].map(saveRow).join('')}
+        </div>
+
+        <!-- Skills -->
+        <div class="vtt-sheet-section">Skills</div>
+        <div class="vtt-save-list">
+            ${_DND5E_SKILLS.map(skillRow).join('')}
+        </div>
+
+    </div>`;
+}
+
+// ── Tab: Actions ──────────────────────────────────────────────────────────────
+function _dnd5eTabActions(char, d) {
     const attacks = d.attacks || [];
-    const passPerc = 10 + mod(abs['wis']) + (skillProfs.includes('perception') ? prof : 0);
+    return `<div class="vtt-sheet-body">
 
-    return `
-        <div class="vtt-sheet-body">
+        <!-- Attacks -->
+        <div class="vtt-sheet-section vtt-sheet-section-btn">
+            <span>Attacks & Spellcasting</span>
+            <button class="vtt-btn-sm" onclick="vttAddAttack()">+ Add</button>
+        </div>
+        <div id="vttAttackList">
+            ${attacks.length ? attacks.map((atk,i) => `
+            <div class="vtt-attack-row">
+                <input class="vtt-input vtt-atk-name" type="text" value="${atk.name || ''}" placeholder="Name"
+                       oninput="vttEditAttack(${i},'name',this.value)">
+                <input class="vtt-input vtt-atk-stat" type="text" value="${atk.to_hit || ''}" placeholder="Hit"
+                       oninput="vttEditAttack(${i},'to_hit',this.value)">
+                <input class="vtt-input vtt-atk-stat" type="text" value="${atk.damage || ''}" placeholder="Dmg"
+                       oninput="vttEditAttack(${i},'damage',this.value)">
+                <button class="vtt-roll-btn" onclick="vttRollAttack('${atk.name}','${atk.to_hit}','${atk.damage}')">🎲</button>
+                <button class="vtt-roll-btn" style="color:#ed4245" onclick="vttRemoveAttack(${i})">✕</button>
+            </div>`).join('') : `<div class="vtt-empty">No attacks yet — click + Add to create one.</div>`}
+        </div>
 
-            <!-- Identity -->
+        <!-- Custom actions placeholder -->
+        <div class="vtt-sheet-section">Other Actions</div>
+        <textarea class="vtt-input vtt-sheet-textarea" rows="4"
+                  placeholder="Bonus actions, reactions, special abilities…"
+                  oninput="vttSheetEdit('custom_actions', this.value)">${d.custom_actions || ''}</textarea>
+
+        <!-- Proficiencies & Languages -->
+        <div class="vtt-sheet-section">Proficiencies & Languages</div>
+        <textarea class="vtt-input vtt-sheet-textarea" placeholder="Armor, weapons, tools, languages…"
+                  oninput="vttSheetEdit('proficiencies_text', this.value)">${d.proficiencies_text || ''}</textarea>
+
+    </div>`;
+}
+
+// ── Tab: Spells ───────────────────────────────────────────────────────────────
+function _dnd5eTabSpells(char, d) {
+    const spells     = d.spells || {};
+    const slots      = spells.slots || {};
+    const spellList  = spells.list  || [];
+    const spellAbil  = spells.ability     || '';
+    const saveDC     = spells.save_dc     || '';
+    const atkBonus   = spells.attack_bonus || '';
+
+    const ABILITIES = ['str','dex','con','int','wis','cha'];
+    const slotLevels = [1,2,3,4,5,6,7,8,9];
+
+    // Group spells by level, tracking the global list index for each entry
+    const byLevel = {};
+    spellList.forEach((sp, globalIdx) => {
+        const lvl = sp.level ?? 0;
+        if (!byLevel[lvl]) byLevel[lvl] = [];
+        byLevel[lvl].push({ ...sp, _globalIdx: globalIdx });
+    });
+    const levelLabel = l => l === 0 ? 'Cantrips' : `Level ${l}`;
+
+    const spellRows = Object.keys(byLevel).sort((a,b) => a-b).map(lvl => `
+        <div class="vtt-spell-level-header">${levelLabel(Number(lvl))}</div>
+        ${byLevel[lvl].map(sp => `
+        <div class="vtt-spell-row">
+            <input type="checkbox" title="Prepared" ${sp.prepared ? 'checked' : ''}
+                   onchange="vttSheetEditSpell(${sp._globalIdx},'prepared',this.checked)">
+            <span style="font-size:12px">${sp.name || '—'}</span>
+            <span style="color:var(--text-muted,#949ba4);font-size:11px">${sp.school || ''}</span>
+            <span style="color:var(--text-muted,#949ba4);font-size:11px">${sp.components || ''}</span>
+            <button class="vtt-roll-btn" title="Roll spell attack"
+                    onclick="vttQuickRoll('${(sp.name||'Spell').replace(/'/g,'\\x27')} Atk','${atkBonus}')">🎲</button>
+        </div>`).join('')}
+    `).join('');
+
+    return `<div class="vtt-sheet-body">
+
+        <!-- Spellcasting info -->
+        <div class="vtt-sheet-section">Spellcasting</div>
+        <div class="vtt-sheet-3col">
             <div class="vtt-sheet-field-group">
-                <label class="vtt-sheet-label">Character Name</label>
-                <input class="vtt-input vtt-sheet-full" type="text" value="${char.name || ''}"
-                       oninput="vttSheetEdit('_name', this.value)">
-            </div>
-            <div class="vtt-sheet-3col">
-                <div class="vtt-sheet-field-group">
-                    <label class="vtt-sheet-label">Class</label>
-                    <input class="vtt-input" type="text" value="${d.class || ''}"
-                           oninput="vttSheetEdit('class', this.value)">
-                </div>
-                <div class="vtt-sheet-field-group">
-                    <label class="vtt-sheet-label">Level</label>
-                    <input class="vtt-input" type="number" min="1" max="20" value="${d.level || 1}"
-                           oninput="vttSheetEdit('level', +this.value)">
-                </div>
-                <div class="vtt-sheet-field-group">
-                    <label class="vtt-sheet-label">Race</label>
-                    <input class="vtt-input" type="text" value="${d.race || ''}"
-                           oninput="vttSheetEdit('race', this.value)">
-                </div>
-            </div>
-            <div class="vtt-sheet-2col">
-                <div class="vtt-sheet-field-group">
-                    <label class="vtt-sheet-label">Background</label>
-                    <input class="vtt-input" type="text" value="${d.background || ''}"
-                           oninput="vttSheetEdit('background', this.value)">
-                </div>
-                <div class="vtt-sheet-field-group">
-                    <label class="vtt-sheet-label">Alignment</label>
-                    <input class="vtt-input" type="text" value="${d.alignment || ''}"
-                           oninput="vttSheetEdit('alignment', this.value)">
-                </div>
-            </div>
-            <div class="vtt-sheet-2col">
-                <div class="vtt-sheet-field-group">
-                    <label class="vtt-sheet-label">Player Name</label>
-                    <input class="vtt-input" type="text" value="${d.player_name || ''}"
-                           oninput="vttSheetEdit('player_name', this.value)">
-                </div>
-                <div class="vtt-sheet-field-group">
-                    <label class="vtt-sheet-label">Experience</label>
-                    <input class="vtt-input" type="number" value="${d.xp || 0}"
-                           oninput="vttSheetEdit('xp', +this.value)">
-                </div>
-            </div>
-
-            <!-- Combat -->
-            <div class="vtt-sheet-section">Combat</div>
-            <div class="vtt-sheet-3col">
-                <div class="vtt-sheet-combat-box">
-                    <input class="vtt-input" type="number" value="${d.ac || 10}"
-                           oninput="vttSheetEdit('ac', +this.value)">
-                    <label class="vtt-sheet-label">Armor Class</label>
-                </div>
-                <div class="vtt-sheet-combat-box">
-                    <input class="vtt-input" type="number" value="${d.initiative_bonus ?? mod(abs['dex'])}"
-                           oninput="vttSheetEdit('initiative_bonus', +this.value)">
-                    <label class="vtt-sheet-label">Initiative</label>
-                </div>
-                <div class="vtt-sheet-combat-box">
-                    <input class="vtt-input" type="number" value="${d.speed || 30}"
-                           oninput="vttSheetEdit('speed', +this.value)">
-                    <label class="vtt-sheet-label">Speed (ft)</label>
-                </div>
-            </div>
-            <div class="vtt-sheet-3col">
-                <div class="vtt-sheet-combat-box">
-                    <input class="vtt-input" type="number" value="${d.hp ?? 0}"
-                           oninput="vttSheetEdit('hp', +this.value)">
-                    <label class="vtt-sheet-label">Current HP</label>
-                </div>
-                <div class="vtt-sheet-combat-box">
-                    <input class="vtt-input" type="number" value="${d.hp_max ?? 0}"
-                           oninput="vttSheetEdit('hp_max', +this.value)">
-                    <label class="vtt-sheet-label">HP Max</label>
-                </div>
-                <div class="vtt-sheet-combat-box">
-                    <input class="vtt-input" type="number" value="${d.hp_temp ?? 0}"
-                           oninput="vttSheetEdit('hp_temp', +this.value)">
-                    <label class="vtt-sheet-label">Temp HP</label>
-                </div>
-            </div>
-            <div class="vtt-sheet-3col">
-                <div class="vtt-sheet-combat-box">
-                    <input class="vtt-input" type="text" value="${d.hit_dice || '1d8'}"
-                           oninput="vttSheetEdit('hit_dice', this.value)">
-                    <label class="vtt-sheet-label">Hit Dice</label>
-                </div>
-                <div class="vtt-sheet-combat-box">
-                    <input class="vtt-input" type="number" min="2" max="9" value="${prof}"
-                           oninput="vttSheetEdit('proficiency_bonus', +this.value)">
-                    <label class="vtt-sheet-label">Prof Bonus</label>
-                </div>
-                <div class="vtt-sheet-combat-box">
-                    <input type="checkbox" class="vtt-inspiration-check" ${d.inspiration ? 'checked' : ''}
-                           onchange="vttSheetEdit('inspiration', this.checked)">
-                    <label class="vtt-sheet-label">Inspiration</label>
-                </div>
-            </div>
-
-            <!-- Death Saves -->
-            <div class="vtt-sheet-section">Death Saves</div>
-            <div class="vtt-sheet-death-saves">
-                <div class="vtt-sheet-death-row">
-                    <span>Successes</span>
-                    ${[0,1,2].map(i => `<input type="checkbox" ${(d.death_saves_success||0) > i ? 'checked' : ''}
-                        onchange="vttSheetDeathSave('success', ${i}, this.checked)">`).join('')}
-                </div>
-                <div class="vtt-sheet-death-row">
-                    <span>Failures</span>
-                    ${[0,1,2].map(i => `<input type="checkbox" ${(d.death_saves_fail||0) > i ? 'checked' : ''}
-                        onchange="vttSheetDeathSave('fail', ${i}, this.checked)">`).join('')}
-                </div>
-            </div>
-
-            <!-- Ability Scores -->
-            <div class="vtt-sheet-section">Ability Scores</div>
-            <div class="vtt-abilities">
-                ${['str','dex','con','int','wis','cha'].map(abilityBox).join('')}
-            </div>
-
-            <!-- Saving Throws -->
-            <div class="vtt-sheet-section">Saving Throws</div>
-            <div class="vtt-save-list">
-                ${['str','dex','con','int','wis','cha'].map(saveRow).join('')}
-            </div>
-
-            <!-- Skills -->
-            <div class="vtt-sheet-section">Skills</div>
-            <div class="vtt-sheet-passive">Passive Perception: <strong id="vttPassivePerc">${passPerc}</strong></div>
-            <div class="vtt-save-list">
-                ${_DND5E_SKILLS.map(skillRow).join('')}
-            </div>
-
-            <!-- Other Proficiencies -->
-            <div class="vtt-sheet-section">Proficiencies & Languages</div>
-            <textarea class="vtt-input vtt-sheet-textarea" placeholder="Armor, weapons, tools, languages…"
-                      oninput="vttSheetEdit('proficiencies_text', this.value)">${d.proficiencies_text || ''}</textarea>
-
-            <!-- Attacks -->
-            <div class="vtt-sheet-section vtt-sheet-section-btn">
-                <span>Attacks & Spellcasting</span>
-                <button class="vtt-btn-sm" onclick="vttAddAttack()">+ Add</button>
-            </div>
-            <div id="vttAttackList">
-                ${attacks.length ? attacks.map((atk,i) => `
-                <div class="vtt-attack-row">
-                    <input class="vtt-input vtt-atk-name" type="text" value="${atk.name || ''}" placeholder="Name"
-                           oninput="vttEditAttack(${i},'name',this.value)">
-                    <input class="vtt-input vtt-atk-stat" type="text" value="${atk.to_hit || ''}" placeholder="Hit"
-                           oninput="vttEditAttack(${i},'to_hit',this.value)">
-                    <input class="vtt-input vtt-atk-stat" type="text" value="${atk.damage || ''}" placeholder="Dmg"
-                           oninput="vttEditAttack(${i},'damage',this.value)">
-                    <button class="vtt-roll-btn" onclick="vttRollAttack('${atk.name}','${atk.to_hit}','${atk.damage}')">🎲</button>
-                    <button class="vtt-roll-btn" style="color:#ed4245" onclick="vttRemoveAttack(${i})">✕</button>
-                </div>`).join('') : `<div class="vtt-empty">No attacks</div>`}
-            </div>
-
-            <!-- Equipment -->
-            <div class="vtt-sheet-section">Equipment</div>
-            <div class="vtt-sheet-currency">
-                ${['cp','sp','ep','gp','pp'].map(c => `
-                <div class="vtt-sheet-combat-box">
-                    <input class="vtt-input" type="number" value="${(d.currency||{})[c] || 0}"
-                           oninput="vttSheetEditNested('currency','${c}',+this.value)">
-                    <label class="vtt-sheet-label">${c.toUpperCase()}</label>
-                </div>`).join('')}
-            </div>
-            <textarea class="vtt-input vtt-sheet-textarea" placeholder="Equipment list…"
-                      oninput="vttSheetEdit('equipment', this.value)">${d.equipment || ''}</textarea>
-
-            <!-- Personality -->
-            <div class="vtt-sheet-section">Personality</div>
-            <div class="vtt-sheet-field-group">
-                <label class="vtt-sheet-label">Personality Traits</label>
-                <textarea class="vtt-input vtt-sheet-textarea"
-                          oninput="vttSheetEdit('personality_traits', this.value)">${d.personality_traits || ''}</textarea>
+                <label class="vtt-sheet-label">Ability</label>
+                <select class="vtt-input" onchange="vttSheetEditNested('spells','ability',this.value)">
+                    <option value="">—</option>
+                    ${ABILITIES.map(a => `<option value="${a}" ${spellAbil===a?'selected':''}>${a.toUpperCase()}</option>`).join('')}
+                </select>
             </div>
             <div class="vtt-sheet-field-group">
-                <label class="vtt-sheet-label">Ideals</label>
-                <textarea class="vtt-input vtt-sheet-textarea"
-                          oninput="vttSheetEdit('ideals', this.value)">${d.ideals || ''}</textarea>
+                <label class="vtt-sheet-label">Save DC</label>
+                <input class="vtt-input" type="number" value="${saveDC}"
+                       oninput="vttSheetEditNested('spells','save_dc',+this.value)">
             </div>
             <div class="vtt-sheet-field-group">
-                <label class="vtt-sheet-label">Bonds</label>
-                <textarea class="vtt-input vtt-sheet-textarea"
-                          oninput="vttSheetEdit('bonds', this.value)">${d.bonds || ''}</textarea>
+                <label class="vtt-sheet-label">Atk Bonus</label>
+                <input class="vtt-input" type="text" value="${atkBonus}"
+                       oninput="vttSheetEditNested('spells','attack_bonus',this.value)">
             </div>
-            <div class="vtt-sheet-field-group">
-                <label class="vtt-sheet-label">Flaws</label>
-                <textarea class="vtt-input vtt-sheet-textarea"
-                          oninput="vttSheetEdit('flaws', this.value)">${d.flaws || ''}</textarea>
-            </div>
+        </div>
 
-            <!-- Features -->
-            <div class="vtt-sheet-section">Features & Traits</div>
-            <textarea class="vtt-input vtt-sheet-textarea" rows="4" placeholder="Class features, racial traits, feats…"
-                      oninput="vttSheetEdit('features', this.value)">${d.features || ''}</textarea>
+        <!-- Spell slots -->
+        <div class="vtt-sheet-section">Spell Slots</div>
+        <div class="vtt-spell-slots">
+            ${slotLevels.map(lvl => {
+                const sl = slots[lvl] || { total: 0, used: 0 };
+                return `<div class="vtt-spell-slot-box">
+                    <div class="vtt-slot-level">Level ${lvl}</div>
+                    <div class="vtt-slot-inputs">
+                        <input class="vtt-input" type="number" min="0" max="9" value="${sl.used ?? 0}" title="Used"
+                               oninput="vttSheetEditSpellSlot(${lvl},'used',+this.value)">
+                        <span>/</span>
+                        <input class="vtt-input" type="number" min="0" max="9" value="${sl.total ?? 0}" title="Total"
+                               oninput="vttSheetEditSpellSlot(${lvl},'total',+this.value)">
+                    </div>
+                </div>`;
+            }).join('')}
+        </div>
 
-            <!-- Backstory -->
-            <div class="vtt-sheet-section">Backstory</div>
-            <textarea class="vtt-input vtt-sheet-textarea" rows="3" placeholder="Character backstory…"
-                      oninput="vttSheetEdit('backstory', this.value)">${d.backstory || ''}</textarea>
+        <!-- Spell list -->
+        <div class="vtt-sheet-section">
+            <span>Spell List</span>
+        </div>
+        ${spellList.length
+            ? `<div>${spellRows}</div>`
+            : `<div class="vtt-empty" style="padding:12px 0">No spells yet. Import from DnDBeyond or add manually.</div>`}
 
+    </div>`;
+}
+
+// ── Tab: Inventory ────────────────────────────────────────────────────────────
+function _dnd5eTabInventory(char, d) {
+    const items = d.inventory || [];
+    const EQUIPPABLE = new Set(['Armor', 'Weapon', 'Other Gear']);
+
+    const itemRows = items.map((item, i) => {
+        const canEquip = EQUIPPABLE.has(item.type);
+        const equippedChk = canEquip
+            ? `<input type="checkbox" title="Equipped" ${item.equipped ? 'checked' : ''}
+                   onchange="vttToggleInventoryEquip(${i}, this.checked)">`
+            : `<span style="display:inline-block;width:16px"></span>`;
+        return `
+        <div class="vtt-inventory-row">
+            ${equippedChk}
+            <span class="vtt-inv-name">${item.name || '—'}</span>
+            <span class="vtt-inv-qty" title="Quantity">×${item.quantity || 1}</span>
+            <span class="vtt-inv-type">${item.type || ''}</span>
+            <button class="vtt-roll-btn" style="color:#ed4245;flex-shrink:0"
+                    onclick="vttRemoveInventoryItem(${i})">✕</button>
         </div>`;
+    }).join('');
+
+    return `<div class="vtt-sheet-body">
+
+        <!-- Currency -->
+        <div class="vtt-sheet-section">Currency</div>
+        <div class="vtt-sheet-currency">
+            ${['cp','sp','ep','gp','pp'].map(c => `
+            <div class="vtt-sheet-combat-box">
+                <input class="vtt-input" type="number" value="${(d.currency||{})[c] || 0}"
+                       oninput="vttSheetEditNested('currency','${c}',+this.value)">
+                <label class="vtt-sheet-label">${c.toUpperCase()}</label>
+            </div>`).join('')}
+        </div>
+
+        <!-- Item list -->
+        <div class="vtt-sheet-section vtt-sheet-section-btn">
+            <span>Items</span>
+            <button class="vtt-btn-sm" onclick="vttAddInventoryItem()">+ Add</button>
+        </div>
+        ${items.length
+            ? `<div class="vtt-inventory-list">${itemRows}</div>`
+            : `<div class="vtt-empty">No items. Click + Add or import from DnDBeyond.</div>`}
+
+    </div>`;
+}
+
+// ── Tab: Features & Traits ────────────────────────────────────────────────────
+function _dnd5eTabFeatures(char, d) {
+    return `<div class="vtt-sheet-body">
+
+        <div class="vtt-sheet-section">Features & Traits</div>
+        <textarea class="vtt-input vtt-sheet-textarea" rows="8"
+                  placeholder="Class features, racial traits, feats, special abilities…"
+                  oninput="vttSheetEdit('features_traits', this.value)">${d.features_traits || d.features || ''}</textarea>
+
+    </div>`;
+}
+
+// ── Tab: Background ───────────────────────────────────────────────────────────
+function _dnd5eTabBackground(char, d) {
+    return `<div class="vtt-sheet-body">
+
+        <!-- Identity details -->
+        <div class="vtt-sheet-section">Character Details</div>
+        <div class="vtt-sheet-3col">
+            <div class="vtt-sheet-field-group">
+                <label class="vtt-sheet-label">Race</label>
+                <input class="vtt-input" type="text" value="${d.race || ''}"
+                       oninput="vttSheetEdit('race', this.value)">
+            </div>
+            <div class="vtt-sheet-field-group">
+                <label class="vtt-sheet-label">Background</label>
+                <input class="vtt-input" type="text" value="${d.background || ''}"
+                       oninput="vttSheetEdit('background', this.value)">
+            </div>
+            <div class="vtt-sheet-field-group">
+                <label class="vtt-sheet-label">Alignment</label>
+                <input class="vtt-input" type="text" value="${d.alignment || ''}"
+                       oninput="vttSheetEdit('alignment', this.value)">
+            </div>
+        </div>
+        <div class="vtt-sheet-3col">
+            <div class="vtt-sheet-field-group">
+                <label class="vtt-sheet-label">Faith</label>
+                <input class="vtt-input" type="text" value="${d.faith || ''}"
+                       oninput="vttSheetEdit('faith', this.value)">
+            </div>
+            <div class="vtt-sheet-field-group">
+                <label class="vtt-sheet-label">Age</label>
+                <input class="vtt-input" type="text" value="${d.age || ''}"
+                       oninput="vttSheetEdit('age', this.value)">
+            </div>
+            <div class="vtt-sheet-field-group">
+                <label class="vtt-sheet-label">Gender</label>
+                <input class="vtt-input" type="text" value="${d.gender || ''}"
+                       oninput="vttSheetEdit('gender', this.value)">
+            </div>
+        </div>
+
+        <!-- Physical appearance -->
+        <div class="vtt-sheet-section">Appearance</div>
+        <div class="vtt-sheet-3col">
+            <div class="vtt-sheet-field-group">
+                <label class="vtt-sheet-label">Height</label>
+                <input class="vtt-input" type="text" value="${d.height || ''}"
+                       oninput="vttSheetEdit('height', this.value)">
+            </div>
+            <div class="vtt-sheet-field-group">
+                <label class="vtt-sheet-label">Weight</label>
+                <input class="vtt-input" type="text" value="${d.weight || ''}"
+                       oninput="vttSheetEdit('weight', this.value)">
+            </div>
+            <div class="vtt-sheet-field-group">
+                <label class="vtt-sheet-label">Hair</label>
+                <input class="vtt-input" type="text" value="${d.hair || ''}"
+                       oninput="vttSheetEdit('hair', this.value)">
+            </div>
+        </div>
+        <div class="vtt-sheet-3col">
+            <div class="vtt-sheet-field-group">
+                <label class="vtt-sheet-label">Eyes</label>
+                <input class="vtt-input" type="text" value="${d.eyes || ''}"
+                       oninput="vttSheetEdit('eyes', this.value)">
+            </div>
+            <div class="vtt-sheet-field-group">
+                <label class="vtt-sheet-label">Skin</label>
+                <input class="vtt-input" type="text" value="${d.skin || ''}"
+                       oninput="vttSheetEdit('skin', this.value)">
+            </div>
+            <div class="vtt-sheet-field-group">
+                <label class="vtt-sheet-label">Lifestyle</label>
+                <input class="vtt-input" type="text" value="${d.lifestyle || ''}"
+                       oninput="vttSheetEdit('lifestyle', this.value)">
+            </div>
+        </div>
+
+        <!-- Personality -->
+        <div class="vtt-sheet-section">Personality</div>
+        <div class="vtt-sheet-field-group">
+            <label class="vtt-sheet-label">Personality Traits</label>
+            <textarea class="vtt-input vtt-sheet-textarea"
+                      oninput="vttSheetEdit('personality_traits', this.value)">${d.personality_traits || ''}</textarea>
+        </div>
+        <div class="vtt-sheet-field-group">
+            <label class="vtt-sheet-label">Ideals</label>
+            <textarea class="vtt-input vtt-sheet-textarea"
+                      oninput="vttSheetEdit('ideals', this.value)">${d.ideals || ''}</textarea>
+        </div>
+        <div class="vtt-sheet-field-group">
+            <label class="vtt-sheet-label">Bonds</label>
+            <textarea class="vtt-input vtt-sheet-textarea"
+                      oninput="vttSheetEdit('bonds', this.value)">${d.bonds || ''}</textarea>
+        </div>
+        <div class="vtt-sheet-field-group">
+            <label class="vtt-sheet-label">Flaws</label>
+            <textarea class="vtt-input vtt-sheet-textarea"
+                      oninput="vttSheetEdit('flaws', this.value)">${d.flaws || ''}</textarea>
+        </div>
+
+        <!-- Backstory -->
+        <div class="vtt-sheet-section">Backstory</div>
+        <textarea class="vtt-input vtt-sheet-textarea" rows="5" placeholder="Character backstory…"
+                  oninput="vttSheetEdit('backstory', this.value)">${d.backstory || ''}</textarea>
+
+    </div>`;
+}
+
+// ── Tab: Notes ────────────────────────────────────────────────────────────────
+function _dnd5eTabNotes(char, d) {
+    return `<div class="vtt-sheet-body">
+
+        <div class="vtt-sheet-field-group">
+            <label class="vtt-sheet-label">Organizations</label>
+            <textarea class="vtt-input vtt-sheet-textarea" rows="3"
+                      placeholder="Guilds, factions, groups…"
+                      oninput="vttSheetEdit('notes_organizations', this.value)">${d.notes_organizations || ''}</textarea>
+        </div>
+        <div class="vtt-sheet-field-group">
+            <label class="vtt-sheet-label">Allies</label>
+            <textarea class="vtt-input vtt-sheet-textarea" rows="3"
+                      placeholder="Friends, contacts, companions…"
+                      oninput="vttSheetEdit('notes_allies', this.value)">${d.notes_allies || ''}</textarea>
+        </div>
+        <div class="vtt-sheet-field-group">
+            <label class="vtt-sheet-label">Enemies</label>
+            <textarea class="vtt-input vtt-sheet-textarea" rows="3"
+                      placeholder="Rivals, foes, nemeses…"
+                      oninput="vttSheetEdit('notes_enemies', this.value)">${d.notes_enemies || ''}</textarea>
+        </div>
+        <div class="vtt-sheet-field-group">
+            <label class="vtt-sheet-label">Backstory</label>
+            <textarea class="vtt-input vtt-sheet-textarea" rows="4"
+                      placeholder="Character history and origin…"
+                      oninput="vttSheetEdit('backstory', this.value)">${d.backstory || ''}</textarea>
+        </div>
+        <div class="vtt-sheet-field-group">
+            <label class="vtt-sheet-label">Other Notes</label>
+            <textarea class="vtt-input vtt-sheet-textarea" rows="4"
+                      placeholder="Session notes, quest tracking, reminders…"
+                      oninput="vttSheetEdit('notes_text', this.value)">${d.notes_text || ''}</textarea>
+        </div>
+
+    </div>`;
+}
+
+// ── Tab: Extras ───────────────────────────────────────────────────────────────
+function _dnd5eTabExtras(char, d) {
+    const exhaustion = d.exhaustion ?? 0;
+    const EXHAUSTION_EFFECTS = [
+        'No effect',
+        'Disadvantage on ability checks',
+        'Speed halved',
+        'Disadvantage on attacks & saves',
+        'HP maximum halved',
+        'Speed reduced to 0',
+        'Death',
+    ];
+    return `<div class="vtt-sheet-body">
+
+        <!-- Inspiration -->
+        <div class="vtt-sheet-section">Inspiration</div>
+        <div style="display:flex;align-items:center;gap:10px;padding:4px 0 10px">
+            <input type="checkbox" class="vtt-inspiration-check" id="vttInspChk" ${d.inspiration ? 'checked' : ''}
+                   onchange="vttSheetEdit('inspiration', this.checked)">
+            <label for="vttInspChk" style="cursor:pointer">Inspiration</label>
+        </div>
+
+        <!-- Exhaustion -->
+        <div class="vtt-sheet-section">Exhaustion</div>
+        <div style="margin-bottom:6px;font-size:12px;color:var(--text-muted,#949ba4)">
+            Level ${exhaustion}${exhaustion > 0 ? ` — ${EXHAUSTION_EFFECTS[exhaustion]}` : ' — No effect'}
+        </div>
+        <div class="vtt-exhaustion-pips">
+            ${[1,2,3,4,5,6].map(lvl => `
+            <button class="vtt-exhaustion-pip ${exhaustion >= lvl ? 'active' : ''}"
+                    title="Level ${lvl}: ${EXHAUSTION_EFFECTS[lvl]}"
+                    onclick="vttSheetEdit('exhaustion', ${exhaustion === lvl ? lvl - 1 : lvl}); vttSetSheetTab('extras')"
+            ></button>`).join('')}
+        </div>
+        <p style="font-size:11px;color:var(--text-muted,#949ba4);margin-top:6px">
+            Click a pip to set exhaustion level. Click the active pip to reduce by one.
+        </p>
+
+    </div>`;
+}
+
+// ── Spell data helpers ────────────────────────────────────────────────────────
+
+// Edit a field on a spell in spells.list by index
+function vttSheetEditSpell(idx, field, value) {
+    const myChar = _getMyChar();
+    if (!myChar) return;
+    const d = myChar.sheet_data || (myChar.sheet_data = {});
+    if (!d.spells) d.spells = {};
+    if (!d.spells.list) d.spells.list = [];
+    if (!d.spells.list[idx]) return;
+    d.spells.list[idx][field] = value;
+    _debouncedSheetSave();
+}
+
+// Edit used/total on a spell slot level
+function vttSheetEditSpellSlot(level, field, value) {
+    const myChar = _getMyChar();
+    if (!myChar) return;
+    const d = myChar.sheet_data || (myChar.sheet_data = {});
+    if (!d.spells) d.spells = {};
+    if (!d.spells.slots) d.spells.slots = {};
+    if (!d.spells.slots[level]) d.spells.slots[level] = { total: 0, used: 0 };
+    d.spells.slots[level][field] = value;
+    _debouncedSheetSave();
+}
+
+// ── Inventory helpers ─────────────────────────────────────────────────────────
+
+function vttToggleInventoryEquip(idx, equipped) {
+    const myChar = _getMyChar();
+    if (!myChar) return;
+    const d = myChar.sheet_data || (myChar.sheet_data = {});
+    if (!d.inventory?.[idx]) return;
+    d.inventory[idx].equipped = equipped;
+    _debouncedSheetSave();
+}
+
+function vttRemoveInventoryItem(idx) {
+    const myChar = _getMyChar();
+    if (!myChar) return;
+    const d = myChar.sheet_data || (myChar.sheet_data = {});
+    if (!d.inventory) return;
+    d.inventory.splice(idx, 1);
+    _debouncedSheetSave();
+    vttSetSheetTab('inventory');
+}
+
+function vttAddInventoryItem() {
+    showModal({
+        title: 'Add Item',
+        inputType: 'text',
+        inputPlaceholder: 'Item name',
+        buttons: [
+            { text: 'Cancel', style: 'secondary', action: closeModal },
+            { text: 'Add', style: 'primary', action: () => {
+                const name = getModalInputValue().trim();
+                if (!name) { showModalError('Please enter an item name'); return; }
+                closeModal();
+                const myChar = _getMyChar();
+                if (!myChar) return;
+                const d = myChar.sheet_data || (myChar.sheet_data = {});
+                if (!d.inventory) d.inventory = [];
+                d.inventory.push({ name, quantity: 1, equipped: false, type: '', weight: 0 });
+                _debouncedSheetSave();
+                vttSetSheetTab('inventory');
+            }}
+        ],
+        onEnter: null
+    });
+}
+
+// ── Main entry point ──────────────────────────────────────────────────────────
+
+function _renderDnd5eSheet(char, d) {
+    _injectDnd5eTabStyles();
+
+    const tabBar = `
+        <div class="vtt-tab-bar">
+            ${_DND5E_TABS.map(t => `
+            <button class="vtt-tab-btn ${_activeSheetTab === t.id ? 'vtt-tab-btn-active' : ''}"
+                    data-tab="${t.id}"
+                    onclick="vttSetSheetTab('${t.id}')">${t.label}</button>
+            `).join('')}
+        </div>`;
+
+    return `${tabBar}<div id="vttSheetTabBody">${_dnd5eTabContent(_activeSheetTab, char, d)}</div>`;
 }
 
 const _PF2E_SKILLS = [
@@ -1995,14 +2543,84 @@ function _executeCreateCharacter(name, system) {
         if (character) {
             if (!_vttSession) _vttSession = { characters: [] };
             _vttSession.characters = [...(_vttSession.characters || []), character];
+            _activeSheetTab = 'main';
             _renderSheet();
         }
     });
 }
 
+// ── DnDBeyond Import ──────────────────────────────────────────────────────────
+
+function vttImportDndbeyond(existingCharId) {
+    if (!_vttChannel) return;
+
+    showModal({
+        title: existingCharId ? 'Re-import from DnDBeyond' : 'Import from DnDBeyond',
+        message: 'Paste your DnDBeyond character URL or bare character ID. The character must be set to public.',
+        inputType: 'text',
+        inputPlaceholder: 'https://www.dndbeyond.com/characters/158808663',
+        buttons: [
+            { text: 'Cancel', style: 'secondary', action: closeModal },
+            {
+                text: existingCharId ? 'Re-import' : 'Import',
+                style: 'primary',
+                action: async () => {
+                    const raw = getModalInputValue().trim();
+                    if (!raw) { showModalError('Please enter a character URL or ID'); return; }
+
+                    // Accept full URL or bare ID
+                    const match = raw.match(/(\d+)/);
+                    if (!match) { showModalError('Could not find a character ID in that input'); return; }
+                    const characterId = match[1];
+
+                    closeModal();
+                    try {
+                        const res = await fetch(`/api/vtt/${_vttChannel.id}/characters/import-dndbeyond`, {
+                            method: 'POST',
+                            credentials: 'include',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ characterId, charId: existingCharId || undefined })
+                        });
+                        const data = await res.json();
+                        if (!res.ok) {
+                            showModal({
+                                title: 'Import Failed',
+                                message: data.error || 'Something went wrong.',
+                                buttons: [{ text: 'OK', style: 'primary', action: closeModal }]
+                            });
+                            return;
+                        }
+                        const { character } = data;
+                        if (!_vttSession) _vttSession = { characters: [] };
+                        if (existingCharId) {
+                            _vttSession.characters = _vttSession.characters.map(c =>
+                                c.id === existingCharId ? character : c
+                            );
+                        } else {
+                            _vttSession.characters = [...(_vttSession.characters || []), character];
+                        }
+                        _renderSheet();
+                        showToast(`${character.name} imported!`, 'success');
+                    } catch (e) {
+                        console.error('[VTT] DnDBeyond import error:', e);
+                        showModal({
+                            title: 'Import Failed',
+                            message: 'Network error. Please try again.',
+                            buttons: [{ text: 'OK', style: 'primary', action: closeModal }]
+                        });
+                    }
+                }
+            }
+        ],
+        onEnter: null  // don't fire on Enter — accidental submit risk
+    });
+}
+
 // ── Sheet edit helpers ────────────────────────────────────────────────────────
 
-let _sheetSaveTimer = null;
+let _sheetSaveTimer  = null;
+let _activeSheetTab  = 'main';   // persists across re-renders; resets on new char creation
+let _dnd5eTabStyleOk = false;    // CSS injection guard
 
 function _getMyChar() {
     return (_vttSession?.characters || []).find(c => c.user_id === state.currentUser?.id) || null;

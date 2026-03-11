@@ -18,6 +18,7 @@ import {
     deleteCharacter,
     getDddiceToken,
     dddiceRoll,
+    importDndbeyond,
 } from '../controllers/vttController.js';
 
 const router = express.Router();
@@ -39,6 +40,7 @@ router.put('/:channelId/encounter', requireAuth, updateEncounter);
 
 router.get('/:channelId/characters',               requireAuth, getCharacters);
 router.post('/:channelId/characters',              requireAuth, createCharacter);
+router.post('/:channelId/characters/import-dndbeyond', requireAuth, importDndbeyond);
 router.patch('/:channelId/characters/:charId',     requireAuth, updateCharacter);
 router.delete('/:channelId/characters/:charId',    requireAuth, deleteCharacter);
 

@@ -391,6 +391,384 @@ export async function deleteCharacter(req, res) {
     }
 }
 
+// ── DnDBeyond Import ──────────────────────────────────────────────────────────
+
+const _DNDB_STAT_MAP   = { 1:'str', 2:'dex', 3:'con', 4:'int', 5:'wis', 6:'cha' };
+const _DNDB_ALIGNMENTS = {
+    1:'Lawful Good', 2:'Neutral Good', 3:'Chaotic Good',
+    4:'Lawful Neutral', 5:'True Neutral', 6:'Chaotic Neutral',
+    7:'Lawful Evil', 8:'Neutral Evil', 9:'Chaotic Evil',
+};
+const _DNDB_SAVE_MAP = {
+    'strength-saving-throws':'str', 'dexterity-saving-throws':'dex',
+    'constitution-saving-throws':'con', 'intelligence-saving-throws':'int',
+    'wisdom-saving-throws':'wis', 'charisma-saving-throws':'cha',
+};
+// DnDBeyond subType → our skill key (hyphen-to-underscore, with exceptions)
+function _dndbSkillSubtype(subType) {
+    return subType.replace(/-/g, '_');
+}
+
+function _mapDndbeyondData(data) {
+    const VALID_SKILL_KEYS = new Set([
+        'acrobatics','animal_handling','arcana','athletics','deception',
+        'history','insight','intimidation','investigation','medicine',
+        'nature','perception','performance','persuasion','religion',
+        'sleight_of_hand','stealth','survival',
+    ]);
+
+    // Ability scores
+    // Step 1: base scores from character creation
+    const ability_scores = {};
+    for (const s of (data.stats || [])) {
+        const key = _DNDB_STAT_MAP[s.id];
+        if (key) ability_scores[key] = s.value || 10;
+    }
+
+    // Step 2: sum all ability score bonuses from every modifier category
+    // (race, feat, background, class, item, etc.)
+    const allMods = Object.values(data.modifiers || {}).flat();
+    for (const m of allMods) {
+        if (m.type !== 'bonus' || !m.statId || !(m.statId in _DNDB_STAT_MAP)) continue;
+        const key = _DNDB_STAT_MAP[m.statId];
+        ability_scores[key] = (ability_scores[key] || 10) + (m.fixedValue ?? m.value ?? 0);
+    }
+
+    // Step 3: apply manual bonusStats (rare, but respected when set)
+    for (const s of (data.bonusStats || [])) {
+        if (!s.value || !_DNDB_STAT_MAP[s.id]) continue;
+        const key = _DNDB_STAT_MAP[s.id];
+        ability_scores[key] = (ability_scores[key] || 10) + s.value;
+    }
+
+    // Step 4: overrideStats are DnDBeyond's own final value — take them as gospel
+    for (const s of (data.overrideStats || [])) {
+        if (s.value == null || !_DNDB_STAT_MAP[s.id]) continue;
+        ability_scores[_DNDB_STAT_MAP[s.id]] = s.value;
+    }
+
+    // Proficiency bonus — DnDB API returns null; derive from total character level
+    const totalLevel = (data.classes || []).reduce((sum, c) => sum + (c.level || 0), 0) || 1;
+    const proficiency_bonus = Math.ceil(totalLevel / 4) + 1;
+
+    // Saving throw proficiencies
+    const saving_throw_profs = allMods
+        .filter(m => m.type === 'proficiency' && _DNDB_SAVE_MAP[m.subType])
+        .map(m => _DNDB_SAVE_MAP[m.subType])
+        .filter((v, i, a) => a.indexOf(v) === i); // unique
+
+    // Skill proficiencies
+    const skill_profs = allMods
+        .filter(m => m.type === 'proficiency')
+        .map(m => _dndbSkillSubtype(m.subType))
+        .filter(k => VALID_SKILL_KEYS.has(k))
+        .filter((v, i, a) => a.indexOf(v) === i); // unique
+
+    // HP
+    const hp_max  = data.baseHitPoints || 0;
+    const hp      = hp_max - (data.removedHitPoints || 0);
+    const hp_temp = data.temporaryHitPoints || 0;
+
+    // AC — base 10, then check equipped armor
+    let ac = 10;
+    const dexMod = Math.floor(((ability_scores.dex || 10) - 10) / 2);
+    const equippedArmor = (data.inventory || []).filter(i =>
+        i.equipped && i.definition?.filterType === 'Armor'
+    );
+    if (equippedArmor.length) {
+        // armorTypeId: 1=light,2=medium,3=heavy,4=shield
+        const armor = equippedArmor.find(i => i.definition?.armorTypeId !== 4);
+        const shield = equippedArmor.find(i => i.definition?.armorTypeId === 4);
+        if (armor) {
+            const base = armor.definition.armorClass || 10;
+            const typeId = armor.definition.armorTypeId;
+            ac = typeId === 1 ? base + dexMod          // light: full dex
+               : typeId === 2 ? base + Math.min(dexMod, 2) // medium: dex capped at +2
+               : base;                                  // heavy: no dex
+        } else {
+            ac = 10 + dexMod; // no armor — unarmored
+        }
+        if (shield) ac += 2;
+    } else {
+        ac = 10 + dexMod;
+    }
+
+    // Hit dice from primary class definition
+    const hitDice = cls_def?.hitDice ? `1d${cls_def.hitDice}` : '1d8';
+
+    // Initiative — dex mod plus any flat initiative bonuses (e.g. Alert feat)
+    const initiativeBonus = allMods
+        .filter(m => m.type === 'bonus' && m.subType === 'initiative')
+        .reduce((sum, m) => sum + (m.fixedValue ?? m.value ?? 0), dexMod);
+
+    // Proficiencies text — armor, weapon, tool proficiencies + languages + resistances/senses
+    const ARMOR_WEAPON_PROFS  = new Set(['light-armor','medium-armor','heavy-armor','shields',
+        'simple-weapons','martial-weapons','firearms']);
+    const armorWeaponLines = [];
+    const toolLines        = [];
+    const languageLines    = [];
+    const resistanceLines  = [];
+    const senseLines       = [];
+    for (const m of allMods) {
+        const fn = m.friendlySubtypeName || m.subType || '';
+        if (m.type === 'proficiency' && ARMOR_WEAPON_PROFS.has(m.subType)) {
+            armorWeaponLines.push(fn);
+        } else if (m.type === 'proficiency' && m.subType?.includes('-tools')) {
+            toolLines.push(fn);
+        } else if (m.type === 'language') {
+            languageLines.push(fn);
+        } else if (m.type === 'resistance' || m.type === 'immunity') {
+            resistanceLines.push(`${fn} (${m.type})`);
+        } else if (m.type === 'set-base' && m.subType === 'darkvision') {
+            senseLines.push(`Darkvision ${m.fixedValue ?? 60}ft`);
+        }
+    }
+    const profParts = [];
+    if (armorWeaponLines.length) profParts.push(`Armor & Weapons: ${[...new Set(armorWeaponLines)].join(', ')}`);
+    if (toolLines.length)        profParts.push(`Tools: ${[...new Set(toolLines)].join(', ')}`);
+    if (languageLines.length)    profParts.push(`Languages: ${[...new Set(languageLines)].join(', ')}`);
+    if (resistanceLines.length)  profParts.push(`Resistances: ${[...new Set(resistanceLines)].join(', ')}`);
+    if (senseLines.length)       profParts.push(`Senses: ${[...new Set(senseLines)].join(', ')}`);
+    const proficiencies_text = profParts.join('\n');
+
+    // Class / level / race / background
+    const primaryClass = data.classes?.[0];
+    const className    = primaryClass?.definition?.name || '';
+    const level        = primaryClass?.level || 1;
+    const race         = data.race?.fullName || data.race?.baseRaceName || '';
+    const background   = data.background?.definition?.name || '';
+    const alignment    = _DNDB_ALIGNMENTS[data.alignmentId] || '';
+
+    // Currency
+    const raw = data.currencies || {};
+    const currency = { cp: raw.cp || 0, sp: raw.sp || 0, gp: raw.gp || 0, pp: raw.pp || 0 };
+
+    // Personality — lives in data.traits, each field is its own key
+    const traits = data.traits || {};
+    const notes  = data.notes  || {};
+    const personality_traits  = traits.personalityTraits || '';
+    const ideals = traits.ideals || '';
+    const bonds  = traits.bonds  || '';
+    const flaws  = traits.flaws  || '';
+
+    // Notes — backstory + structured note fields from data.notes
+    const backstory           = notes.backstory      || '';
+    const notes_organizations = notes.organizations  || '';
+    const notes_allies        = notes.allies         || '';
+    const notes_enemies       = notes.enemies        || '';
+    const notes_text          = notes.otherNotes     || '';
+
+    // Inventory — every item as a structured object
+    const inventory = (data.inventory || []).map(item => ({
+        name:     item.definition?.name     || '',
+        quantity: item.quantity             || 1,
+        equipped: item.equipped             || false,
+        type:     item.definition?.filterType || '',
+        weight:   item.definition?.weight   || 0,
+    }));
+
+    // Attacks — built from equipped (and unequipped) weapon items
+    const strMod = Math.floor(((ability_scores.str || 10) - 10) / 2);
+    const attacks = (data.inventory || [])
+        .filter(i => i.definition?.filterType === 'Weapon')
+        .map(item => {
+            const dfn   = item.definition;
+            const props = (dfn.properties || []).map(p => p.name || '');
+            const isFinesse = props.includes('Finesse');
+            const isRanged  = dfn.attackType === 2;
+            const abilMod   = (isFinesse && dexMod > strMod) || isRanged ? dexMod : strMod;
+            const toHitNum  = abilMod + proficiency_bonus;
+            const dmgBonus  = abilMod > 0 ? `+${abilMod}` : abilMod < 0 ? `${abilMod}` : '';
+            return {
+                name:    dfn.name || '',
+                to_hit:  toHitNum >= 0 ? `+${toHitNum}` : `${toHitNum}`,
+                damage:  `${dfn.damage?.diceString || '1d4'}${dmgBonus}`,
+            };
+        });
+
+    // Spells — classSpells is the main source; data.spells holds race/background/feat spells
+    const scAbilId = data.classes?.[0]?.definition?.spellCastingAbilityId;
+    const scAbil   = _DNDB_STAT_MAP[scAbilId] || '';
+    const scMod    = scAbil ? Math.floor(((ability_scores[scAbil] || 10) - 10) / 2) : 0;
+    const saveDC   = scAbil ? 8 + proficiency_bonus + scMod : 0;
+    const spellAtkNum = proficiency_bonus + scMod;
+
+    const rawSpells = [];
+    // Primary source: classSpells (the real prepared/known list)
+    for (const cs of (data.classSpells || [])) {
+        for (const sp of (cs.spells || [])) rawSpells.push(sp);
+    }
+    // Secondary: race/background/feat innate spells
+    for (const entries of Object.values(data.spells || {})) {
+        if (Array.isArray(entries)) for (const sp of entries) rawSpells.push(sp);
+    }
+
+    const spellList = rawSpells.map(sp => ({
+        name:       sp.definition?.name   || '',
+        level:      sp.definition?.level  ?? 0,
+        school:     sp.definition?.school || '',
+        prepared:   sp.prepared || sp.alwaysPrepared || false,
+        components: (sp.definition?.components || [])
+            .map(c => c === 1 ? 'V' : c === 2 ? 'S' : c === 3 ? 'M' : '').join(''),
+    }));
+
+    // Spell slots: prefer regular spellSlots; fall back to pactMagic for warlocks
+    const rawSlots = (data.spellSlots || []).some(s => s.available > 0)
+        ? data.spellSlots
+        : (data.pactMagic || []);
+    const slots = {};
+    for (const s of rawSlots) {
+        if (s.available > 0 || s.used > 0) {
+            slots[s.level] = { total: s.available || 0, used: s.used || 0 };
+        }
+    }
+
+    const spells = rawSpells.length ? {
+        ability:      scAbil,
+        save_dc:      saveDC,
+        attack_bonus: spellAtkNum >= 0 ? `+${spellAtkNum}` : `${spellAtkNum}`,
+        slots,
+        list: spellList,
+    } : {};
+
+    // Features & Traits — class features + racial traits + feats (names only, one per line)
+    const classFeatureNames = (data.classes || [])
+        .flatMap(c => (c.classFeatures || []).map(cf => cf.definition?.name || '').filter(Boolean));
+    const racialTraitNames = (data.race?.racialTraits || [])
+        .map(t => t.definition?.name || '').filter(Boolean);
+    const featNames = (data.feats || [])
+        .map(f => f.definition?.name || '').filter(Boolean);
+    const features_traits = [...classFeatureNames, ...racialTraitNames, ...featNames].join('\n');
+
+    // Inspiration & death saves (top-level booleans/objects)
+    const inspiration     = data.inspiration || false;
+    const rawDeathSaves   = data.deathSaves  || {};
+    const death_saves_success = rawDeathSaves.successCount || 0;
+    const death_saves_fail    = rawDeathSaves.failCount    || 0;
+
+    // Physical appearance — all stored flat at the top level
+    const gender = data.gender || '';
+    const hair   = data.hair   || '';
+    const eyes   = data.eyes   || '';
+    const skin   = data.skin   || '';
+    const height = data.height ? String(data.height) : '';
+    const weight = data.weight ? String(data.weight) : '';
+
+    return {
+        class: className,
+        level,
+        race,
+        background,
+        alignment,
+        xp: data.currentXp || 0,
+        proficiency_bonus,
+        ability_scores,
+        saving_throw_profs,
+        skill_profs,
+        hp,
+        hp_max,
+        hp_temp,
+        ac,
+        speed,
+        initiative_bonus: initiativeBonus,
+        hit_dice: hitDice,
+        inspiration,
+        death_saves_success,
+        death_saves_fail,
+        currency,
+        inventory,
+        attacks,
+        spells,
+        features_traits,
+        proficiencies_text,
+        personality_traits,
+        ideals,
+        bonds,
+        flaws,
+        backstory,
+        notes_organizations,
+        notes_allies,
+        notes_enemies,
+        notes_text,
+        gender,
+        hair,
+        eyes,
+        skin,
+        height,
+        weight,
+        faith: data.faith || '',
+        age:   data.age   ? String(data.age) : '',
+    };
+}
+
+export async function importDndbeyond(req, res) {
+    const { channelId } = req.params;
+    const { characterId, charId } = req.body;
+
+    if (!characterId) return res.status(400).json({ error: 'characterId is required' });
+
+    // Strip to bare numeric ID in case a full URL was passed
+    const id = String(characterId).replace(/\D/g, '');
+    if (!id) return res.status(400).json({ error: 'Invalid characterId' });
+
+    try {
+        const serverId = await _getChannelServer(channelId);
+        if (!serverId) return res.status(404).json({ error: 'VTT channel not found' });
+
+        // Fetch from DnDBeyond public character service
+        const dndRes = await fetch(
+            `https://character-service.dndbeyond.com/character/v5/character/${id}`,
+            { headers: { 'Accept': 'application/json' } }
+        );
+        if (!dndRes.ok) {
+            return res.status(502).json({ error: 'Failed to fetch character from DnDBeyond. Make sure the character is set to public.' });
+        }
+        const dndJson = await dndRes.json();
+        if (!dndJson.success || !dndJson.data) {
+            return res.status(502).json({ error: 'DnDBeyond returned an unexpected response.' });
+        }
+
+        const sheet_data = _mapDndbeyondData(dndJson.data);
+        const charName   = dndJson.data.name || 'Imported Character';
+
+        let character;
+
+        if (charId) {
+            // Patch existing character
+            const existing = await db.query(
+                'SELECT user_id FROM vtt_characters WHERE id=$1 AND channel_id=$2',
+                [charId, channelId]
+            );
+            if (!existing.rows.length) return res.status(404).json({ error: 'Character not found' });
+
+            const isGM = await _isGM(req.session.user.id, serverId, null);
+            if (!isGM && existing.rows[0].user_id !== req.session.user.id)
+                return res.status(403).json({ error: 'You can only import into your own character' });
+
+            const r = await db.query(
+                `UPDATE vtt_characters
+                 SET name=$1, system='dnd5e', sheet_data=$2, updated_at=NOW()
+                 WHERE id=$3 RETURNING *`,
+                [charName, JSON.stringify(sheet_data), charId]
+            );
+            character = r.rows[0];
+        } else {
+            // Create new character
+            const r = await db.query(
+                `INSERT INTO vtt_characters (id, channel_id, user_id, system, name, sheet_data)
+                 VALUES ($1,$2,$3,'dnd5e',$4,$5) RETURNING *`,
+                [generateSnowflake(), channelId, req.session.user.id, charName, JSON.stringify(sheet_data)]
+            );
+            character = r.rows[0];
+        }
+
+        res.json({ character });
+    } catch (e) {
+        log(tags.error, 'vttController.importDndbeyond:', e.message);
+        res.status(500).json({ error: 'Failed to import character' });
+    }
+}
+
 // ── dddice guest token ────────────────────────────────────────────────────────
 
 export async function getDddiceToken(req, res) {
