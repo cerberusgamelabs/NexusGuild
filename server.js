@@ -43,6 +43,7 @@ import botRoutes from "./routes/bots.js";
 import interactionRoutes from "./routes/interactions.js";
 import reportRoutes from "./routes/reports.js";
 import vttRoutes from "./routes/vtt.js";
+import giphyRoutes from "./routes/giphy.js";
 import integrationsRoutes from "./routes/integrations.js";
 import v1Routes from "./routes/v1.js";
 import { initBotGateway } from "./gateway/botGateway.js";
@@ -115,7 +116,13 @@ const startServer = async () => {
         app.use(cors({
             origin: (origin, callback) => {
                 // Allow server-to-server / same-origin requests (no Origin header)
-                if (!origin || allowedOrigins.has(origin)) return callback(null, true);
+                if (!origin) return callback(null, true);
+                if (allowedOrigins.has(origin)) return callback(null, true);
+                // Allow bare domain if www variant is allowed (and vice versa)
+                const alt = origin.startsWith('https://www.')
+                    ? origin.replace('https://www.', 'https://')
+                    : origin.replace('https://', 'https://www.');
+                if (allowedOrigins.has(alt)) return callback(null, true);
                 callback(new Error(`Origin '${origin}' not allowed by CORS`));
             },
             credentials: true
@@ -145,6 +152,7 @@ const startServer = async () => {
         app.use('/api/interactions', interactionRoutes);
         app.use('/api/reports', reportRoutes);
         app.use('/api/vtt',          vttRoutes);
+        app.use('/api/giphy',        giphyRoutes);
         app.use('/api/integrations', integrationsRoutes);
         app.use('/api/v1', v1Routes);
 
