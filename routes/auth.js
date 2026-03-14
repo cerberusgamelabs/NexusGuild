@@ -16,4 +16,7 @@ router.patch('/password', requireAuth, AuthController.changePassword);
 router.post('/reset-password/request', AuthController.requestPasswordReset);
 router.post('/reset-password/confirm', AuthController.confirmPasswordReset);
 
+router.get('/google', AuthController.googleRedirect);
+router.get('/google/callback', AuthController.googleCallback);
+
 export default router;

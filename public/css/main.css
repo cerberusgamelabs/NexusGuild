@@ -92,6 +92,43 @@ body {
         text-decoration: underline;
     }
 
+.auth-divider {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 16px 0 4px;
+    color: #6b7280;
+    font-size: 12px;
+}
+.auth-divider::before, .auth-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: rgba(255,255,255,0.1);
+}
+
+.btn-google {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    padding: 10px 16px;
+    margin-top: 12px;
+    background: #fff;
+    color: #3c4043;
+    border: 1px solid #dadce0;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    text-decoration: none;
+    transition: background 0.2s, box-shadow 0.2s;
+}
+.btn-google:hover {
+    background: #f8f8f8;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
 /* Top Navigation */
 .top-nav-container {
     position: relative;
@@ -3466,3 +3503,52 @@ a.msg-image-link {
     white-space: nowrap;
 }
 
+
+/* ─── NIC Region Channel Card ───────────────────────────────────────────────── */
+.nic-region-channel-card {
+    margin: 8px 8px 4px;
+    background: linear-gradient(135deg, #0f1a2e 0%, #101828 100%);
+    border: 1px solid #1e3a5f;
+    border-radius: 8px;
+    padding: 10px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+}
+.nic-region-channel-card:hover {
+    border-color: #2a7fff;
+    background: linear-gradient(135deg, #111f36 0%, #12213a 100%);
+}
+.nic-card-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+.nic-card-icon { font-size: 14px; }
+.nic-card-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: #c9d1d9;
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.nic-card-vis {
+    font-size: 10px;
+    color: #5a7a99;
+    white-space: nowrap;
+}
+.nic-card-minimap {
+    width: 100%;
+    height: 80px;
+    object-fit: cover;
+    border-radius: 5px;
+    margin-bottom: 6px;
+    image-rendering: pixelated;
+    display: block;
+}
+.nic-card-meta {
+    font-size: 11px;
+    color: #5a7a99;
+}

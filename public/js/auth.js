@@ -120,6 +120,11 @@ async function login() {
         const data = await response.json();
 
         if (response.ok) {
+            const returnTo = new URLSearchParams(window.location.search).get('returnTo');
+            if (returnTo && /^https:\/\/([a-z0-9-]+\.)?nexusguild\.gg(\/.*)?$/.test(returnTo)) {
+                window.location.href = returnTo;
+                return;
+            }
             state.currentUser = data.user;
             loadUnread();
             state.isAuthenticated = true;
@@ -155,6 +160,11 @@ async function register() {
         const data = await response.json();
 
         if (response.ok) {
+            const returnTo = new URLSearchParams(window.location.search).get('returnTo');
+            if (returnTo && /^https:\/\/([a-z0-9-]+\.)?nexusguild\.gg(\/.*)?$/.test(returnTo)) {
+                window.location.href = returnTo;
+                return;
+            }
             state.currentUser = data.user;
             loadUnread();
             state.isAuthenticated = true;

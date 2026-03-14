@@ -74,6 +74,11 @@ class AuthController {
             }
 
             const user = result.rows[0];
+
+            if (!user.password_hash) {
+                return res.status(401).json({ error: 'This account uses Google Sign-In. Please log in with Google.' });
+            }
+
             const isValid = await bcrypt.compare(password, user.password_hash);
 
             if (!isValid) {
@@ -226,7 +231,7 @@ class AuthController {
                     [token, user.id, expiresAt]
                 );
 
-                const baseUrl = process.env.CLIENT_URL || 'https://www.nexusguild.gg';
+                const baseUrl = process.env.CLIENT_URL || 'https://app.nexusguild.gg';
                 const resetUrl = `${baseUrl}/reset-password?token=${token}`;
 
                 await sendEmail({
@@ -280,6 +285,115 @@ class AuthController {
         } catch (error) {
             log(tags.error, 'Password reset confirm error:', error);
             res.status(500).json({ error: 'Failed to reset password' });
+        }
+    }
+
+    static googleRedirect(req, res) {
+        const returnTo = req.query.returnTo || '';
+        const state = Buffer.from(JSON.stringify({ returnTo })).toString('base64url');
+        const params = new URLSearchParams({
+            client_id:     process.env.GOOGLE_CLIENT_ID,
+            redirect_uri:  process.env.GOOGLE_CALLBACK_URL || 'https://app.nexusguild.gg/api/auth/google/callback',
+            response_type: 'code',
+            scope:         'email profile',
+            state,
+            access_type:   'online',
+        });
+        res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
+    }
+
+    static async googleCallback(req, res) {
+        const { code, state, error } = req.query;
+
+        if (error || !code) {
+            log(tags.warn, `Google OAuth error: ${error}`);
+            return res.redirect('/');
+        }
+
+        let returnTo = '';
+        try {
+            const parsed = JSON.parse(Buffer.from(state, 'base64url').toString());
+            const url = parsed.returnTo || '';
+            // Only allow redirects back to nexusguild.gg subdomains
+            if (url && /^https:\/\/([a-z0-9-]+\.)?nexusguild\.gg(\/.*)?$/.test(url)) {
+                returnTo = url;
+            }
+        } catch { /* ignore bad state */ }
+
+        try {
+            // Exchange code for tokens
+            const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({
+                    code,
+                    client_id:     process.env.GOOGLE_CLIENT_ID,
+                    client_secret: process.env.GOOGLE_CLIENT_SECRET,
+                    redirect_uri:  process.env.GOOGLE_CALLBACK_URL || 'https://app.nexusguild.gg/api/auth/google/callback',
+                    grant_type:    'authorization_code',
+                }),
+            });
+            const tokens = await tokenRes.json();
+            if (!tokens.access_token) throw new Error('No access token from Google');
+
+            // Get user profile
+            const profileRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+                headers: { Authorization: `Bearer ${tokens.access_token}` },
+            });
+            const profile = await profileRes.json();
+            const { id: googleId, email, name } = profile;
+
+            if (!googleId || !email) throw new Error('Incomplete profile from Google');
+
+            // 1. Find by google_id
+            let user = (await db.query(
+                'SELECT * FROM users WHERE google_id = $1',
+                [googleId]
+            )).rows[0];
+
+            // 2. Link by email match
+            if (!user) {
+                const existing = (await db.query(
+                    'SELECT * FROM users WHERE email = $1',
+                    [email]
+                )).rows[0];
+                if (existing) {
+                    await db.query('UPDATE users SET google_id = $1 WHERE id = $2', [googleId, existing.id]);
+                    user = { ...existing, google_id: googleId };
+                }
+            }
+
+            // 3. Create new account
+            if (!user) {
+                const base = (name || email.split('@')[0])
+                    .toLowerCase().replace(/[^a-z0-9._-]/g, '_').slice(0, 28);
+                let username = base;
+                let attempt = 0;
+                while (true) {
+                    const taken = (await db.query('SELECT id FROM users WHERE username = $1', [username])).rows[0];
+                    if (!taken) break;
+                    username = `${base}${Math.floor(1000 + Math.random() * 9000)}`;
+                    if (++attempt > 10) throw new Error('Could not generate unique username');
+                }
+                const id = generateSnowflake();
+                user = (await db.query(
+                    `INSERT INTO users (id, username, email, google_id, status)
+                     VALUES ($1, $2, $3, $4, 'online') RETURNING *`,
+                    [id, username, email, googleId]
+                )).rows[0];
+                log(tags.success, `New user via Google: ${username} (${id})`);
+            }
+
+            await db.query('UPDATE users SET status = $1 WHERE id = $2', ['online', user.id]);
+
+            req.session.user = { id: user.id, username: user.username, email: user.email };
+
+            log(tags.info, `Google login: ${user.username} (${user.id})`);
+
+            res.redirect(returnTo || '/');
+        } catch (err) {
+            log(tags.error, 'Google OAuth callback error:', err);
+            res.redirect('/');
         }
     }
 }
