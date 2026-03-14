@@ -4,11 +4,12 @@
 // Run: node staff-server.js   (separate process from server.js)
 
 import dotenv from 'dotenv';
-dotenv.config();
+dotenv.config({ override: true });
 
 import express from 'express';
 import session from 'express-session';
-import connectPgSimple from 'connect-pg-simple';
+import { createClient as createRedisClient } from 'redis';
+import { RedisStore } from 'connect-redis';
 import bcrypt from 'bcryptjs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -21,8 +22,12 @@ import { sendEmail } from './utils/email.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = dirname(__filename);
 
-const pgSession = connectPgSimple(session);
+const redisClient = createRedisClient({ url: process.env.REDIS_URL || 'redis://localhost:6379' });
+redisClient.on('error', err => console.error('[staff] Redis error:', err));
+await redisClient.connect();
+
 const app  = express();
+app.set('trust proxy', 1);
 const PORT = process.env.STAFF_PORT || 3006;
 
 // ── Role hierarchy ────────────────────────────────────────────────────────────
@@ -56,17 +61,15 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 const sessionMiddleware = session({
-    store: new pgSession({
-        pool: db.pool,
-        tableName: 'session'
-    }),
+    store: new RedisStore({ client: redisClient, prefix: 'ng_sess:' }),
     secret: process.env.SESSION_SECRET || 'nexusguild-secret-key',
     resave: false,
     saveUninitialized: false,
     cookie: {
         maxAge: 30 * 24 * 60 * 60 * 1000,
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production'
+        secure: process.env.NODE_ENV === 'production',
+        ...(process.env.NODE_ENV === 'production' && { domain: '.nexusguild.gg' })
     }
 });
 app.use(sessionMiddleware);

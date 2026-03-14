@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PAHS — Nexus Industrial</title>
+    <link rel="stylesheet" href="css/pahs.css">
+</head>
+<body>
+<div id="app">
+
+    <!-- ─── Sidebar ─────────────────────────────────────────────────────────── -->
+    <aside id="sidebar">
+        <div id="sidebarHeader">
+            <div style="display:flex;align-items:center;justify-content:space-between">
+                <h2>⚙ PAHS</h2>
+                <a href="/" id="nicLink">← NIC</a>
+            </div>
+            <div id="pahsUsername">Loading…</div>
+        </div>
+
+        <!-- Power -->
+        <div class="section">
+            <div class="section-label">Power Grid</div>
+            <div id="powerDisplay">— / — MW</div>
+            <div class="bar-track"><div class="bar-fill" id="powerBar"></div></div>
+        </div>
+
+        <!-- Hub Storage -->
+        <div class="section">
+            <div class="section-label">Hub Storage</div>
+            <div id="hubStorage" class="storage-list"><span class="dim">No hub placed</span></div>
+        </div>
+
+        <!-- Tools -->
+        <div class="section">
+            <div class="section-label">Tools</div>
+            <div id="toolPalette">
+                <button class="tool-btn active" data-tool="select">⊹ Select</button>
+                <button class="tool-btn" data-tool="belt">→ Belt</button>
+                <button class="tool-btn danger" data-tool="erase">✕ Erase</button>
+            </div>
+        </div>
+
+        <!-- Machine Palette -->
+        <div class="section" style="flex:1;overflow-y:auto">
+            <div class="section-label">Place Machine</div>
+            <div id="machinePalette">
+                <button class="machine-btn" data-type="power_pole">⚡ Power Pole <span class="size-tag">1×1</span></button>
+                <button class="machine-btn" data-type="smelter">🔥 Smelter <span class="size-tag">3×3</span></button>
+                <button class="machine-btn" data-type="crusher">⚙ Crusher <span class="size-tag">4×4</span></button>
+                <button class="machine-btn" data-type="assembler">🔧 Assembler <span class="size-tag">4×4</span></button>
+            </div>
+
+            <div id="rotateRow" style="display:none;margin-top:10px">
+                <div class="section-label" style="margin-bottom:6px">Rotation</div>
+                <div id="rotateGroup">
+                    <button class="rotate-btn active" data-rot="0">↑ N</button>
+                    <button class="rotate-btn" data-rot="90">→ E</button>
+                    <button class="rotate-btn" data-rot="180">↓ S</button>
+                    <button class="rotate-btn" data-rot="270">← W</button>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- ─── Main Content ─────────────────────────────────────────────────────── -->
+    <div id="content">
+        <div id="topbar">
+            <span class="logo">PAHS GRID</span>
+            <span id="gridSizeLabel" class="dim">64×64</span>
+            <div style="flex:1"></div>
+            <label class="toggle-label">
+                <input type="checkbox" id="showPowerCoverage"> Power Coverage
+            </label>
+        </div>
+
+        <div id="canvasWrap">
+            <canvas id="gridCanvas"></canvas>
+            <div id="loadingOverlay">Initializing grid…</div>
+        </div>
+
+        <div id="statusBar">
+            <span id="tileCoord">—</span>
+            <span id="toolHint" class="dim">Select a tool</span>
+        </div>
+    </div>
+
+    <!-- ─── Info Panel ───────────────────────────────────────────────────────── -->
+    <div id="infoPanel">
+        <div id="infoPanelHeader">
+            <span id="infoPanelTitle">Machine</span>
+            <button id="infoPanelClose">✕</button>
+        </div>
+        <div id="infoPanelBody"></div>
+    </div>
+
+</div>
+
+<div id="toastArea"></div>
+
+<script type="module" src="js/pahs.js"></script>
+</body>
+</html>

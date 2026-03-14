@@ -18,6 +18,7 @@ const POLL_INTERVAL_MS = 60 * 1000; // 60 seconds
 const FETCH_TIMEOUT_MS = 5000;
 
 const SERVICE_URLS = {
+    home:      process.env.HOME_URL        || 'http://localhost:3000',
     main:      process.env.MAIN_APP_URL    || 'http://localhost:1985',
     developer: process.env.DEV_URL         || 'http://localhost:3001',
     tos:       process.env.TOS_URL         || 'http://localhost:3002',
@@ -28,6 +29,7 @@ const SERVICE_URLS = {
 };
 
 const SUBSYSTEMS = [
+    { key: 'home',      name: 'Homepage',         endpoint: '/',                    baseUrl: SERVICE_URLS.home },
     { key: 'api',       name: 'API',              endpoint: '/api/health',          baseUrl: SERVICE_URLS.main },
     { key: 'auth',      name: 'Authentication',   endpoint: '/api/health/auth',     baseUrl: SERVICE_URLS.main },
     { key: 'messaging', name: 'Messaging',        endpoint: '/api/health/messaging',baseUrl: SERVICE_URLS.main },

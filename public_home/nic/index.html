@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nexus Industrial Complex</title>
+    <link rel="stylesheet" href="css/nic.css">
+</head>
+<body>
+<div id="app">
+
+    <!-- ─── Sidebar: PAHS ──────────────────────────────────────────────────── -->
+    <aside id="sidebar">
+        <div id="sidebarHeader">
+            <h2>⚙ NIC</h2>
+            <div id="pahsUsername">Loading…</div>
+        </div>
+
+        <div class="section">
+            <div class="section-label">Power Grid</div>
+            <div id="pahsPower">— / — MW</div>
+            <div class="power-bar-track">
+                <div class="power-bar-fill" id="pahsPowerBar"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-label">Resources (PAHS)</div>
+            <div class="resource-grid">
+                <div class="resource-item">
+                    <div class="res-label">⛏ Ferrite</div>
+                    <div class="res-val" id="pahsFerrite">0</div>
+                </div>
+                <div class="resource-item">
+                    <div class="res-label">🔥 Pyrene</div>
+                    <div class="res-val" id="pahsPyrene">0</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section" style="flex:1; overflow-y:auto;">
+            <div class="section-label">Operatives</div>
+            <div id="operativeList"></div>
+        </div>
+    </aside>
+
+    <!-- ─── Main Content ───────────────────────────────────────────────────── -->
+    <div id="content">
+
+        <!-- Topbar -->
+        <div id="topbar">
+            <span class="logo">NEXUS INDUSTRIAL COMPLEX</span>
+            <span id="regionTitle"></span>
+            <div style="flex:1"></div>
+            <button class="btn btn-ghost" id="btnBack" onclick="backToList()" style="display:none">← Regions</button>
+            <a href="/pahs" class="btn btn-ghost">⚙ PAHS</a>
+            <button class="btn btn-primary" onclick="openCreateRegion()">+ New Region</button>
+        </div>
+
+        <!-- Region List View -->
+        <div id="viewList" style="display:flex">
+            <div>
+                <h3>Regions</h3>
+            </div>
+            <div id="regionList"></div>
+        </div>
+
+        <!-- Map View -->
+        <div id="viewMap" style="display:none">
+            <canvas id="mapCanvas"></canvas>
+            <div id="mapLoading">Generating terrain…</div>
+            <div id="tileBar"></div>
+
+            <!-- Slide-in info panel -->
+            <div id="infoPanel">
+                <div id="infoPanelHeader">
+                    <span>Node Info</span>
+                    <button onclick="closeInfoPanel()">✕</button>
+                </div>
+                <div id="infoPanelBody"></div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<div id="toastArea"></div>
+<div id="createRegionModal" style="display:none;position:fixed;inset:0;z-index:200;align-items:center;justify-content:center;"></div>
+
+<script>
+// Show/hide back button based on view
+const _origSetView = window.setView;
+const observer = new MutationObserver(() => {
+    const mapVisible = document.getElementById('viewMap').style.display !== 'none';
+    document.getElementById('btnBack').style.display = mapVisible ? '' : 'none';
+    document.getElementById('regionTitle').style.display = mapVisible ? '' : 'none';
+});
+observer.observe(document.getElementById('viewList'), { attributes: true });
+observer.observe(document.getElementById('viewMap'),  { attributes: true });
+</script>
+<script type="module" src="js/nic.js"></script>
+</body>
+</html>

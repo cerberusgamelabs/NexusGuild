@@ -1,4 +1,4 @@
-const API = 'https://www.nexusguild.gg';
+const API = 'https://app.nexusguild.gg';
 
 let currentUser = null;
 let currentBot  = null;

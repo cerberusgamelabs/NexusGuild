@@ -2,13 +2,13 @@
 // File Location: /server.js
 
 import dotenv from "dotenv";
-dotenv.config();
+dotenv.config({ override: true });
 
 import express from "express";
 import http from "http";
 import session from "express-session";
-import connectPgSimple from 'connect-pg-simple';
-const pgSession = connectPgSimple(session);
+import { createClient as createRedisClient } from 'redis';
+import { RedisStore } from 'connect-redis';
 import cors from "cors";
 import path from "path";
 import fs from "fs";
@@ -50,6 +50,7 @@ import { initBotGateway } from "./gateway/botGateway.js";
 import { runExpirationJob } from "./controllers/ascensionController.js";
 
 const app = express();
+app.set('trust proxy', 1);
 const server = http.createServer(app);
 
 const PORT = process.env.PORT || 3000;
@@ -76,7 +77,7 @@ const startServer = async () => {
 
         // Seed the default origin (untouchable in staff portal).
         // Delete any stale default row first so a changed CLIENT_URL takes effect on restart.
-        const defaultOrigin = process.env.CLIENT_URL || 'https://www.nexusguild.gg';
+        const defaultOrigin = process.env.CLIENT_URL || 'https://app.nexusguild.gg';
         await db.query(`DELETE FROM cors_origins WHERE is_default = true AND origin != $1`, [defaultOrigin]);
         await db.query(
             `INSERT INTO cors_origins (id, origin, description, is_default)
@@ -97,11 +98,14 @@ const startServer = async () => {
         await loadAllowedOrigins();
         setInterval(loadAllowedOrigins, 60_000);
 
+        const redisClient = createRedisClient({
+            url: process.env.REDIS_URL || 'redis://localhost:6379'
+        });
+        redisClient.on('error', (err) => log(tags.error, `Redis error: ${err}`));
+        await redisClient.connect();
+
         const sessionMiddleware = session({
-            store: new pgSession({
-                pool: db.pool,
-                tableName: 'session'
-            }),
+            store: new RedisStore({ client: redisClient, prefix: 'ng_sess:' }),
             secret: process.env.SESSION_SECRET || 'nexusguild-secret-key',
             resave: false,
             saveUninitialized: false,
@@ -157,7 +161,8 @@ const startServer = async () => {
         app.use('/api/v1', v1Routes);
 
         app.get('/api/health', (req, res) => {
-            res.json({ status: 'ok', timestamp: new Date(), uptime: process.uptime() * 1000, memory: process.memoryUsage() });
+            const pm2Uptime = process.env.pm_uptime ? Date.now() - parseInt(process.env.pm_uptime) : process.uptime() * 1000;
+            res.json({ status: 'ok', timestamp: new Date(), uptime: pm2Uptime, memory: process.memoryUsage() });
         });
 
         app.get('/api/health/auth', async (req, res) => {
@@ -286,7 +291,7 @@ const startServer = async () => {
 
                 if (result.rows.length && !result.rows[0].is_expired) {
                     const { name, icon, inviter_username, member_count } = result.rows[0];
-                    const baseUrl = 'https://www.nexusguild.gg';
+                    const baseUrl = process.env.CLIENT_URL || 'https://app.nexusguild.gg';
                     const inviteUrl = `${baseUrl}/invite/${code}`;
                     const iconUrl = icon
                         ? (icon.startsWith('http') ? icon : `${baseUrl}${icon}`)
