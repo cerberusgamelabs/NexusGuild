@@ -329,6 +329,7 @@ function selectServer(serverId) {
     state.myPermissions = 0n;      // reset until loadServerMembers resolves
     state.myChannelPerms = {};     // reset until loadServerChannels resolves
     state.roles = [];              // reset until loadServerMembers resolves
+    state.nicRegion = null;        // reset until loadServerChannels resolves
 
     if (state.socket) {
         state.socket.emit('join_server', serverId);
@@ -352,9 +353,11 @@ function selectServer(serverId) {
 
 async function loadServerChannels(serverId) {
     try {
-        const response = await fetch(`/api/channels/servers/${serverId}/channels`, {
-            credentials: 'include'
-        });
+        const [response, nicRes] = await Promise.all([
+            fetch(`/api/channels/servers/${serverId}/channels`, { credentials: 'include' }),
+            fetch(`/api/servers/${serverId}/nic-region`, { credentials: 'include' }),
+        ]);
+        state.nicRegion = nicRes.ok ? (await nicRes.json()) : null;
 
         if (response.ok) {
             const data = await response.json();

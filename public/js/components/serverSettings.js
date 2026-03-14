@@ -137,6 +137,7 @@ function switchSettingsTab(tab) {
         case 'audit':      renderAuditTab(content);       break;
         case 'webhooks':   renderWebhooksTab(content);    break;
         case 'reports':    renderReportsTab(content);     break;
+        case 'nic':        renderNicTab(content);         break;
         case 'danger':     renderDangerZoneTab(content);  break;
     }
 }
@@ -232,6 +233,79 @@ async function saveServerOverview() {
         showToast('Server name updated!');
     } catch (err) {
         errEl.textContent = 'Request failed.';
+        errEl.style.display = 'block';
+    }
+}
+
+// ── NIC Tab ───────────────────────────────────────────────────────────────────
+
+async function renderNicTab(container) {
+    container.innerHTML = '<p style="color:#949ba4">Loading NIC region…</p>';
+    try {
+        const res = await fetch(`/api/servers/${_settingsServerId}/nic-region`, { credentials: 'include' });
+        const region = res.ok ? await res.json() : null;
+
+        if (!region) {
+            container.innerHTML = `
+                <h2 class="settings-section-title">Nexus Industrial Complex</h2>
+                <p style="color:#949ba4;margin-bottom:16px;">No region is linked to this guild. The guild owner can link one from <a href="https://nic.nexusguild.gg" target="_blank" style="color:#5865f2;">nic.nexusguild.gg</a>.</p>
+            `;
+            return;
+        }
+
+        const visLabel = { public: '🌐 Public', guild: '🏰 Guild', invite: '🔒 Invite' }[region.visibility] || region.visibility;
+        container.innerHTML = `
+            <h2 class="settings-section-title">Nexus Industrial Complex</h2>
+
+            <div class="settings-field">
+                <label class="settings-label">Linked Region</label>
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <span style="font-weight:600;">${escHtml(region.name)}</span>
+                    <span style="font-size:12px;color:#949ba4;">${visLabel}</span>
+                    <a href="https://nic.nexusguild.gg" target="_blank" class="settings-btn secondary" style="text-decoration:none;padding:4px 10px;font-size:12px;">Open NIC ↗</a>
+                </div>
+                <p style="color:#949ba4;font-size:12px;margin-top:6px;">
+                    ⛏ ${region.resource_count} resource nodes · 🏗 ${region.structure_count} active structures
+                </p>
+            </div>
+
+            <div class="settings-field">
+                <label class="settings-label">Show Minimap in Channel List</label>
+                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+                    <input type="checkbox" id="nicMinimapToggle" ${region.nic_minimap_enabled ? 'checked' : ''}>
+                    <span style="color:#949ba4;font-size:13px;">Display a live terrain preview in the channels panel</span>
+                </label>
+                <button class="settings-btn" style="margin-top:10px;" onclick="saveNicSettings()">Save</button>
+            </div>
+
+            <div id="nicSettingsError" style="color:#f23f43;font-size:13px;display:none;"></div>
+        `;
+    } catch {
+        container.innerHTML = '<p style="color:#f23f43">Failed to load NIC settings.</p>';
+    }
+}
+
+async function saveNicSettings() {
+    const minimap = document.getElementById('nicMinimapToggle')?.checked ?? false;
+    const errEl = document.getElementById('nicSettingsError');
+    errEl.style.display = 'none';
+    try {
+        const res = await fetch(`/api/servers/${_settingsServerId}/nic-settings`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ nic_minimap_enabled: minimap }),
+        });
+        if (!res.ok) throw new Error();
+        // Refresh channel list so the card updates live
+        if (state.currentServer?.id === _settingsServerId) {
+            const nicRes = await fetch(`/api/servers/${_settingsServerId}/nic-region`, { credentials: 'include' });
+            state.nicRegion = nicRes.ok ? await nicRes.json() : null;
+            renderChannelList(state.channels, state.categories);
+        }
+        showToast('NIC settings saved!');
+    } catch {
+        errEl.textContent = 'Failed to save settings.';
         errEl.style.display = 'block';
     }
 }

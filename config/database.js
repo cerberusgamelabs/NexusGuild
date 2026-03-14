@@ -12,7 +12,7 @@ const pool = new Pool({
     database: process.env.DB_NAME || 'postgres',
     user: process.env.DB_USER || 'postgres',
     password: process.env.DB_PASS,
-    max: 10,
+    max: 4,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000,
 });
@@ -629,6 +629,9 @@ const initDB = async () => {
         await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS dddice_token TEXT`);
         await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS dddice_theme VARCHAR(100)`);
 
+        // ── Google OAuth (column add only — DROP NOT NULL runs outside tx) ──────
+        await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id VARCHAR(100)`);
+
         // ── Inbound Email ─────────────────────────────────────────────────────
 
         await client.query(`
@@ -647,7 +650,155 @@ const initDB = async () => {
             )
         `);
 
+        // ── Nexus Industrial Complex (NIC) ────────────────────────────────────
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS nic_players (
+                user_id         VARCHAR(20) PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                power_capacity  INTEGER DEFAULT 100,
+                power_used      INTEGER DEFAULT 0,
+                resources       JSONB DEFAULT '{}',
+                tech_tree       JSONB DEFAULT '[]',
+                credits         INTEGER DEFAULT 0,
+                created_at      TIMESTAMP DEFAULT NOW()
+            )
+        `);
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS nic_operatives (
+                id              VARCHAR(20) PRIMARY KEY,
+                user_id         VARCHAR(20) REFERENCES users(id) ON DELETE CASCADE,
+                name            VARCHAR(100) NOT NULL,
+                operative_type  VARCHAR(50) DEFAULT 'worker',
+                region_id       VARCHAR(20),
+                tile_x          INTEGER,
+                tile_y          INTEGER,
+                status          VARCHAR(20) DEFAULT 'idle',
+                task            JSONB,
+                created_at      TIMESTAMP DEFAULT NOW()
+            )
+        `);
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS nic_regions (
+                id              VARCHAR(20) PRIMARY KEY,
+                server_id       VARCHAR(20) REFERENCES servers(id) ON DELETE SET NULL,
+                owner_id        VARCHAR(20) REFERENCES users(id) ON DELETE SET NULL,
+                name            VARCHAR(100),
+                seed            BIGINT NOT NULL,
+                status          VARCHAR(20) DEFAULT 'active',
+                created_at      TIMESTAMP DEFAULT NOW()
+            )
+        `);
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS nic_resource_nodes (
+                id              VARCHAR(20) PRIMARY KEY,
+                region_id       VARCHAR(20) REFERENCES nic_regions(id) ON DELETE CASCADE,
+                tile_x          INTEGER NOT NULL,
+                tile_y          INTEGER NOT NULL,
+                resource_type   VARCHAR(50) NOT NULL,
+                purity          VARCHAR(20) DEFAULT 'normal',
+                owner_id        VARCHAR(20) REFERENCES users(id) ON DELETE SET NULL,
+                miner_tier      INTEGER,
+                last_collected  TIMESTAMP
+            )
+        `);
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS nic_research_nodes (
+                id              VARCHAR(20) PRIMARY KEY,
+                region_id       VARCHAR(20) REFERENCES nic_regions(id) ON DELETE CASCADE,
+                tile_x          INTEGER NOT NULL,
+                tile_y          INTEGER NOT NULL,
+                tech_id         VARCHAR(100),
+                discovered      BOOLEAN DEFAULT FALSE,
+                holder_id       VARCHAR(20) REFERENCES users(id) ON DELETE SET NULL,
+                research_start  TIMESTAMP
+            )
+        `);
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS nic_entry_points (
+                id              VARCHAR(20) PRIMARY KEY,
+                region_id       VARCHAR(20) REFERENCES nic_regions(id) ON DELETE CASCADE,
+                tile_x          INTEGER NOT NULL,
+                tile_y          INTEGER NOT NULL,
+                is_active       BOOLEAN DEFAULT TRUE,
+                discovered_by   JSONB DEFAULT '[]'
+            )
+        `);
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS nic_structures (
+                id              VARCHAR(20) PRIMARY KEY,
+                region_id       VARCHAR(20) REFERENCES nic_regions(id) ON DELETE CASCADE,
+                owner_id        VARCHAR(20) REFERENCES users(id) ON DELETE CASCADE,
+                tile_x          INTEGER NOT NULL,
+                tile_y          INTEGER NOT NULL,
+                structure_type  VARCHAR(50) NOT NULL,
+                tier            INTEGER DEFAULT 1,
+                data            JSONB DEFAULT '{}',
+                built_at        TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
         await client.query('COMMIT');
+
+        // ── Google OAuth — schema changes outside transaction (avoid Supabase timeout) ──
+        try {
+            await pool.query(`ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL`);
+        } catch (e) { /* already nullable — safe to ignore */ }
+
+        // ── NIC Phase 2 migrations ────────────────────────────────────────────────
+        try { await pool.query(`ALTER TABLE nic_structures ADD COLUMN IF NOT EXISTS power_draw INTEGER DEFAULT 10`); } catch (e) {}
+        try { await pool.query(`ALTER TABLE nic_structures ADD COLUMN IF NOT EXISTS node_id VARCHAR(20) REFERENCES nic_resource_nodes(id) ON DELETE SET NULL`); } catch (e) {}
+        try { await pool.query(`ALTER TABLE nic_structures ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT TRUE`); } catch (e) {}
+        try { await pool.query(`ALTER TABLE nic_structures ADD COLUMN IF NOT EXISTS last_produced_at TIMESTAMP`); } catch (e) {}
+
+        // ── NIC Phase 4 migrations ────────────────────────────────────────────────
+        try { await pool.query(`ALTER TABLE nic_regions ADD COLUMN IF NOT EXISTS visibility VARCHAR(20) DEFAULT 'guild'`); } catch (e) {}
+        try { await pool.query(`ALTER TABLE servers ADD COLUMN IF NOT EXISTS nic_minimap_enabled BOOLEAN DEFAULT FALSE`); } catch (e) {}
+        try { await pool.query(`
+            CREATE TABLE IF NOT EXISTS nic_region_invites (
+                region_id   VARCHAR(20) REFERENCES nic_regions(id) ON DELETE CASCADE,
+                user_id     VARCHAR(20) REFERENCES users(id) ON DELETE CASCADE,
+                invited_by  VARCHAR(20) REFERENCES users(id) ON DELETE SET NULL,
+                invited_at  TIMESTAMP DEFAULT NOW(),
+                PRIMARY KEY (region_id, user_id)
+            )
+        `); } catch (e) {}
+        try {
+            await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id) WHERE google_id IS NOT NULL`);
+        } catch (e) { /* already exists */ }
+
+        // ── PAHS tables ───────────────────────────────────────────────────────────
+        try { await pool.query(`
+            CREATE TABLE IF NOT EXISTS pahs_grids (
+                id VARCHAR(20) PRIMARY KEY,
+                user_id VARCHAR(20) REFERENCES users(id) ON DELETE CASCADE UNIQUE,
+                size INTEGER DEFAULT 64,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `); } catch (e) {}
+        try { await pool.query(`
+            CREATE TABLE IF NOT EXISTS pahs_machines (
+                id VARCHAR(20) PRIMARY KEY,
+                grid_id VARCHAR(20) REFERENCES pahs_grids(id) ON DELETE CASCADE,
+                machine_type VARCHAR(50) NOT NULL,
+                x INTEGER NOT NULL,
+                y INTEGER NOT NULL,
+                size INTEGER NOT NULL,
+                rotation INTEGER DEFAULT 0,
+                enabled BOOLEAN DEFAULT TRUE,
+                storage JSONB DEFAULT '{}',
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `); } catch (e) {}
+        try { await pool.query(`
+            CREATE TABLE IF NOT EXISTS pahs_belts (
+                id VARCHAR(20) PRIMARY KEY,
+                grid_id VARCHAR(20) REFERENCES pahs_grids(id) ON DELETE CASCADE,
+                x INTEGER NOT NULL,
+                y INTEGER NOT NULL,
+                direction VARCHAR(2) NOT NULL,
+                item_type VARCHAR(50) DEFAULT NULL,
+                UNIQUE(grid_id, x, y)
+            )
+        `); } catch (e) {}
 
         // Indexes must run outside a transaction
         await pool.query('CREATE INDEX IF NOT EXISTS idx_messages_channel   ON messages(channel_id)');

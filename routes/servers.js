@@ -50,6 +50,10 @@ router.post('/:serverId/leave', requireAuth, isServerMember, ServerController.le
 // Upload server icon
 router.post('/:serverId/icon', requireAuth, isServerOwner, uploadSingle, handleUploadError, ServerController.uploadServerIcon);
 
+// NIC region
+router.get('/:serverId/nic-region', requireAuth, isServerMember, ServerController.getServerNicRegion);
+router.patch('/:serverId/nic-settings', requireAuth, isServerMember, checkPermission(PERMISSIONS.MANAGE_GUILD), ServerController.updateNicSettings);
+
 // Bans
 router.get('/:serverId/bans', requireAuth, isServerMember, checkPermission(PERMISSIONS.BAN_MEMBERS), ServerController.getBans);
 router.post('/:serverId/bans/:memberId', requireAuth, isServerMember, checkPermission(PERMISSIONS.BAN_MEMBERS), ServerController.banMember);

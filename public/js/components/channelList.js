@@ -19,6 +19,28 @@ function renderChannelList(channels, categories) {
 
     channelsList.innerHTML = '';
 
+    // NIC region card (pinned above channels)
+    if (state.nicRegion) {
+        const r = state.nicRegion;
+        const visLabel = { public: '🌐 Public', guild: '🏰 Guild', invite: '🔒 Invite' }[r.visibility] || r.visibility;
+        const card = document.createElement('div');
+        card.className = 'nic-region-channel-card';
+        card.title = 'Open in Nexus Industrial Complex';
+        card.onclick = () => window.open('https://nic.nexusguild.gg', '_blank');
+        card.innerHTML = `
+            <div class="nic-card-header">
+                <span class="nic-card-icon">⚙</span>
+                <span class="nic-card-name">${escHtml(r.name)}</span>
+                <span class="nic-card-vis">${visLabel}</span>
+            </div>
+            ${r.nic_minimap_enabled
+                ? `<img class="nic-card-minimap" src="https://nic.nexusguild.gg/api/nic/regions/${r.id}/preview" loading="lazy" alt="Region map">`
+                : ''}
+            <div class="nic-card-meta">⛏ ${r.resource_count} nodes · 🏗 ${r.structure_count} structures</div>
+        `;
+        channelsList.appendChild(card);
+    }
+
     const canDrag = typeof clientHasPermission === 'function' &&
                     clientHasPermission(CLIENT_PERMS.MANAGE_CHANNELS);
 

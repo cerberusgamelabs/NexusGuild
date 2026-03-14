@@ -542,6 +542,41 @@ class ServerController {
             res.status(500).json({ error: 'Failed to get invite preview' });
         }
     }
+
+    static async getServerNicRegion(req, res) {
+        try {
+            const result = await db.query(`
+                SELECT r.id, r.name, r.visibility, r.seed,
+                       (SELECT COUNT(*) FROM nic_resource_nodes WHERE region_id = r.id) as resource_count,
+                       (SELECT COUNT(*) FROM nic_entry_points WHERE region_id = r.id) as entry_count,
+                       (SELECT COUNT(*) FROM nic_structures WHERE region_id = r.id AND active = true) as structure_count,
+                       s.nic_minimap_enabled
+                FROM nic_regions r
+                JOIN servers s ON s.id = r.server_id
+                WHERE r.server_id = $1 AND r.status = 'active'
+                LIMIT 1
+            `, [req.params.serverId]);
+            if (!result.rows.length) return res.json(null);
+            res.json(result.rows[0]);
+        } catch (error) {
+            log(tags.error, 'Get server NIC region error:', error);
+            res.status(500).json({ error: 'Server error' });
+        }
+    }
+
+    static async updateNicSettings(req, res) {
+        const { nic_minimap_enabled } = req.body;
+        try {
+            await db.query(
+                'UPDATE servers SET nic_minimap_enabled = $1 WHERE id = $2',
+                [!!nic_minimap_enabled, req.params.serverId]
+            );
+            res.json({ ok: true });
+        } catch (error) {
+            log(tags.error, 'Update NIC settings error:', error);
+            res.status(500).json({ error: 'Server error' });
+        }
+    }
 }
 
 export default ServerController;
